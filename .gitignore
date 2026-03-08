@@ -26,3 +26,12 @@ Thumbs.db
 # Backup files
 *.bak
 *.orig
+
+# Claude Code
+.claude/
+
+# User uploads (should not be in git)
+amos-harness/data/uploads/
+
+# Solana keypairs (mounted at runtime)
+keys/

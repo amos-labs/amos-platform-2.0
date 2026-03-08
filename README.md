@@ -10,9 +10,10 @@ AMOS is a per-customer AI harness that serves as a single conversational + canva
 amos-automate/
 ├── amos-core          # Shared types, config, errors, token economics
 ├── amos-harness       # The main runtime: agent loop, tools, UI, canvas engine
-├── amos-platform      # Multi-tenant platform layer (harness orchestration)
+├── amos-platform      # Multi-tenant platform layer (harness orchestration, provisioning)
 ├── amos-cli           # Command-line interface
-└── amos-solana/       # On-chain programs (treasury, bounties, governance)
+├── amos-solana/       # On-chain programs (treasury, bounties, governance)
+└── docs/              # Whitepaper, token economics documentation
 ```
 
 ### amos-core
@@ -36,15 +37,21 @@ The per-customer runtime. This is where the core product lives:
   - `web_tools` -- Web search, page scraping
   - `system_tools` -- File read, bash execution
   - `memory_tools` -- Remember and recall with salience-based attention
-  - `openclaw_tools` -- Register, manage, and assign tasks to autonomous AI agents
-  - `orchestration_tools` -- Delegate work to external AI agents
+  - `openclaw_tools` -- Register, manage, activate, and assign tasks to autonomous AI agents
   - `schema_tools` -- Define collections, CRUD records (dynamic data layer)
   - `site_tools` -- Create multi-page websites and landing pages
-- **OpenClaw** (`src/openclaw/`) -- Autonomous AI agent management and orchestration via WebSocket gateway
-- **Orchestration** (`src/orchestration/`) -- External Agent Protocol (EAP) for registering, delegating to, and auditing third-party AI agents with trust levels
+- **OpenClaw Agent Management** (`src/openclaw/`) -- Unified autonomous AI agent management. Agents register with AMOS, are managed via a single control plane, and can be activated, stopped, and assigned tasks. Communicates via WebSocket gateway protocol
 - **Schema** (`src/schema/`) -- Runtime-defined collections and records (JSONB-backed, validated, queryable). No migrations needed per customer request
 - **Sites** (`src/sites/`) -- Multi-page public websites served at `/s/{slug}` with form submission into schema collections
 - **Memory** (`src/memory/`) -- Working memory with semantic search and salience scoring
+
+### amos-platform
+
+The multi-tenant control plane. Manages harness lifecycle and billing:
+
+- **Provisioning** (`src/provisioning/`) -- Docker-based harness provisioning. Creates, starts, stops, and deprovisions per-customer harness containers via the Docker API (bollard)
+- **Solana Integration** (`src/solana/`) -- Optional on-chain token operations, treasury management
+- **Routes** -- REST API for harness lifecycle management, health checks
 
 ### UI
 
@@ -56,19 +63,38 @@ The harness serves a single-page application from `amos-harness/static/`. The in
 
 No JavaScript framework. Plain JS + Tailwind CSS + Lucide icons.
 
+## Token Economics
+
+AMOS uses a Solana-based SPL token with a decay-based ownership model. Contributors earn tokens through work (code, sales, content), and token holders receive 50% of platform revenue.
+
+Key properties:
+- **Fixed supply**: 100M tokens, 9 decimals
+- **Revenue share**: 50% to holders, 40% R&D, 5% treasury, 5% operations
+- **Dynamic decay**: 2-25% annual, tied to platform profitability (more profitable = less decay)
+- **Wealth preservation**: 12-month grace period, graduated floors, staking vaults
+
+Full documentation:
+- [Technical Whitepaper](docs/whitepaper_technical.md) -- Complete technical specification
+- [Simple Whitepaper](docs/whitepaper_simple.md) -- Non-technical overview
+- [Token Economy Math](docs/token_economy_math.md) -- Mathematical framework and formulas
+- [Equation Cheat Sheet](docs/token_economy_equations.md) -- Quick reference for all equations
+
 ## Prerequisites
 
-- **Rust** >= 1.80
-- **PostgreSQL** >= 15
+- **Rust** >= 1.83
+- **PostgreSQL** >= 15 (with pgvector extension recommended)
 - **Redis**
+- **Docker** (for platform provisioning and dev environment)
 - **AWS credentials** configured for Bedrock (Claude model access)
 
 ## Quick Start
 
+### Local Development (without Docker)
+
 ```bash
 # Clone the repository
-git clone https://github.com/amos-labs/amos-platform.git
-cd amos-platform
+git clone https://github.com/amos-labs/amos-platform-2.0.git
+cd amos-platform-2.0
 
 # Create and configure environment
 cp .env.example .env
@@ -84,7 +110,21 @@ cargo build
 cargo run --bin amos-harness
 ```
 
-The harness starts on `http://localhost:3000`.
+### Docker Development
+
+```bash
+# Start infrastructure (PostgreSQL + Redis)
+docker compose up postgres redis -d
+
+# Build and start everything
+docker compose up --build
+
+# Or build images separately
+docker compose build harness
+docker compose build platform
+```
+
+The harness starts on `http://localhost:3000`. The platform starts on `http://localhost:4000`.
 
 ## Configuration
 
@@ -106,8 +146,7 @@ The harness uses PostgreSQL with sqlx migrations. Migrations run automatically o
 
 - `sessions` / `messages` -- Conversation history
 - `canvases` -- Dynamic UI canvases (HTML/CSS/JS + data bindings)
-- `openclaw_agents` -- OpenClaw agent configurations and state
-- `external_agents` -- EAP agent registry with trust levels
+- `openclaw_agents` -- Agent configurations, status, and lifecycle state
 - `memory_items` -- Working memory with salience scores
 - `integrations` -- Third-party service connections
 - `collections` / `records` -- Dynamic schema system (runtime-defined data)
@@ -135,7 +174,7 @@ DELETE /api/v1/canvases/:id      # Delete canvas
 GET    /c/:slug                  # Public canvas (published)
 ```
 
-### Agents (OpenClaw)
+### Agents
 
 ```
 GET    /api/v1/agents              # List agents
@@ -152,6 +191,17 @@ POST   /api/v1/agents/:id/stop     # Stop agent
 GET    /s/:slug                  # Serve site index page
 GET    /s/:slug/*path            # Serve site sub-page
 POST   /s/:slug/submit/:collection  # Form submission into collection
+```
+
+### Provisioning (Platform)
+
+```
+POST   /provision/harness              # Provision new harness container
+GET    /provision/harness/:id          # Get harness status
+POST   /provision/harness/:id/start    # Start harness
+POST   /provision/harness/:id/stop     # Stop harness
+DELETE /provision/harness/:id          # Deprovision harness
+GET    /provision/harness/:id/logs     # Get harness logs
 ```
 
 ### Health
@@ -194,8 +244,9 @@ This is an early-stage project under active development. The core architecture i
 - Dynamic schema (collections + records)
 - Public site generation
 - Autonomous AI agent management (OpenClaw)
-- External agent orchestration (EAP)
 - Memory system
+- Docker-based harness provisioning
+- Token economics with on-chain revenue distribution
 
 ## License
 

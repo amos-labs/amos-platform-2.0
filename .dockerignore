@@ -1,0 +1,42 @@
+# Build artifacts
+target/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files (secrets)
+.env
+.env.local
+.env.production
+
+# Docker volumes and data
+postgres_data/
+redis_data/
+localstack_data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in image)
+*.md
+LICENSE
+
+# Test fixtures
+tests/
+test-data/
+
+# Keys (mounted at runtime, not baked in)
+keys/
+
+# Logs
+*.log
+logs/

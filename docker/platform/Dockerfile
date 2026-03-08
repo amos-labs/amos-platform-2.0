@@ -2,18 +2,20 @@
 # Central token economics, governance, billing
 
 # Stage 1: Builder
-FROM rust:1.80-bookworm AS builder
+FROM rust:bookworm AS builder
 
 WORKDIR /app
 
 # Copy workspace files
 COPY Cargo.toml Cargo.lock ./
 
-# Copy all crate sources
+# Copy all workspace crate sources (cargo requires all members for workspace resolution)
 COPY amos-core ./amos-core
+COPY amos-harness ./amos-harness
 COPY amos-platform ./amos-platform
+COPY amos-cli ./amos-cli
 
-# Build release binary
+# Build only the platform binary
 RUN cargo build --release --bin amos-platform
 
 # Stage 2: Runtime
