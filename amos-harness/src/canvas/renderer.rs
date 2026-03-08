@@ -5,7 +5,96 @@ use amos_core::{AmosError, Result};
 use serde_json::Value as JsonValue;
 use sqlx::{Column, PgPool, Row};
 use std::collections::HashMap;
+use std::net::IpAddr;
 use tera::{Context, Tera};
+
+/// Validate that a string is a safe SQL identifier (alphanumeric + underscores only)
+fn validate_identifier(name: &str) -> Result<()> {
+    if name.is_empty() || name.len() > 128 {
+        return Err(AmosError::Validation("Invalid identifier length".to_string()));
+    }
+    let is_valid = name.chars().enumerate().all(|(i, c)| {
+        if i == 0 {
+            c.is_ascii_alphabetic() || c == '_'
+        } else {
+            c.is_ascii_alphanumeric() || c == '_'
+        }
+    });
+    if !is_valid {
+        return Err(AmosError::Validation(format!(
+            "Invalid identifier '{}': only alphanumeric characters and underscores allowed",
+            name
+        )));
+    }
+    Ok(())
+}
+
+/// Check if an IP address is in a private/internal range
+fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()             // 127.0.0.0/8
+                || v4.is_private()       // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                || v4.is_link_local()    // 169.254.0.0/16
+                || v4.is_unspecified()   // 0.0.0.0
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()             // ::1
+                || v6.is_unspecified()   // ::
+                // fc00::/7 (unique local) and fe80::/10 (link-local)
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// Validate that a URL is safe to fetch (no SSRF)
+fn validate_url(endpoint: &str) -> Result<()> {
+    let parsed = url::Url::parse(endpoint).map_err(|e| {
+        AmosError::Validation(format!("Invalid URL '{}': {}", endpoint, e))
+    })?;
+
+    // Only allow http and https
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(AmosError::Validation(format!(
+                "URL scheme '{}' not allowed; only http and https are permitted",
+                scheme
+            )));
+        }
+    }
+
+    // Block known internal hostnames
+    let host = parsed.host_str().unwrap_or("");
+    let blocked_hosts = ["localhost", "0.0.0.0", "[::]", "[::1]"];
+    if blocked_hosts.contains(&host)
+        || host.ends_with(".local")
+        || host.ends_with(".internal")
+    {
+        return Err(AmosError::Validation(format!(
+            "URL host '{}' is not allowed: internal/private host",
+            host
+        )));
+    }
+
+    // Resolve and check IPs
+    use std::net::ToSocketAddrs;
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let addr_str = format!("{}:{}", host, port);
+    if let Ok(addrs) = addr_str.to_socket_addrs() {
+        for addr in addrs {
+            if is_private_ip(addr.ip()) {
+                return Err(AmosError::Validation(format!(
+                    "URL resolves to private/internal IP {}: not allowed",
+                    addr.ip()
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
 
 /// Render a canvas with the given data context
 pub async fn render_canvas(
@@ -290,6 +379,7 @@ pub fn render_freeform(canvas: &Canvas) -> CanvasResponse {
 /// Render HTML content with Tera template engine
 fn render_with_tera(template_str: &str, context: &JsonValue) -> Result<String> {
     let mut tera = Tera::default();
+    tera.autoescape_on(vec![".html", ".htm", ""]);
 
     tera.add_raw_template("canvas", template_str)
         .map_err(|e| AmosError::Validation(format!("Invalid template: {}", e)))?;
@@ -431,9 +521,12 @@ async fn fetch_model_data(
         .and_then(|v| v.as_i64())
         .unwrap_or(50);
 
-    // Build a basic query
+    // Validate model_name is a safe identifier (prevent SQL injection)
+    validate_identifier(model_name)?;
+
+    // Build a basic query with quoted identifier
     let query = format!(
-        "SELECT * FROM {} ORDER BY created_at DESC LIMIT $1",
+        "SELECT * FROM \"{}\" ORDER BY created_at DESC LIMIT $1",
         model_name
     );
 
@@ -468,7 +561,15 @@ async fn fetch_model_data(
 
 /// Fetch data from an external API
 async fn fetch_api_data(endpoint: &str) -> Result<JsonValue> {
-    let response: reqwest::Response = reqwest::get(endpoint)
+    // Validate URL to prevent SSRF attacks
+    validate_url(endpoint)?;
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| AmosError::Internal(format!("Failed to build HTTP client: {}", e)))?;
+
+    let response: reqwest::Response = client.get(endpoint).send()
         .await
         .map_err(|e| AmosError::Internal(format!("External: API request failed: {}", e)))?;
 

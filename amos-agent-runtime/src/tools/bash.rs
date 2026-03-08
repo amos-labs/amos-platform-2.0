@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
@@ -11,27 +12,19 @@ use super::Tool;
 use amos_core::error::{AmosError, Result};
 use amos_core::types::ToolDefinition;
 
-/// Patterns that are blocked for security reasons
-const BLOCKED_PATTERNS: &[&str] = &[
-    "rm -rf /",
-    "rm -rf ~",
-    "sudo",
-    "mkfs",
-    "dd if=",
-    "> /dev/",
-    "chmod 777",
-    "curl | bash",
-    "wget | bash",
-    "curl|bash",
-    "wget|bash",
-    "rm -rf *",
-    "shutdown",
-    "reboot",
-    "halt",
-    "poweroff",
-    "init 0",
-    "init 6",
-    "killall",
+/// Commands blocked for security — checked by exact token match, not substring
+const BLOCKED_COMMANDS: &[&str] = &[
+    "rm", "mv", "cp", "chmod", "chown", "chroot", "mount", "umount",
+    "mkfs", "dd", "kill", "killall", "pkill", "shutdown", "reboot",
+    "halt", "poweroff", "systemctl", "service", "useradd", "userdel",
+    "passwd", "su", "sudo", "curl", "wget", "nc", "ncat", "socat",
+    "ssh", "scp", "sftp", "ftp", "telnet", "python", "python3",
+    "ruby", "perl", "node", "php", "lua", "bash", "zsh", "csh",
+    "ksh", "fish", "nohup", "screen", "tmux", "at", "crontab",
+    "eval", "exec", "source", "docker", "podman", "kubectl",
+    "apt", "yum", "dnf", "brew", "pip", "npm", "gem", "netcat",
+    "mknod", "insmod", "modprobe", "iptables", "ip6tables",
+    "init",
 ];
 
 /// Maximum output size in bytes (10KB)
@@ -49,13 +42,44 @@ impl BashTool {
         Self
     }
 
-    /// Check if command contains blocked patterns
+    /// Check if command contains blocked commands (by token, not substring)
     fn is_command_blocked(&self, command: &str) -> Option<String> {
         let command_lower = command.to_lowercase();
 
-        for pattern in BLOCKED_PATTERNS {
-            if command_lower.contains(&pattern.to_lowercase()) {
-                return Some(format!("Command blocked: contains dangerous pattern '{}'", pattern));
+        // Block subshell execution and backticks entirely
+        if command_lower.contains("$(") || command_lower.contains('`') {
+            return Some("Command blocked: subshell execution is not allowed".to_string());
+        }
+
+        // Block pipe-to-shell patterns
+        for shell in &["sh", "bash", "zsh", "ksh", "csh", "fish"] {
+            if command_lower.contains(&format!("| {}", shell))
+                || command_lower.contains(&format!("|{}", shell))
+            {
+                return Some(format!("Command blocked: piping to '{}' is not allowed", shell));
+            }
+        }
+
+        // Block writes to sensitive paths
+        if command_lower.contains("> /dev/") || command_lower.contains("> /etc/") || command_lower.contains("> /proc/") {
+            return Some("Command blocked: redirecting to system paths is not allowed".to_string());
+        }
+
+        // Tokenize on whitespace and shell metacharacters, check each token
+        let tokens: Vec<&str> = command_lower
+            .split(|c: char| c.is_whitespace() || ";|&<>(){}".contains(c))
+            .filter(|t| !t.is_empty())
+            .collect();
+
+        for token in &tokens {
+            // Extract basename for absolute paths (e.g. /usr/bin/curl -> curl)
+            let basename = Path::new(token)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| token.to_string());
+
+            if BLOCKED_COMMANDS.contains(&basename.as_str()) {
+                return Some(format!("Command blocked: '{}' is not allowed", basename));
             }
         }
 

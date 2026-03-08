@@ -149,10 +149,7 @@ pub async fn chat_stream(
 
     // Generate a unique chat_id for cancellation and store the flag
     let chat_id = Uuid::new_v4().to_string();
-    {
-        let mut chats = state.active_chats.write().unwrap();
-        chats.insert(chat_id.clone(), cancel_flag);
-    }
+    state.active_chats.insert(chat_id.clone(), cancel_flag);
 
     // ── Resolve attachments into content blocks ─────────────────────────
     let mut attachment_blocks: Vec<amos_core::types::ContentBlock> = Vec::new();
@@ -342,9 +339,7 @@ pub async fn chat_stream(
         }
 
         // Clean up the cancellation flag
-        if let Ok(mut chats) = active_chats.write() {
-            chats.remove(&chat_id_for_cleanup);
-        }
+        active_chats.remove(&chat_id_for_cleanup);
     });
 
     // ── Build SSE stream ─────────────────────────────────────────────────
@@ -377,9 +372,8 @@ pub async fn chat_cancel(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CancelRequest>,
 ) -> impl IntoResponse {
-    let chats = state.active_chats.read().unwrap();
-    if let Some(flag) = chats.get(&req.chat_id) {
-        flag.store(true, Ordering::Relaxed);
+    if let Some(flag) = state.active_chats.get(&req.chat_id) {
+        flag.value().store(true, Ordering::Relaxed);
         tracing::info!("Cancelled chat {}", req.chat_id);
         (StatusCode::OK, Json(json!({"status": "cancelled", "chat_id": req.chat_id})))
     } else {

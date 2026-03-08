@@ -2,13 +2,36 @@ use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::Response,
     Json,
 };
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use serde::Deserialize;
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::state::AppState;
+
+static API_KEY: OnceLock<Option<String>> = OnceLock::new();
+static JWT_SECRET: OnceLock<Option<String>> = OnceLock::new();
+
+fn get_api_key() -> &'static Option<String> {
+    API_KEY.get_or_init(|| std::env::var("AMOS__AUTH__API_KEY").ok())
+}
+
+fn get_jwt_secret() -> &'static Option<String> {
+    JWT_SECRET.get_or_init(|| std::env::var("AMOS__AUTH__JWT_SECRET").ok())
+}
+
+#[derive(Debug, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
+    #[serde(default)]
+    iss: Option<String>,
+    #[serde(default)]
+    permissions: Vec<String>,
+}
 
 /// Authentication middleware
 /// Validates Bearer tokens (JWT) or API keys
@@ -17,7 +40,7 @@ pub struct AuthMiddleware;
 impl AuthMiddleware {
     /// Middleware function to validate authentication
     pub async fn validate(
-        State(state): State<Arc<AppState>>,
+        State(_state): State<Arc<AppState>>,
         headers: HeaderMap,
         request: Request,
         next: Next,
@@ -38,7 +61,7 @@ impl AuthMiddleware {
             // Check for API key
             else if auth_value.starts_with("ApiKey ") {
                 let api_key = &auth_value[7..];
-                if validate_api_key(&state, api_key).await {
+                if validate_api_key(api_key).await {
                     return Ok(next.run(request).await);
                 }
             }
@@ -46,7 +69,7 @@ impl AuthMiddleware {
 
         // Check for API key in X-API-Key header (alternative)
         if let Some(api_key) = headers.get("x-api-key").and_then(|h| h.to_str().ok()) {
-            if validate_api_key(&state, api_key).await {
+            if validate_api_key(api_key).await {
                 return Ok(next.run(request).await);
             }
         }
@@ -62,55 +85,96 @@ impl AuthMiddleware {
     }
 }
 
-/// Validate JWT token
-/// TODO: Implement actual JWT validation with jsonwebtoken crate
+/// Constant-time comparison to prevent timing attacks
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut result: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        result |= x ^ y;
+    }
+    result == 0
+}
+
+/// Validate JWT token by decoding and verifying signature, expiration, and issuer.
+/// Fails closed: if AMOS__AUTH__JWT_SECRET is not set, all tokens are rejected.
 async fn validate_jwt(token: &str) -> bool {
-    // Placeholder validation
-    // In production:
-    // 1. Decode JWT
-    // 2. Verify signature with public key
-    // 3. Check expiration
-    // 4. Validate claims (issuer, audience, etc.)
+    let secret = match get_jwt_secret() {
+        Some(s) => s,
+        None => {
+            tracing::warn!("AMOS__AUTH__JWT_SECRET not set; rejecting all JWT auth");
+            return false;
+        }
+    };
 
-    tracing::debug!("Validating JWT token: {}", &token[..10.min(token.len())]);
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.set_issuer(&["amos"]);
+    validation.validate_exp = true;
 
-    // For now, accept any non-empty token
-    // TODO: Implement real JWT validation
-    !token.is_empty()
+    match decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    ) {
+        Ok(_) => true,
+        Err(e) => {
+            tracing::debug!("JWT validation failed: {}", e);
+            false
+        }
+    }
 }
 
-/// Validate API key against database
-/// TODO: Implement actual API key lookup in database
-async fn validate_api_key(state: &AppState, api_key: &str) -> bool {
-    // Placeholder validation
-    // In production:
-    // 1. Hash the API key
-    // 2. Look up in database
-    // 3. Check if active and not expired
-    // 4. Update last_used timestamp
-    // 5. Check rate limits
-
-    tracing::debug!("Validating API key: {}", &api_key[..10.min(api_key.len())]);
-
-    // For now, accept any non-empty key
-    // TODO: Implement real API key validation with database lookup
-    !api_key.is_empty()
+/// Validate API key using constant-time comparison against configured key.
+/// Fails closed: if AMOS__AUTH__API_KEY is not set, all keys are rejected.
+async fn validate_api_key(api_key: &str) -> bool {
+    match get_api_key() {
+        Some(configured_key) => constant_time_eq(api_key.as_bytes(), configured_key.as_bytes()),
+        None => {
+            tracing::warn!("AMOS__AUTH__API_KEY not set; rejecting all API key auth");
+            false
+        }
+    }
 }
 
-/// Extract user ID from JWT token
-/// TODO: Implement actual JWT parsing
+/// Extract user ID from JWT token by decoding the `sub` claim.
+/// Returns None if the token is invalid or the secret is not configured.
 pub fn extract_user_id_from_token(token: &str) -> Option<String> {
-    // Placeholder
-    // In production, decode JWT and extract user_id from claims
-    Some("user_123".to_string())
+    let secret = get_jwt_secret().as_ref()?;
+
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.set_issuer(&["amos"]);
+    validation.validate_exp = true;
+
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    )
+    .ok()
+    .map(|data| data.claims.sub)
 }
 
-/// Extract permissions from JWT token
-/// TODO: Implement actual JWT parsing
+/// Extract permissions from JWT token by decoding the `permissions` claim.
+/// Returns empty vec if the token is invalid or the secret is not configured.
 pub fn extract_permissions_from_token(token: &str) -> Vec<String> {
-    // Placeholder
-    // In production, decode JWT and extract permissions from claims
-    vec!["read".to_string(), "write".to_string()]
+    let secret = match get_jwt_secret().as_ref() {
+        Some(s) => s,
+        None => return vec![],
+    };
+
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.set_issuer(&["amos"]);
+    validation.validate_exp = true;
+
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    )
+    .ok()
+    .map(|data| data.claims.permissions)
+    .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -118,20 +182,31 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_validate_jwt() {
-        assert!(validate_jwt("valid_token").await);
+    async fn test_validate_jwt_rejects_empty() {
         assert!(!validate_jwt("").await);
     }
 
-    #[test]
-    fn test_extract_user_id() {
-        let user_id = extract_user_id_from_token("token");
-        assert!(user_id.is_some());
+    #[tokio::test]
+    async fn test_validate_jwt_rejects_garbage() {
+        assert!(!validate_jwt("not_a_valid_jwt").await);
     }
 
     #[test]
-    fn test_extract_permissions() {
-        let perms = extract_permissions_from_token("token");
-        assert!(!perms.is_empty());
+    fn test_extract_user_id_rejects_invalid() {
+        let user_id = extract_user_id_from_token("invalid_token");
+        assert!(user_id.is_none());
+    }
+
+    #[test]
+    fn test_extract_permissions_rejects_invalid() {
+        let perms = extract_permissions_from_token("invalid_token");
+        assert!(perms.is_empty());
+    }
+
+    #[test]
+    fn test_constant_time_eq() {
+        assert!(constant_time_eq(b"hello", b"hello"));
+        assert!(!constant_time_eq(b"hello", b"world"));
+        assert!(!constant_time_eq(b"hello", b"hell"));
     }
 }

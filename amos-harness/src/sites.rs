@@ -331,18 +331,24 @@ impl SiteEngine {
 
     /// Render a page as a full HTML document.
     pub fn render_page(&self, site: &Site, page: &Page) -> String {
-        let title = page.meta_title.as_deref().unwrap_or(&page.title);
-        let description = page.meta_description.as_deref()
-            .or(page.description.as_deref())
-            .unwrap_or("");
+        let title = html_escape(page.meta_title.as_deref().unwrap_or(&page.title));
+        let description = html_escape(
+            page.meta_description.as_deref()
+                .or(page.description.as_deref())
+                .unwrap_or(""),
+        );
         let analytics_id = site.settings.get("analytics_id").and_then(|v| v.as_str());
-        let theme_color = site.settings.get("theme_color").and_then(|v| v.as_str()).unwrap_or("#000000");
+        let theme_color = html_escape(
+            site.settings.get("theme_color").and_then(|v| v.as_str()).unwrap_or("#000000"),
+        );
 
-        let css_block = page.css_content.as_deref().unwrap_or("");
-        let js_block = page.js_content.as_deref().unwrap_or("");
+        let css_block = sanitize_css_content(page.css_content.as_deref().unwrap_or(""));
+        let js_block = sanitize_js_content(page.js_content.as_deref().unwrap_or(""));
 
         // Build the form submission script if the page has a form collection
         let form_script = if let Some(collection) = &page.form_collection {
+            let safe_slug = html_escape(&site.slug);
+            let safe_collection = html_escape(collection);
             format!(
                 r#"<script>
 document.addEventListener('DOMContentLoaded', function() {{
@@ -373,21 +379,23 @@ document.addEventListener('DOMContentLoaded', function() {{
     }});
 }});
 </script>"#,
-                slug = site.slug,
-                collection = collection
+                slug = safe_slug,
+                collection = safe_collection
             )
         } else {
             String::new()
         };
 
-        let analytics_block = if let Some(ga_id) = analytics_id {
-            format!(
-                r#"<script async src="https://www.googletagmanager.com/gtag/js?id={id}"></script>
+        // Only include analytics if the ID passes validation
+        let analytics_block = match analytics_id {
+            Some(ga_id) if is_valid_analytics_id(ga_id) => {
+                format!(
+                    r#"<script async src="https://www.googletagmanager.com/gtag/js?id={id}"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments)}}gtag('js',new Date());gtag('config','{id}');</script>"#,
-                id = ga_id
-            )
-        } else {
-            String::new()
+                    id = ga_id
+                )
+            }
+            _ => String::new(),
         };
 
         format!(
@@ -396,6 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {{
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' https: data:; font-src 'self' https: data:;">
     <title>{title}</title>
     <meta name="description" content="{description}">
     <meta name="theme-color" content="{theme_color}">
@@ -420,6 +429,41 @@ document.addEventListener('DOMContentLoaded', function() {{
             js = js_block,
         )
     }
+}
+
+// ── Security helpers ────────────────────────────────────────────────────
+
+/// Escape HTML special characters to prevent XSS
+fn html_escape(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
+/// Sanitize CSS content to prevent breaking out of <style> tag
+fn sanitize_css_content(input: &str) -> String {
+    input.replace("</style", "&lt;/style")
+}
+
+/// Sanitize JS content to prevent breaking out of <script> tag
+fn sanitize_js_content(input: &str) -> String {
+    input.replace("</script", "<\\/script")
+}
+
+/// Validate that an analytics ID matches known formats
+fn is_valid_analytics_id(id: &str) -> bool {
+    // Google Analytics 4: G-XXXXXXXXXX
+    // Universal Analytics: UA-XXXXXXXX-X
+    if id.starts_with("G-") {
+        return id.len() <= 20 && id[2..].chars().all(|c| c.is_ascii_alphanumeric());
+    }
+    if id.starts_with("UA-") {
+        return id.len() <= 20 && id[3..].chars().all(|c| c.is_ascii_digit() || c == '-');
+    }
+    false
 }
 
 // ── Row helpers ──────────────────────────────────────────────────────────

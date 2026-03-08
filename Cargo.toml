@@ -121,6 +121,9 @@ zip = "0.6"
 # JSON Schema validation
 jsonschema = "0.28"
 
+# JWT authentication
+jsonwebtoken = "9.3"
+
 # Additional HTTP/WebSocket
 hyper = { version = "1.5", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }

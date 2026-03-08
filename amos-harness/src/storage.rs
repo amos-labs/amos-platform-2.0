@@ -60,10 +60,10 @@ pub struct StorageClient {
 
 impl StorageClient {
     /// Create a new storage client, ensuring the backing store is ready.
-    pub fn new(config: StorageConfig) -> Result<Self> {
+    pub async fn new(config: StorageConfig) -> Result<Self> {
         match &config.backend {
             StorageBackend::Local { base_dir } => {
-                std::fs::create_dir_all(base_dir).map_err(|e| {
+                tokio::fs::create_dir_all(base_dir).await.map_err(|e| {
                     AmosError::Internal(format!(
                         "Failed to create upload directory {}: {e}",
                         base_dir.display()
@@ -110,7 +110,7 @@ impl StorageClient {
         match &self.config.backend {
             StorageBackend::Local { base_dir } => {
                 let path = base_dir.join(key);
-                if path.exists() {
+                if tokio::fs::try_exists(&path).await.unwrap_or(false) {
                     tokio::fs::remove_file(&path)
                         .await
                         .map_err(|e| AmosError::Internal(format!("delete file '{}': {e}", key)))?;
@@ -123,7 +123,9 @@ impl StorageClient {
     /// Check whether a file exists.
     pub async fn exists(&self, key: &str) -> bool {
         match &self.config.backend {
-            StorageBackend::Local { base_dir } => base_dir.join(key).exists(),
+            StorageBackend::Local { base_dir } => {
+                tokio::fs::try_exists(base_dir.join(key)).await.unwrap_or(false)
+            }
         }
     }
 }

@@ -69,6 +69,7 @@ base64 = { workspace = true }
 secrecy = { workspace = true }
 dotenvy = { workspace = true }
 config = { workspace = true }
+jsonwebtoken = { workspace = true }
 
 # AWS signing (for Bedrock API)
 sha2 = { workspace = true }

@@ -97,7 +97,7 @@ impl WorkingMemory {
             self.entries.sort_by(|a, b| {
                 b.current_salience()
                     .partial_cmp(&a.current_salience())
-                    .unwrap()
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
             self.entries.truncate(self.max_entries);
         }

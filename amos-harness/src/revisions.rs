@@ -342,10 +342,11 @@ impl RevisionService {
                     }
                 }
 
-                if diff["changed"].as_object().unwrap().is_empty()
-                    && diff["added"].as_object().unwrap().is_empty()
-                    && diff["removed"].as_object().unwrap().is_empty()
-                {
+                let changed_empty = diff["changed"].as_object().map_or(true, |o| o.is_empty());
+                let added_empty = diff["added"].as_object().map_or(true, |o| o.is_empty());
+                let removed_empty = diff["removed"].as_object().map_or(true, |o| o.is_empty());
+
+                if changed_empty && added_empty && removed_empty {
                     None
                 } else {
                     Some(diff)
