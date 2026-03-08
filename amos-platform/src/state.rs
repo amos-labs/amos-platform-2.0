@@ -7,6 +7,7 @@ use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::sync::Arc;
 use tracing::{info, warn};
 
+use crate::provisioning::HarnessManager;
 use crate::solana::SolanaClient;
 
 /// Shared application state for the AMOS platform.
@@ -23,6 +24,8 @@ pub struct PlatformState {
     pub config: Arc<AppConfig>,
     /// Optional Solana RPC client (None if feature disabled).
     pub solana: Option<Arc<SolanaClient>>,
+    /// Harness provisioning manager (Docker API).
+    pub harness_manager: Option<Arc<HarnessManager>>,
 }
 
 impl PlatformState {
@@ -58,11 +61,24 @@ impl PlatformState {
             }
         };
 
+        // Initialize Docker-based harness manager (optional, may fail if Docker not available)
+        let harness_manager = match HarnessManager::new() {
+            Ok(manager) => {
+                info!("Harness manager initialized (Docker connected)");
+                Some(Arc::new(manager))
+            }
+            Err(e) => {
+                warn!("Harness manager initialization failed (optional): {}", e);
+                None
+            }
+        };
+
         Ok(Self {
             db,
             redis,
             config: Arc::new(config),
             solana,
+            harness_manager,
         })
     }
 
