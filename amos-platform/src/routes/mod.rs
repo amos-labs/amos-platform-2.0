@@ -8,6 +8,7 @@ pub mod billing;
 pub mod governance;
 pub mod health;
 pub mod provisioning;
+pub mod sync;
 pub mod token;
 
 /// Build all API routes.
@@ -18,4 +19,5 @@ pub fn api_routes() -> Router<PlatformState> {
         .merge(governance::routes())
         .merge(billing::routes())
         .merge(provisioning::routes())
+        .merge(sync::routes())
 }

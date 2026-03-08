@@ -2,8 +2,24 @@
 //!
 //! Uses the [`config`] crate to layer: defaults < config file < env vars.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use secrecy::SecretString;
+
+/// Deployment mode: managed (AMOS cloud) or self-hosted (customer hardware).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeploymentMode {
+    /// AMOS manages the harness via Docker API (default).
+    Managed,
+    /// Customer runs harness on their own infrastructure.
+    SelfHosted,
+}
+
+impl Default for DeploymentMode {
+    fn default() -> Self {
+        Self::Managed
+    }
+}
 
 /// Root configuration for the AMOS Rust core.
 #[derive(Debug, Deserialize, Clone)]
@@ -19,6 +35,15 @@ pub struct AppConfig {
     pub bedrock: BedrockConfig,
     #[serde(default)]
     pub agent: AgentConfig,
+    /// Deployment mode: managed cloud or self-hosted.
+    #[serde(default)]
+    pub deployment: DeploymentConfig,
+    /// Platform sync settings (harness→platform communication).
+    #[serde(default)]
+    pub platform: PlatformConfig,
+    /// Custom model providers (for sovereign AI / self-hosted Qwen).
+    #[serde(default)]
+    pub custom_models: CustomModelsConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -140,6 +165,122 @@ impl Default for AgentConfig {
     }
 }
 
+/// Deployment and licensing configuration.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeploymentConfig {
+    /// Deployment mode: "managed" or "self_hosted".
+    #[serde(default)]
+    pub mode: DeploymentMode,
+    /// License key for self-hosted deployments (validated against platform).
+    pub license_key: Option<SecretString>,
+    /// Harness version (set at build time, used for update checks).
+    #[serde(default = "default_harness_version")]
+    pub harness_version: String,
+    /// Auto-update: pull new versions automatically (self-hosted only).
+    #[serde(default = "default_auto_update")]
+    pub auto_update: bool,
+}
+
+impl Default for DeploymentConfig {
+    fn default() -> Self {
+        Self {
+            mode: DeploymentMode::default(),
+            license_key: None,
+            harness_version: default_harness_version(),
+            auto_update: default_auto_update(),
+        }
+    }
+}
+
+/// Platform sync configuration (how harness talks to the central platform).
+#[derive(Debug, Deserialize, Clone)]
+pub struct PlatformConfig {
+    /// Platform API URL (e.g., "https://api.amos.ai").
+    #[serde(default = "default_platform_url")]
+    pub url: String,
+    /// API key for authenticating with the platform.
+    pub api_key: Option<SecretString>,
+    /// Heartbeat interval in seconds (how often harness pings platform).
+    #[serde(default = "default_heartbeat_interval")]
+    pub heartbeat_interval_secs: u64,
+    /// Config sync interval in seconds (how often to pull config updates).
+    #[serde(default = "default_sync_interval")]
+    pub sync_interval_secs: u64,
+    /// Activity report interval in seconds (how often to push usage data).
+    #[serde(default = "default_activity_interval")]
+    pub activity_report_interval_secs: u64,
+    /// Whether to report usage/telemetry to platform (can be disabled for air-gapped).
+    #[serde(default = "default_telemetry_enabled")]
+    pub telemetry_enabled: bool,
+}
+
+impl Default for PlatformConfig {
+    fn default() -> Self {
+        Self {
+            url: default_platform_url(),
+            api_key: None,
+            heartbeat_interval_secs: default_heartbeat_interval(),
+            sync_interval_secs: default_sync_interval(),
+            activity_report_interval_secs: default_activity_interval(),
+            telemetry_enabled: default_telemetry_enabled(),
+        }
+    }
+}
+
+/// Configuration for customer-provisioned AI models (sovereign AI).
+#[derive(Debug, Deserialize, Clone)]
+pub struct CustomModelsConfig {
+    /// Whether custom model support is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// List of custom model providers.
+    #[serde(default)]
+    pub providers: Vec<CustomModelProvider>,
+}
+
+impl Default for CustomModelsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            providers: Vec::new(),
+        }
+    }
+}
+
+/// A custom model provider (OpenAI-compatible API endpoint).
+///
+/// Supports self-hosted models via vLLM, TGI, Ollama, or any OpenAI-compatible server.
+/// Intended for Qwen models (Qwen3-Next, Qwen 3.5) but works with any model
+/// that exposes the OpenAI chat completions API.
+#[derive(Debug, Deserialize, Clone)]
+pub struct CustomModelProvider {
+    /// Unique name for this provider (e.g., "qwen-local", "sovereign-qwen").
+    pub name: String,
+    /// Display name shown in UI (e.g., "Qwen3-Next 80B (Self-Hosted)").
+    pub display_name: String,
+    /// Base URL of the OpenAI-compatible API (e.g., "http://gpu-server:8000/v1").
+    pub api_base: String,
+    /// API key for the custom endpoint (optional, some local servers don't need one).
+    pub api_key: Option<SecretString>,
+    /// Model ID to send in API requests (e.g., "Qwen/Qwen3-Next-80B").
+    pub model_id: String,
+    /// Context window size in tokens.
+    #[serde(default = "default_custom_context_window")]
+    pub context_window: usize,
+    /// Tier for model routing (1=fast/cheap, 2=balanced, 3=capable).
+    #[serde(default = "default_custom_tier")]
+    pub tier: u8,
+    /// Cost per 1k input tokens (0.0 if customer owns the hardware).
+    #[serde(default)]
+    pub cost_per_1k_input: f64,
+    /// Cost per 1k output tokens (0.0 if customer owns the hardware).
+    #[serde(default)]
+    pub cost_per_1k_output: f64,
+    /// Whether this is a customer-owned model (no compute markup in billing).
+    #[serde(default)]
+    pub customer_owned: bool,
+}
+
 // ── Defaults ─────────────────────────────────────────────────────────────
 
 fn default_host() -> String { "0.0.0.0".into() }
@@ -160,6 +301,15 @@ fn default_voice_model() -> String { "us.anthropic.claude-3-5-haiku-20241022-v1:
 fn default_max_iterations() -> usize { 25 }
 fn default_max_context_tokens() -> usize { 200_000 }
 fn default_token_budget() -> usize { 30_000 }
+fn default_harness_version() -> String { env!("CARGO_PKG_VERSION").into() }
+fn default_auto_update() -> bool { true }
+fn default_platform_url() -> String { "http://localhost:4000".into() }
+fn default_heartbeat_interval() -> u64 { 30 }
+fn default_sync_interval() -> u64 { 300 }
+fn default_activity_interval() -> u64 { 60 }
+fn default_telemetry_enabled() -> bool { true }
+fn default_custom_context_window() -> usize { 131_072 }
+fn default_custom_tier() -> u8 { 2 }
 
 impl AppConfig {
     /// Load configuration from environment variables and optional config files.
@@ -188,5 +338,15 @@ impl AppConfig {
         settings
             .try_deserialize()
             .map_err(|e| crate::AmosError::Config(e.to_string()))
+    }
+
+    /// Whether this is a self-hosted deployment.
+    pub fn is_self_hosted(&self) -> bool {
+        self.deployment.mode == DeploymentMode::SelfHosted
+    }
+
+    /// Whether custom models are available and configured.
+    pub fn has_custom_models(&self) -> bool {
+        self.custom_models.enabled && !self.custom_models.providers.is_empty()
     }
 }

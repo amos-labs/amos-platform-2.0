@@ -70,10 +70,18 @@ The more you contribute, the more you own. And your ownership is **real** — yo
 
 There are only **two ways** to earn tokens:
 
-1. **Sign up users** → 1 user = 1 point
+1. **Sign up users** → Points based on activity (see detailed breakdown below)
 2. **Complete bounties** → Bounty value = points
 
-Every day, a pool of tokens (16,000 AMOS) is split among everyone based on their points:
+**Points System Detail:**
+- Email invitation: 1 point
+- Signup: 5 points
+- Paid conversion: 10 points
+- Active month: 2 points per month
+
+*Note: For simplicity, we sometimes say "1 user = 1 point" but the actual point formula above is what's implemented in the code. See token_economy_math.md for full details.*
+
+Every day, a pool of tokens (16,000 AMOS in Year 1) is split among everyone based on their points:
 
 ```
 Your Tokens = (Your Points / Everyone's Points) × Daily Pool
@@ -115,7 +123,7 @@ For code and community work, we use **bounties**:
 
 ### Who Creates Bounties?
 
-**AMOS does!** Every night, AMOS (our AI) thinks about what the platform needs:
+**AMOS does!** Every night, the platform's Nightly Bounty Generation system analyzes what needs to be done:
 
 1. 🔍 Analyzes errors, feedback, and metrics
 2. 💡 Comes up with improvement ideas
@@ -125,7 +133,7 @@ For code and community work, we use **bounties**:
 You can also submit bounty ideas, and the community votes on priorities.
 
 ```
-🌙 AMOS NIGHTLY THINKING:
+🌙 NIGHTLY BOUNTY GENERATION:
 
 "I noticed 3 users had trouble with the login page today.
 I'll create a 75-point bounty to fix that bug.
@@ -134,7 +142,9 @@ Also, we haven't published a blog post in 2 weeks.
 I'll create a 100-point bounty for a tutorial on getting started."
 ```
 
-**This means there's always work available** - the AI is constantly finding ways to improve the platform and creating opportunities for you to earn.
+*Note: This process is implemented via the emission engine in amos-core.*
+
+**This means there's always work available** - the system is constantly finding ways to improve the platform and creating opportunities for you to earn.
 
 ### Example: How Tokens Get Split
 
@@ -250,8 +260,8 @@ The longer you hold, the more you're guaranteed to keep:
 | How Long You've Held | Minimum You Keep Forever |
 |----------------------|--------------------------|
 | 0-1 year | 5% of original |
-| 1-3 years | 10% of original |
-| 3-5 years | 15% of original |
+| 1-2 years | 10% of original |
+| 2-5 years | 15% of original |
 | 5+ years | **25% of original** |
 
 This means you earn your security - you can't just buy in and lock up ownership forever.
@@ -297,16 +307,11 @@ The decay only affects inactive holders. If you keep contributing:
 
 Here's something unique about AMOS:
 
-**When the token price goes up, contributors get rewarded MORE, not less.**
+**Success multipliers (bonus rewards based on token price performance) are determined by governance vote and are not currently active.** The platform may implement dynamic reward multipliers in the future, but for now, token rewards are based solely on your contribution points and the daily emission pool.
 
-| Platform Status | Your Bonus |
-|-----------------|------------|
-| Building (early days) | 1.0x (baseline) |
-| Growing | 1.25x rewards |
-| Thriving | 1.5x rewards |
-| Soaring | 2.0x rewards |
-
-Most tokens punish contributors when prices rise. We share the success with you.
+The real way you succeed when the platform succeeds is through:
+1. Higher revenue share (you own part of profits)
+2. Lower decay rates (your stake shrinks less when platform is profitable)
 
 ---
 
@@ -325,12 +330,12 @@ The best way to maintain your stake is to keep earning:
 
 You can "lock" your tokens for a period of time to reduce decay:
 
-| Lock Period | Decay Reduction |
-|-------------|-----------------|
-| 1 year | 25% less decay |
-| 3 years | 50% less decay |
-| 5 years | 75% less decay |
-| 10 years | **No decay at all** |
+| Vault Tier | Lock Period | Decay Reduction |
+|------------|-------------|-----------------|
+| Bronze | 30 days | 20% less decay |
+| Silver | 90 days | 50% less decay |
+| Gold | 365 days | 80% less decay |
+| Permanent | No unlock | 95% less decay |
 
 ### Different Ways to Participate
 
@@ -339,8 +344,8 @@ Not everyone participates the same way, and that's fine:
 | Profile | How They Get Tokens | Lock? | Decay? | Best For |
 |---------|---------------------|-------|--------|----------|
 | **Active Contributor** | Earn through work | No | Offset by earnings | Builders, sellers |
-| **Long-Term Investor** | Buy on exchange | 10 years | None | VCs, true believers |
-| **Medium-Term Believer** | Buy on exchange | 3-5 years | Reduced | Investors |
+| **Long-Term Investor** | Buy on exchange | Permanent vault | 95% reduction | VCs, true believers |
+| **Medium-Term Believer** | Buy on exchange | Gold vault (365 days) | 80% reduction | Investors |
 | **Speculator** | Buy on exchange | No | Full (after grace) | Traders |
 
 **All paths are valid.** You can buy tokens and stake them—you'll just need to either contribute or lock to avoid decay eating your stake.
@@ -558,13 +563,15 @@ Here's why:
 
 ### 1. Tokens Are Earned Slowly, Not Dumped At Once
 
-Unlike tokens that are given out all at once (which everyone immediately sells), AMOS tokens are earned over time:
+Unlike tokens that are given out all at once (which everyone immediately sells), AMOS tokens are earned over time through **annual halvings**:
 
 ```
-Year 1:  ~6 million tokens earned by all contributors
-Year 2:  ~3 million tokens earned
-Year 3:  ~1.5 million tokens earned
+Year 0-1:  16,000 AMOS/day = ~5.84M tokens for the year
+Year 1-2:  8,000 AMOS/day = ~2.92M tokens
+Year 2-3:  4,000 AMOS/day = ~1.46M tokens
+Year 3-4:  2,000 AMOS/day = ~730K tokens
 ...
+Minimum floor: 100 AMOS/day (never goes below this)
 
 There's never a moment where "everyone" has tokens to sell.
 ```
@@ -763,7 +770,7 @@ You can pay however you're comfortable:
 |-------------|----------|--------------------------------|
 | **Credit Card** | 0% | Stripe → USDC → On-chain split |
 | **USDC (crypto)** | 5% | Directly on-chain → Split |
-| **AMOS tokens** | 15% | 50% burned 🔥, rest distributed |
+| **AMOS tokens** | 20% | 50% burned 🔥, rest distributed |
 
 **Most users will just use a credit card** and never know crypto is involved. That's fine! The protection works either way.
 
@@ -785,7 +792,7 @@ You pay 1,000 AMOS for compute
 └───────────────────────────────────┘
 
 WHAT THIS MEANS:
-• You get 15% discount
+• You get 20% discount
 • Total supply decreases (good for ALL holders)
 • Stakers get both USDC revenue AND AMOS distributions
 • Creates constant demand for AMOS tokens

@@ -174,7 +174,7 @@ Where MARKUP = 0.20 (20%)
 This is the key link between AWS costs and revenue:
 - **We charge customers 20% more than our AWS costs**
 - This margin contributes to platform profitability
-- `uplifted_cost_cents` in `WorkTokenUsageSummary` tracks this
+- AMOS payment discount: 20% off when paying with AMOS tokens
 
 **Example**: $100 in raw AWS compute costs → $120 customer charge → $20 margin
 
@@ -306,11 +306,13 @@ The dynamic decay creates **organic equilibrium**:
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     HALVING MULTIPLIER H(t)                             │
 │                                                                         │
-│  Year 0-2:   H = 1.00    →  16,000 tokens/day                           │
-│  Year 2-4:   H = 0.50    →   8,000 tokens/day                           │
-│  Year 4-6:   H = 0.25    →   4,000 tokens/day                           │
-│  Year 6-8:   H = 0.125   →   2,000 tokens/day                           │
-│  Year 8+:    H = 0.0625  →   1,000 tokens/day                           │
+│  Year 0-1:   H = 1.00    →  16,000 tokens/day                           │
+│  Year 1-2:   H = 0.50    →   8,000 tokens/day                           │
+│  Year 2-3:   H = 0.25    →   4,000 tokens/day                           │
+│  Year 3-4:   H = 0.125   →   2,000 tokens/day                           │
+│  Year 4-5:   H = 0.0625  →   1,000 tokens/day                           │
+│  Year 5-6:   H = 0.03125 →     500 tokens/day                           │
+│  Year 6+:    Floor       →     100 tokens/day (minimum)                 │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -418,20 +420,20 @@ T_you = (100 / 5,000) × 16,000 = 0.02 × 16,000 = 320 AMOS
 
 | Tenure | Reduction | Effective Rate (if base = 10%) |
 |--------|-----------|--------------------------------|
-| Year 0-2 | 0% | 10% |
-| Year 2-5 | 20% | 8% |
-| Year 5-10 | 40% | 6% |
-| Year 10+ | 70% | 3% |
+| Year 0-1 | 0% | 10% |
+| Year 1-2 | 20% | 8% |
+| Year 2-5 | 40% | 6% |
+| Year 5+ | 70% | 3% |
 
 ### 8.3 Staking Vault Reduction (r_vault)
 
 | Tier | Lock Period | Reduction | Effective Rate (if base = 10%) |
 |------|-------------|-----------|--------------------------------|
 | None | 0 | 0% | 10% |
-| Bronze | 1 year | 25% | 7.5% |
-| Silver | 3 years | 50% | 5% |
-| Gold | 5 years | 75% | 2.5% |
-| Permanent | 10 years | 100% | 0% (no decay) |
+| Bronze | 30 days | 20% | 8% |
+| Silver | 90 days | 50% | 5% |
+| Gold | 365 days | 80% | 2% |
+| Permanent | No unlock | 95% | 0.5% |
 
 ### 8.4 Decay Floor (Never Decays Below)
 
@@ -440,8 +442,8 @@ T_you = (100 / 5,000) × 16,000 = 0.02 × 16,000 = 320 AMOS
 │                     GRADUATED DECAY FLOOR                               │
 │                                                                         │
 │  Year 0-1:   Floor = 5% of initial stake                                │
-│  Year 1-3:   Floor = 10% of initial stake                               │
-│  Year 3-5:   Floor = 15% of initial stake                               │
+│  Year 1-2:   Floor = 10% of initial stake                               │
+│  Year 2-5:   Floor = 15% of initial stake                               │
 │  Year 5+:    Floor = 25% of initial stake                               │
 │                                                                         │
 │  This means early adopters MUST stay engaged; loyalty builds security   │
@@ -740,27 +742,35 @@ Payout_you = (S_you / S_total) × R_holders
 
 ## 14. Appendix: Code References
 
-### Key Services
+### Key Services (now Rust modules)
 
-| Service | Purpose | Location |
-|---------|---------|----------|
-| `PlatformEconomicsService` | Dynamic decay, profit calc | `app/services/platform_economics_service.rb` |
-| `ContributionRewardCalculator` | Points → tokens | `app/services/contribution_reward_calculator.rb` |
-| `WorkTokenService` | AWS → Work tokens | `app/services/work_token_service.rb` |
-| `EntityCostTracker` | Per-entity costs | `app/services/entity_cost_tracker.rb` |
-| `Aws::CostCalculator` | AWS pricing | `app/services/aws/cost_calculator.rb` |
+| Module | Purpose | Location |
+|--------|---------|----------|
+| Token Economics | Constants & core types | `amos-core/src/token/economics.rs` |
+| Decay Engine | Dynamic decay, profit calc | `amos-core/src/token/decay.rs` |
+| Emission Engine | Points → tokens, halving | `amos-core/src/token/emission.rs` |
+| Revenue Distribution | USDC/AMOS splits, claims | `amos-core/src/token/revenue.rs` |
+| Trust System | Agent trust levels 1-5 | `amos-core/src/token/trust.rs` |
+| Treasury Program | On-chain revenue & staking | `amos-solana/programs/amos-treasury/` |
+| Bounty Program | On-chain bounty distribution | `amos-solana/programs/amos-bounty/` |
+| Governance Program | On-chain proposals & voting | `amos-solana/programs/amos-governance/` |
+| Billing Module | Plans, subscriptions, usage | `amos-platform/src/billing/mod.rs` |
+| Token API | HTTP endpoints for token data | `amos-platform/src/routes/token.rs` |
 
-### Key Models
+### Key Data Types
 
-| Model | Purpose | Location |
-|-------|---------|----------|
-| `TokenStake` | Token ownership | `app/models/token_stake.rb` |
-| `PlatformCost` | Platform expenses | `app/models/platform_cost.rb` |
-| `WorkTokenUsageSummary` | Daily usage | `app/models/work_token_usage_summary.rb` |
-| `AiUsageLog` | AI token tracking | `app/models/ai_usage_log.rb` |
-| `RevenueDistribution` | Revenue share | `app/models/revenue_distribution.rb` |
+| Type | Purpose | Location |
+|------|---------|----------|
+| `PlatformEconomics` | Revenue/cost snapshot | `amos-core/src/token/decay.rs` |
+| `StakeContext` | Per-stake decay input | `amos-core/src/token/decay.rs` |
+| `DecayResult` | Decay calculation output | `amos-core/src/token/decay.rs` |
+| `DailyEmission` | Daily emission pool | `amos-core/src/token/emission.rs` |
+| `BountyAward` | Bounty token award | `amos-core/src/token/emission.rs` |
+| `AgentTrust` | Agent trust record | `amos-core/src/token/trust.rs` |
+| `TreasuryState` | On-chain treasury state | `amos-platform/src/solana/mod.rs` |
+| `Customer` / `Subscription` | Billing records | `amos-platform/src/billing/mod.rs` |
 
 ---
 
-*Last Updated: January 30, 2026*
-*Version: 1.0.0*
+*Last Updated: March 8, 2026*
+*Version: 2.0.0*

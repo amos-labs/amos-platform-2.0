@@ -50,7 +50,12 @@ impl PlatformState {
         info!("Redis connection established");
 
         // Initialize Solana client (optional, may fail in dev)
-        let solana = match SolanaClient::new(&config.solana.rpc_url) {
+        let solana = match SolanaClient::new(
+            &config.solana.rpc_url,
+            &config.solana.treasury_program_id,
+            &config.solana.governance_program_id,
+            &config.solana.bounty_program_id,
+        ) {
             Ok(client) => {
                 info!("Solana client initialized: {}", config.solana.rpc_url);
                 Some(Arc::new(client))

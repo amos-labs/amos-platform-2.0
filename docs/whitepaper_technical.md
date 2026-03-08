@@ -259,13 +259,14 @@ Customer Compute Usage: $1,000
 
 The 20% markup is distributed as follows:
 
-```ruby
-REVENUE_ALLOCATION = {
-  token_holders: 0.50,    # Distributed proportionally to stakers
-  r_and_d: 0.40,          # R&D pool (voted by R&D Council)
-  treasury: 0.05,         # Emergency reserves (DAO-controlled)
-  operations: 0.05        # Accounting, legal, minimal hosting
-}
+```rust
+// Implemented in amos_platform::billing module
+pub const REVENUE_ALLOCATION_BPS: RevenueAllocation = RevenueAllocation {
+    token_holders: 5000,    // 50% - Distributed proportionally to stakers
+    r_and_d: 4000,          // 40% - R&D pool (voted by R&D Council)
+    treasury: 500,          // 5% - Emergency reserves (DAO-controlled)
+    operations: 500,        // 5% - Accounting, legal, minimal hosting
+};
 ```
 
 **Why These Percentages:**
@@ -327,22 +328,23 @@ This creates **self-balancing equilibrium**:
 
 ### 4.3 Dynamic Decay Formula
 
-```ruby
-# Base rate from platform economics
-base_rate = PlatformEconomicsService.current_decay_rate
+```rust
+// Implemented in amos_core::token::decay module
+// Base rate from platform economics
+let base_rate = calculate_dynamic_decay_rate(platform_context);
 
-# Adjust for profit/loss ratio
-profit_ratio = (revenue - costs) / costs
-adjusted_rate = BASE_RATE - (profit_ratio × SENSITIVITY)
+// Adjust for profit/loss ratio
+let profit_ratio = (revenue - costs) / costs;
+let adjusted_rate = BASE_RATE - (profit_ratio * SENSITIVITY);
 
-# Clamp to bounds
-decay_rate = clamp(adjusted_rate, MIN_RATE, MAX_RATE)
+// Clamp to bounds
+let decay_rate = adjusted_rate.clamp(MIN_RATE, MAX_RATE);
 
-# Parameters:
-BASE_RATE = 0.10     # 10% at equilibrium
-MIN_RATE = 0.02      # 2% minimum (profitable platform)
-MAX_RATE = 0.25      # 25% maximum cap
-SENSITIVITY = 0.05   # How much profit affects rate
+// Parameters:
+const BASE_RATE: f64 = 0.10;     // 10% at equilibrium
+const MIN_RATE: f64 = 0.02;      // 2% minimum (profitable platform)
+const MAX_RATE: f64 = 0.25;      // 25% maximum cap
+const SENSITIVITY: f64 = 0.05;   // How much profit affects rate
 ```
 
 ### 4.4 Grace Period
@@ -366,28 +368,31 @@ Long-term holders get reduced decay (on top of the dynamic base rate):
 
 | Years Held | Reduction from Base Rate |
 |------------|--------------------------|
-| 0-2 | 0% (full dynamic rate) |
-| 2-5 | 20% reduction |
-| 5-10 | 40% reduction |
-| 10+ | 70% reduction |
+| 0-1 | 0% (full dynamic rate) |
+| 1-2 | 20% reduction |
+| 2-5 | 40% reduction |
+| 5+ | 70% reduction |
 
 Example at different platform health levels:
 
 ```
 Platform profitable (base = 5%):
-- Year 0-2: 5.0% decay
-- Year 5+:  3.0% decay (40% reduction)
-- Year 10+: 1.5% decay (70% reduction)
+- Year 0-1: 5.0% decay
+- Year 1-2: 4.0% decay (20% reduction)
+- Year 2-5: 3.0% decay (40% reduction)
+- Year 5+:  1.5% decay (70% reduction)
 
 Platform break-even (base = 10%):
-- Year 0-2: 10.0% decay
-- Year 5+:  6.0% decay
-- Year 10+: 3.0% decay
+- Year 0-1: 10.0% decay
+- Year 1-2: 8.0% decay
+- Year 2-5: 6.0% decay
+- Year 5+:  3.0% decay
 
 Platform struggling (base = 20%):
-- Year 0-2: 20.0% decay
-- Year 5+:  12.0% decay
-- Year 10+: 6.0% decay
+- Year 0-1: 20.0% decay
+- Year 1-2: 16.0% decay
+- Year 2-5: 12.0% decay
+- Year 5+:  6.0% decay
 ```
 
 ### 4.6 Decay Example (with Grace Period)
@@ -441,8 +446,8 @@ Floor percentage **grows with tenure** to prevent early adopters from locking in
 | Tenure | Floor % | Rationale |
 |--------|---------|-----------|
 | 0-1 year | 5% | Earn your security |
-| 1-3 years | 10% | Building commitment |
-| 3-5 years | 15% | Established contributor |
+| 1-2 years | 10% | Building commitment |
+| 2-5 years | 15% | Established contributor |
 | 5+ years | 25% | Maximum security |
 
 This enables:
@@ -457,10 +462,10 @@ Lock tokens to reduce decay:
 
 | Tier | Lock Period | Decay Reduction |
 |------|-------------|-----------------|
-| Bronze | 1 year | 25% |
-| Silver | 3 years | 50% |
-| Gold | 5 years | 75% |
-| Permanent | 10 years | 100% (no decay) |
+| Bronze | 30 days | 20% |
+| Silver | 90 days | 50% |
+| Gold | 365 days | 80% |
+| Permanent | No unlock | 95% |
 
 ### 5.4 Investment Profiles
 
@@ -475,21 +480,21 @@ The token economy accommodates multiple participation styles:
 └── Primary intended path
 ```
 
-#### Profile B: Long-Term Investor (10-Year Lock)
+#### Profile B: Long-Term Investor (Permanent Lock)
 ```
 ├── Purchases tokens on exchange
-├── Locks in Permanent vault (10 years)
-├── ZERO decay during lock period
+├── Locks in Permanent vault (no unlock)
+├── 95% decay reduction
 ├── Receives full revenue share
 ├── Has full governance rights
-└── Traditional "buy and hold" - just illiquid
+└── Traditional "buy and hold" - maximum commitment
 ```
 
-#### Profile C: Medium-Term Believer (3-5 Year Lock)
+#### Profile C: Medium-Term Believer (90-365 Day Lock)
 ```
 ├── Purchases tokens on exchange
-├── Locks in Silver/Gold vault (3-5 years)
-├── 50-75% decay reduction
+├── Locks in Silver/Gold vault (90-365 days)
+├── 50-80% decay reduction
 ├── Receives full revenue share
 ├── Has full governance rights
 └── Balance between liquidity and preservation
@@ -610,11 +615,13 @@ Daily emission pool decreases over time to create scarcity:
 
 | Year | Daily Emission | Rationale |
 |------|----------------|-----------|
-| 0-2 | 16,000 AMOS | Bootstrap phase |
-| 2-4 | 8,000 AMOS | First halving |
-| 4-6 | 4,000 AMOS | Second halving |
-| 6-8 | 2,000 AMOS | Third halving |
-| 8+ | 1,000 AMOS | Maintenance mode |
+| 0-1 | 16,000 AMOS | Bootstrap phase |
+| 1-2 | 8,000 AMOS | First halving |
+| 2-3 | 4,000 AMOS | Second halving |
+| 3-4 | 2,000 AMOS | Third halving |
+| 4-5 | 1,000 AMOS | Fourth halving |
+| 5-6 | 500 AMOS | Fifth halving |
+| 6+ | 100 AMOS | Maintenance floor |
 
 This means early contributors earn more tokens per point, but late contributors earn tokens that are likely worth more (scarcity + network effects).
 
@@ -696,14 +703,15 @@ Every bounty (whether created by AMOS or humans) is scored by AI:
 
 The scoring produces fair, consistent point values:
 
-```ruby
-# AI scoring example
-AmosBountyScorer.score(
-  title: "Add dark mode to dashboard",
-  description: "Users have requested dark mode...",
-  bounty_type: "feature"
-)
-# => { points: 250, effort_score: 7, impact_score: 8, ... }
+```rust
+// AI scoring implemented in amos_core::token::emission
+// Example bounty scoring
+let score = score_bounty(BountyRequest {
+    title: "Add dark mode to dashboard".to_string(),
+    description: "Users have requested dark mode...".to_string(),
+    bounty_type: BountyType::Feature,
+});
+// => BountyScore { points: 250, effort_score: 7, impact_score: 8, ... }
 ```
 
 #### AI Work Review
@@ -715,12 +723,13 @@ When contributors submit completed work, AMOS reviews it:
 3. **Feedback**: Constructive comments for the contributor
 4. **Approval/Rejection**: Final decision
 
-```ruby
-AmosWorkReviewer.review(
-  bounty: bounty,
-  submission_notes: "Implemented dark mode with CSS variables..."
-)
-# => { approved: true, final_points: 275, feedback: "Great work!..." }
+```rust
+// Work review implemented in amos_core::token::emission
+let review = review_work_submission(ReviewRequest {
+    bounty_id: bounty.id,
+    submission_notes: "Implemented dark mode with CSS variables...".to_string(),
+});
+// => ReviewResult { approved: true, final_points: 275, feedback: "Great work!..." }
 ```
 
 #### Bounty Types
@@ -911,7 +920,7 @@ Users can pay in multiple ways, with crypto rails invisible to those who want si
 │  TIER 2: CRYPTO-AWARE (Opt-in)                                             │
 │  ────────────────────────────                                               │
 │  • "Pay in USDC - Save 5%" option                                          │
-│  • "Pay in AMOS - Save 15%" option                                         │
+│  • "Pay in AMOS - Save 20%" option                                         │
 │  • Connect Solana wallet                                                    │
 │  • Direct crypto payments, skip Stripe fees                                │
 │                                                                             │
@@ -1218,74 +1227,73 @@ This protects core mechanics from minority capture while allowing evolution.
 
 ## 10. Technical Implementation
 
-### 10.1 Key Models
+### 10.1 Key Data Structures
 
-```ruby
-# TokenStake - Ownership record
-class TokenStake
-  belongs_to :user
-  
-  # Amounts
-  :initial_amount    # Original stake
-  :current_amount    # After decay
-  
-  # Graduated floor (grows with tenure)
-  def current_floor_percentage
-    # 5% → 10% → 15% → 25% based on years held
-  end
-  
-  # Decay
-  :decay_rate        # Annual rate
-  :last_decay_at     # Last decay application
-  
-  # Vaulting
-  :staking_tier      # bronze/silver/gold/permanent
-  :locked_until      # Lock expiration
-end
+```rust
+// Implemented in amos_core::token::decay module
+// StakeContext - Ownership record
+pub struct StakeContext {
+    pub user_id: String,
 
-# GovernanceProposal - Voting proposals
-class GovernanceProposal
-  belongs_to :proposer
-  has_many :governance_votes
-  
-  :proposal_type  # r_and_d, treasury, feature, partnership, parameter, constitutional
-  :status         # draft, discussion, voting, passed, failed, cancelled, executed
-  
-  def requires_supermajority?
-    [:parameter, :constitutional].include?(proposal_type.to_sym)
-  end
-end
+    // Amounts
+    pub initial_amount: u64,    // Original stake
+    pub current_amount: u64,    // After decay
 
-# Contribution - Work record
-class Contribution
-  belongs_to :user
-  
-  :contribution_type
-  :complexity
-  :points          # Base points earned
-  :token_value     # Tokens awarded from pool
-  :status          # pending/approved/rejected
-end
+    // Graduated floor (grows with tenure)
+    pub tenure_years: u32,
+
+    // Decay
+    pub decay_rate: f64,        // Annual rate
+    pub last_decay_at: i64,     // Last decay application
+
+    // Vaulting
+    pub staking_tier: StakingTier,  // Bronze/Silver/Gold/Permanent
+    pub locked_until: Option<i64>,  // Lock expiration
+}
+
+// Implemented in amos_platform::governance module
+// GovernanceProposal - Voting proposals
+pub struct GovernanceProposal {
+    pub proposer_id: String,
+    pub proposal_type: ProposalType,  // RAndD, Treasury, Feature, Partnership, Parameter, Constitutional
+    pub status: ProposalStatus,       // Draft, Discussion, Voting, Passed, Failed, Cancelled, Executed
+}
+
+// Implemented in amos_core::token::emission module
+// Contribution - Work record
+pub struct Contribution {
+    pub user_id: String,
+    pub contribution_type: ContributionType,
+    pub complexity: u8,
+    pub points: u64,          // Base points earned
+    pub token_value: u64,     // Tokens awarded from pool
+    pub status: ContributionStatus,  // Pending/Approved/Rejected
+}
 ```
 
 ### 10.2 Key Services
 
-```ruby
-# Token decay (runs daily)
-TokenDecayJob.perform_later
+```rust
+// Token decay (runs daily)
+// Implemented in amos_core::token::decay
+pub async fn apply_daily_decay(stakes: Vec<StakeContext>) -> Result<()>
 
-# Pool-based reward calculation
-ContributionRewardCalculator.calculate(
-  contribution_type: :feature,
-  complexity: 3
-)
+// Pool-based reward calculation
+// Implemented in amos_core::token::emission
+pub fn calculate_bounty_award(
+    contribution_type: ContributionType,
+    complexity: u8,
+    daily_pool: u64,
+) -> Result<u64>
 
-# Solana operations
-SolanaTokenService.send_tokens(to:, amount:)
-SolanaTokenService.verify_deposit(tx:)
+// Solana operations
+// Implemented in amos_platform::blockchain
+pub async fn send_tokens(to: Pubkey, amount: u64) -> Result<Signature>
+pub async fn verify_deposit(tx_signature: Signature) -> Result<bool>
 
-# DEX integration
-JupiterSwapService.quote_amos_to_usdc(1000)
+// DEX integration
+// Implemented in amos_platform::dex
+pub async fn quote_amos_to_usdc(amount: u64) -> Result<Quote>
 ```
 
 ### 10.3 API Endpoints
@@ -1325,16 +1333,18 @@ This section models various market scenarios, stress tests, and long-term implic
 Tokens enter circulation gradually through contributor rewards:
 
 ```
-Year 0-2:  ~16,000 AMOS/day × 730 days = 11,680,000 AMOS (11.7%)
-Year 2-4:  ~8,000 AMOS/day × 730 days  =  5,840,000 AMOS (5.8%)
-Year 4-6:  ~4,000 AMOS/day × 730 days  =  2,920,000 AMOS (2.9%)
-Year 6-8:  ~2,000 AMOS/day × 730 days  =  1,460,000 AMOS (1.5%)
-Year 8+:   ~1,000 AMOS/day (ongoing)
+Year 0-1:  ~16,000 AMOS/day × 365 days = 5,840,000 AMOS (5.8%)
+Year 1-2:  ~8,000 AMOS/day × 365 days  = 2,920,000 AMOS (2.9%)
+Year 2-3:  ~4,000 AMOS/day × 365 days  = 1,460,000 AMOS (1.5%)
+Year 3-4:  ~2,000 AMOS/day × 365 days  =   730,000 AMOS (0.7%)
+Year 4-5:  ~1,000 AMOS/day × 365 days  =   365,000 AMOS (0.4%)
+Year 5-6:  ~500 AMOS/day × 365 days    =   182,500 AMOS (0.2%)
+Year 6+:   ~100 AMOS/day (ongoing)
 
-TOTAL after 10 years: ~25,000,000 AMOS distributed (25% of supply)
+TOTAL after 10 years: ~13,000,000 AMOS distributed (13% of supply)
 ```
 
-**Key Insight**: Even after 10 years, 75% of tokens remain in treasury or pools. This slow distribution is intentional—there's no "everyone sells" scenario because tokens are earned incrementally.
+**Key Insight**: Even after 10 years, 87% of tokens remain in treasury or pools. This slow distribution is intentional—there's no "everyone sells" scenario because tokens are earned incrementally.
 
 ### 11.2 Liquidity Pool Dynamics
 
@@ -1777,13 +1787,13 @@ AMOS is designed as foundational infrastructure for **collaboration between huma
 
 AI agents already participate in the AMOS economy:
 
-```ruby
-# AI agents can:
-- Generate and score bounties (AmosBountyScorer)
-- Review completed work (AmosWorkReviewer)
-- Create development tasks (AmosThinkingService)
-- Operate as autonomous sales/support agents
-- Contribute code, content, and integrations
+```rust
+// AI agents can:
+// - Generate and score bounties (amos_core::token::emission::score_bounty)
+// - Review completed work (amos_core::token::emission::review_work_submission)
+// - Create development tasks (amos_platform::ai::thinking_service)
+// - Operate as autonomous sales/support agents
+// - Contribute code, content, and integrations
 ```
 
 **Technical Implementation:**
@@ -1807,17 +1817,20 @@ TOKEN RULES APPLY EQUALLY:
 - Clawback: 90 days for distribution stakes
 ```
 
-**Database Schema:**
-```ruby
-class TokenStake < ApplicationRecord
-  # AI agents can hold stakes
-  belongs_to :user       # Human user account
-  belongs_to :ai_agent, optional: true  # Future: direct AI entity
-  
-  # Track AI-earned tokens
-  attribute :earned_by_ai, :boolean, default: false
-  attribute :ai_agent_identifier, :string
-end
+**Data Structure:**
+```rust
+// Implemented in amos_core::token::decay module
+pub struct StakeContext {
+    // AI agents can hold stakes
+    pub user_id: Option<String>,       // Human user account
+    pub ai_agent_id: Option<String>,   // Future: direct AI entity
+
+    // Track AI-earned tokens
+    pub earned_by_ai: bool,
+    pub ai_agent_identifier: Option<String>,
+
+    // ... other fields
+}
 ```
 
 ### 13.4 Preparing for AI Personhood
@@ -1851,18 +1864,29 @@ To prevent AI dominance before personhood recognition:
 | **Human Override** | Steward Council can suspend AI voting rights |
 | **Audit Trail** | Complete logging of AI contributions |
 
-```ruby
-class GovernanceProposal < ApplicationRecord
-  def calculate_vote_result
-    human_votes = votes.where(voter_type: 'human').sum(:weight)
-    ai_votes = votes.where(voter_type: 'ai').sum(:weight)
-    
-    # Cap AI influence at 10% of decision weight
-    effective_ai_votes = [ai_votes, total_votes * 0.10].min
-    
-    human_votes + effective_ai_votes
-  end
-end
+```rust
+// Implemented in amos_platform::governance module
+impl GovernanceProposal {
+    pub fn calculate_vote_result(&self, votes: &[Vote]) -> u64 {
+        let human_votes: u64 = votes
+            .iter()
+            .filter(|v| v.voter_type == VoterType::Human)
+            .map(|v| v.weight)
+            .sum();
+
+        let ai_votes: u64 = votes
+            .iter()
+            .filter(|v| v.voter_type == VoterType::AI)
+            .map(|v| v.weight)
+            .sum();
+
+        // Cap AI influence at 10% of decision weight
+        let total_votes = human_votes + ai_votes;
+        let effective_ai_votes = ai_votes.min(total_votes / 10);
+
+        human_votes + effective_ai_votes
+    }
+}
 ```
 
 ### 13.6 The Path to Universal Collaboration

@@ -9,3 +9,4 @@ pub mod decay;
 pub mod revenue;
 pub mod emission;
 pub mod trust;
+pub mod points;

@@ -68,6 +68,7 @@ dotenvy = { workspace = true }
 config = { workspace = true }
 bs58 = { workspace = true }
 hex = "0.4"
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

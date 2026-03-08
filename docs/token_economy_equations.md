@@ -128,25 +128,25 @@ Examples:
 
 | Tenure | Reduction |
 |--------|-----------|
-| 0-2 years | 0% |
-| 2-5 years | 20% |
-| 5-10 years | 40% |
-| 10+ years | 70% |
+| 0-1 years | 0% |
+| 1-2 years | 20% |
+| 2-5 years | 40% |
+| 5+ years | 70% |
 
 | Vault Tier | Lock Period | Reduction |
 |------------|-------------|-----------|
 | None | - | 0% |
-| Bronze | 1 year | 25% |
-| Silver | 3 years | 50% |
-| Gold | 5 years | 75% |
-| Permanent | 10 years | 100% |
+| Bronze | 30 days | 20% |
+| Silver | 90 days | 50% |
+| Gold | 365 days | 80% |
+| Permanent | No unlock | 95% |
 
 **Example:**
 ```
-Base rate = 10%, 3-year tenure, Silver vault:
-δ_effective = 10% × (1 - 0.20) × (1 - 0.50)
-            = 10% × 0.80 × 0.50
-            = 4%
+Base rate = 10%, 3-year tenure (40% reduction), Silver vault (50% reduction):
+δ_effective = 10% × (1 - 0.40) × (1 - 0.50)
+            = 10% × 0.60 × 0.50
+            = 3%
 ```
 
 ### Daily Decay
@@ -178,11 +178,13 @@ Where:
 E_daily = 16,000 × Halving_Multiplier
 
 Halving Schedule:
-  Year 0-2:  × 1.00   = 16,000/day
-  Year 2-4:  × 0.50   =  8,000/day
-  Year 4-6:  × 0.25   =  4,000/day
-  Year 6-8:  × 0.125  =  2,000/day
-  Year 8+:   × 0.0625 =  1,000/day
+  Year 0-1:  × 1.00    = 16,000/day
+  Year 1-2:  × 0.50    =  8,000/day
+  Year 2-3:  × 0.25    =  4,000/day
+  Year 3-4:  × 0.125   =  2,000/day
+  Year 4-5:  × 0.0625  =  1,000/day
+  Year 5-6:  × 0.03125 =    500/day
+  Floor:     Minimum   =    100 AMOS/day
 ```
 
 ### Your Token Reward
@@ -278,8 +280,8 @@ V_floor = Initial × Floor%
 
 Floor Schedule:
   Year 0-1:  5% floor
-  Year 1-3: 10% floor
-  Year 3-5: 15% floor
+  Year 1-2: 10% floor
+  Year 2-5: 15% floor
   Year 5+:  25% floor
 ```
 
@@ -305,7 +307,7 @@ After 90 days: Stake is confirmed permanent
 │                     KEY NUMBERS                                   │
 ├──────────────────────────────────────────────────────────────────┤
 │  Total Supply:          100,000,000 AMOS                         │
-│  Daily Emission:        16,000 AMOS (decreasing)                 │
+│  Daily Emission:        16,000 AMOS (halving annually)           │
 │  Base Decay:            10% annual                               │
 │  Min/Max Decay:         2% - 25% annual                          │
 │  Compute Markup:        20%                                      │

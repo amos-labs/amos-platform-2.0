@@ -228,8 +228,8 @@ pub const FOUNDER_LP_FEE_BPS: u64 = 5;
 
 /// USDC direct payment discount: 5%.
 pub const USDC_DISCOUNT_BPS: u64 = 500;
-/// AMOS token payment discount: 15%.
-pub const AMOS_DISCOUNT_BPS: u64 = 1_500;
+/// AMOS token payment discount: 20% (matches on-chain AMOS_PAYMENT_DISCOUNT_BPS).
+pub const AMOS_DISCOUNT_BPS: u64 = 2_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPILE-TIME VERIFICATION

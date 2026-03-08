@@ -9,7 +9,7 @@
 //! - Metrics and tracing exporters
 
 use amos_core::AppConfig;
-use amos_platform::{server, state::PlatformState, Result};
+use amos_platform::{server, services::BountyService, state::PlatformState, Result};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -34,6 +34,11 @@ async fn main() -> Result<()> {
     // Run database migrations
     state.run_migrations().await?;
     info!("Database migrations completed");
+
+    // Start the nightly bounty service scheduler
+    let bounty_service = BountyService::new(state.clone());
+    bounty_service.start_nightly_scheduler();
+    info!("Bounty service nightly scheduler started");
 
     // Start both HTTP and gRPC servers concurrently
     let http_server = server::start_http_server(state.clone());

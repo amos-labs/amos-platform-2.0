@@ -30,6 +30,7 @@ pub mod middleware;
 pub mod provisioning;
 pub mod routes;
 pub mod server;
+pub mod services;
 pub mod solana;
 pub mod state;
 

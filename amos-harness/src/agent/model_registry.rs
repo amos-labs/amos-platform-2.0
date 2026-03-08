@@ -27,6 +27,15 @@ pub struct ModelInfo {
 
     /// Tier for escalation (lower = cheaper/faster, higher = more capable)
     pub tier: u8,
+
+    /// Optional API base URL for custom models (None = use AWS Bedrock).
+    /// OpenAI-compatible endpoint (e.g., "http://gpu-server:8000/v1").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_base: Option<String>,
+
+    /// Whether this model is customer-owned (no compute markup in billing).
+    #[serde(default)]
+    pub customer_owned: bool,
 }
 
 /// Registry of available models
@@ -47,6 +56,8 @@ impl ModelRegistry {
                 cost_per_1k_input: 0.001,
                 cost_per_1k_output: 0.005,
                 tier: 1,
+                api_base: None,
+                customer_owned: false,
             },
             // Tier 2: Balanced performance (default)
             ModelInfo {
@@ -57,6 +68,8 @@ impl ModelRegistry {
                 cost_per_1k_input: 0.003,
                 cost_per_1k_output: 0.015,
                 tier: 2,
+                api_base: None,
+                customer_owned: false,
             },
             // Tier 3: Most capable (for complex tasks)
             ModelInfo {
@@ -67,10 +80,45 @@ impl ModelRegistry {
                 cost_per_1k_input: 0.015,
                 cost_per_1k_output: 0.075,
                 tier: 3,
+                api_base: None,
+                customer_owned: false,
             },
         ];
 
         Self { models }
+    }
+
+    /// Create a model registry with built-in models plus custom providers.
+    ///
+    /// Custom models are loaded from the `CustomModelsConfig` in the app config.
+    /// They integrate into the existing tier/escalation system.
+    pub fn with_custom_models(custom_config: &amos_core::config::CustomModelsConfig) -> Self {
+        let mut registry = Self::new();
+
+        if !custom_config.enabled {
+            return registry;
+        }
+
+        for provider in &custom_config.providers {
+            let model = ModelInfo {
+                id: format!("custom:{}", provider.name),
+                display_name: provider.display_name.clone(),
+                provider: format!("Custom ({})", provider.name),
+                context_window: provider.context_window,
+                cost_per_1k_input: provider.cost_per_1k_input,
+                cost_per_1k_output: provider.cost_per_1k_output,
+                tier: provider.tier,
+                api_base: Some(provider.api_base.clone()),
+                customer_owned: provider.customer_owned,
+            };
+            tracing::info!(
+                "Registered custom model: {} (tier {}, endpoint: {})",
+                model.display_name, model.tier, provider.api_base
+            );
+            registry.models.push(model);
+        }
+
+        registry
     }
 
     /// Get a model by ID
@@ -139,6 +187,21 @@ impl ModelRegistry {
             0.0
         }
     }
+
+    /// Get all customer-owned models.
+    pub fn get_customer_owned(&self) -> Vec<&ModelInfo> {
+        self.models.iter().filter(|m| m.customer_owned).collect()
+    }
+
+    /// Check if a model is a custom (non-Bedrock) model.
+    pub fn is_custom_model(&self, model_id: &str) -> bool {
+        model_id.starts_with("custom:")
+    }
+
+    /// Get the API base URL for a model (None means use Bedrock).
+    pub fn get_api_base(&self, model_id: &str) -> Option<String> {
+        self.get(model_id).and_then(|m| m.api_base.clone())
+    }
 }
 
 impl Default for ModelRegistry {
@@ -164,6 +227,8 @@ pub enum RoutingReason {
     ExpertIntent,
     /// Message is long (> threshold words) suggesting complexity → Sonnet.
     LongMessage,
+    /// Custom model explicitly configured for this tier.
+    CustomModel,
 }
 
 impl std::fmt::Display for RoutingReason {
@@ -174,6 +239,7 @@ impl std::fmt::Display for RoutingReason {
             Self::ComplexIntent => write!(f, "complex intent keywords detected → Sonnet"),
             Self::ExpertIntent => write!(f, "expert-level intent keywords detected → Opus"),
             Self::LongMessage => write!(f, "long message suggests complexity → Sonnet"),
+            Self::CustomModel => write!(f, "custom model configured for this tier"),
         }
     }
 }
@@ -412,5 +478,82 @@ mod tests {
         let decision = registry.route("ANALYZE THIS DATA", false, false);
         assert_eq!(decision.tier, 2);
         assert_eq!(decision.reason, RoutingReason::ComplexIntent);
+    }
+
+    #[test]
+    fn test_custom_model_registration() {
+        use amos_core::config::{CustomModelsConfig, CustomModelProvider};
+
+        let config = CustomModelsConfig {
+            enabled: true,
+            providers: vec![CustomModelProvider {
+                name: "qwen-local".into(),
+                display_name: "Qwen3-Next 80B (Local)".into(),
+                api_base: "http://localhost:8000/v1".into(),
+                api_key: None,
+                model_id: "Qwen/Qwen3-Next-80B".into(),
+                context_window: 131_072,
+                tier: 2,
+                cost_per_1k_input: 0.0,
+                cost_per_1k_output: 0.0,
+                customer_owned: true,
+            }],
+        };
+
+        let registry = ModelRegistry::with_custom_models(&config);
+
+        // Should have 3 built-in + 1 custom
+        assert_eq!(registry.list_all().len(), 4);
+
+        // Custom model should be findable
+        let custom = registry.get("custom:qwen-local");
+        assert!(custom.is_some());
+        let custom = custom.unwrap();
+        assert_eq!(custom.display_name, "Qwen3-Next 80B (Local)");
+        assert_eq!(custom.tier, 2);
+        assert!(custom.customer_owned);
+        assert_eq!(custom.api_base.as_deref(), Some("http://localhost:8000/v1"));
+    }
+
+    #[test]
+    fn test_custom_models_disabled() {
+        use amos_core::config::CustomModelsConfig;
+
+        let config = CustomModelsConfig {
+            enabled: false,
+            providers: vec![],
+        };
+
+        let registry = ModelRegistry::with_custom_models(&config);
+        assert_eq!(registry.list_all().len(), 3); // Only built-in
+    }
+
+    #[test]
+    fn test_customer_owned_detection() {
+        use amos_core::config::{CustomModelsConfig, CustomModelProvider};
+
+        let config = CustomModelsConfig {
+            enabled: true,
+            providers: vec![CustomModelProvider {
+                name: "sovereign".into(),
+                display_name: "Sovereign Qwen".into(),
+                api_base: "http://local:8000/v1".into(),
+                api_key: None,
+                model_id: "qwen".into(),
+                context_window: 131_072,
+                tier: 2,
+                cost_per_1k_input: 0.0,
+                cost_per_1k_output: 0.0,
+                customer_owned: true,
+            }],
+        };
+
+        let registry = ModelRegistry::with_custom_models(&config);
+        let owned = registry.get_customer_owned();
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].display_name, "Sovereign Qwen");
+
+        assert!(registry.is_custom_model("custom:sovereign"));
+        assert!(!registry.is_custom_model("us.anthropic.claude-3-5-haiku-20241022-v1:0"));
     }
 }

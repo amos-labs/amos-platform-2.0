@@ -21,6 +21,9 @@ amos-automate/
 The foundation crate. Every other crate depends on it. Contains:
 
 - **AppConfig** -- Hierarchical configuration (env vars, files, defaults) using `AMOS__` prefix with `__` as nested separator
+- **DeploymentMode** -- Managed (AMOS cloud) vs self-hosted (customer hardware) deployment configuration
+- **CustomModelsConfig** -- Sovereign AI support: customer-provisioned OpenAI-compatible model endpoints
+- **PlatformConfig** -- Harness-to-platform sync settings (heartbeat, config pull, activity reporting)
 - **AmosError / Result** -- Unified error types across the workspace
 - **Token Economics** -- AMOS token distribution, vesting, and reward calculations
 - **Domain Types** -- Shared types used across crates
@@ -44,6 +47,8 @@ The per-customer runtime. This is where the core product lives:
 - **Schema** (`src/schema/`) -- Runtime-defined collections and records (JSONB-backed, validated, queryable). No migrations needed per customer request
 - **Sites** (`src/sites/`) -- Multi-page public websites served at `/s/{slug}` with form submission into schema collections
 - **Memory** (`src/memory/`) -- Working memory with semantic search and salience scoring
+- **Platform Sync** (`src/platform_sync.rs`) -- Background client that syncs with the AMOS platform: heartbeat, config pull, and usage reporting. Works for both managed and self-hosted deployments
+- **Model Registry** (`src/agent/model_registry.rs`) -- Dynamic model registry supporting AWS Bedrock (Anthropic Claude) and customer-provisioned OpenAI-compatible models (Qwen, etc.)
 
 ### amos-platform
 
@@ -51,7 +56,9 @@ The multi-tenant control plane. Manages harness lifecycle and billing:
 
 - **Provisioning** (`src/provisioning/`) -- Docker-based harness provisioning. Creates, starts, stops, and deprovisions per-customer harness containers via the Docker API (bollard)
 - **Solana Integration** (`src/solana/`) -- Optional on-chain token operations, treasury management
-- **Routes** -- REST API for harness lifecycle management, health checks
+- **Sync API** (`src/routes/sync.rs`) -- Harness sync endpoints: heartbeat, config distribution, activity ingest, version checks
+- **Billing** (`src/billing/`) -- Subscription plans, compute cost tracking with 20% markup (waived for sovereign AI), AMOS token discount
+- **Routes** -- REST API for harness lifecycle management, health checks, token economics, governance
 
 ### UI
 
@@ -78,6 +85,60 @@ Full documentation:
 - [Simple Whitepaper](docs/whitepaper_simple.md) -- Non-technical overview
 - [Token Economy Math](docs/token_economy_math.md) -- Mathematical framework and formulas
 - [Equation Cheat Sheet](docs/token_economy_equations.md) -- Quick reference for all equations
+
+## Deployment Modes
+
+AMOS supports two deployment modes:
+
+### Managed (Default)
+
+AMOS provisions and manages harness containers via Docker API. Customers connect to their harness through the AMOS platform.
+
+- Compute costs include a 20% markup
+- Updates pushed automatically
+- Monitoring and billing handled by platform
+
+### Self-Hosted (Sovereign AI)
+
+Customers run AMOS on their own infrastructure with their own AI models. Ideal for organizations requiring data sovereignty, air-gapped environments, or custom model deployment.
+
+```bash
+# Self-hosted configuration (in .env or config file)
+AMOS__DEPLOYMENT__MODE=self_hosted
+AMOS__DEPLOYMENT__LICENSE_KEY=your-license-key
+AMOS__DEPLOYMENT__AUTO_UPDATE=true
+
+# Platform sync (optional, can be disabled for air-gapped)
+AMOS__PLATFORM__URL=https://api.amos.ai
+AMOS__PLATFORM__API_KEY=your-platform-api-key
+AMOS__PLATFORM__TELEMETRY_ENABLED=true
+
+# Custom model (OpenAI-compatible endpoint)
+AMOS__CUSTOM_MODELS__ENABLED=true
+```
+
+For custom models, configure via `config/default.toml`:
+
+```toml
+[custom_models]
+enabled = true
+
+[[custom_models.providers]]
+name = "qwen-local"
+display_name = "Qwen3-Next 80B (Self-Hosted)"
+api_base = "http://gpu-server:8000/v1"
+model_id = "Qwen/Qwen3-Next-80B"
+context_window = 131072
+tier = 2
+customer_owned = true
+```
+
+Key differences from managed:
+- **No compute markup** on customer-owned models
+- **Pull-based updates** instead of push (harness checks platform for new versions)
+- **License validation** via platform API
+- **Optional telemetry** (can be fully air-gapped)
+- **Custom Qwen models** via vLLM, TGI, or Ollama (OpenAI-compatible API)
 
 ## Prerequisites
 
@@ -139,6 +200,13 @@ Configuration uses the `AMOS__` prefix with `__` as the nested separator. Set vi
 | `AMOS__AGENT__MAX_ITERATIONS` | `25` | Max agent loop iterations per request |
 | `AMOS__AGENT__MAX_CONTEXT_TOKENS` | `200000` | Max context window tokens |
 | `AWS_PROFILE` | `default` | AWS profile for Bedrock access |
+| `AMOS__DEPLOYMENT__MODE` | `managed` | Deployment mode: `managed` or `self_hosted` |
+| `AMOS__DEPLOYMENT__LICENSE_KEY` | -- | License key for self-hosted deployments |
+| `AMOS__PLATFORM__URL` | `http://localhost:4000` | Platform API URL for sync |
+| `AMOS__PLATFORM__API_KEY` | -- | API key for platform authentication |
+| `AMOS__PLATFORM__HEARTBEAT_INTERVAL_SECS` | `30` | Heartbeat frequency (seconds) |
+| `AMOS__PLATFORM__TELEMETRY_ENABLED` | `true` | Enable usage reporting to platform |
+| `AMOS__CUSTOM_MODELS__ENABLED` | `false` | Enable custom model providers |
 
 ## Database
 
@@ -211,6 +279,15 @@ GET /health    # Liveness check
 GET /ready     # Readiness check (includes DB connectivity)
 ```
 
+### Sync (Platform ↔ Harness)
+
+```
+POST /api/v1/sync/heartbeat     # Harness heartbeat (version, health, uptime)
+GET  /api/v1/sync/config        # Pull configuration updates
+POST /api/v1/sync/activity      # Push usage/activity metrics
+GET  /api/v1/sync/version       # Check latest available version
+```
+
 ## Tool System
 
 Tools are the interface between the AI agent and the world. Each tool implements the `Tool` trait:
@@ -247,6 +324,10 @@ This is an early-stage project under active development. The core architecture i
 - Memory system
 - Docker-based harness provisioning
 - Token economics with on-chain revenue distribution
+- Self-hosted deployment mode with license validation
+- Sovereign AI: customer-provisioned Qwen models via OpenAI-compatible API
+- Platform sync: heartbeat, config distribution, activity reporting
+- Billing with sovereign AI support (no markup on customer-owned models)
 
 ## License
 
