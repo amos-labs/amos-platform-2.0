@@ -110,12 +110,11 @@ impl StorageClient {
         match &self.config.backend {
             StorageBackend::Local { base_dir } => {
                 let path = base_dir.join(key);
-                if tokio::fs::try_exists(&path).await.unwrap_or(false) {
-                    tokio::fs::remove_file(&path)
-                        .await
-                        .map_err(|e| AmosError::Internal(format!("delete file '{}': {e}", key)))?;
+                match tokio::fs::remove_file(&path).await {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(e) => Err(AmosError::Internal(format!("delete file '{}': {e}", key))),
                 }
-                Ok(())
             }
         }
     }
