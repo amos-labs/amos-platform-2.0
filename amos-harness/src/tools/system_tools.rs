@@ -4,6 +4,7 @@ use super::{Tool, ToolCategory, ToolResult};
 use amos_core::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
+use std::path::Path;
 use std::process::Command;
 use tokio::fs;
 
@@ -44,11 +45,45 @@ impl Tool for ReadFileTool {
             amos_core::AmosError::Validation("path is required".to_string())
         })?;
 
-        // Security check: prevent reading sensitive files
-        let blocked_paths = ["/etc/passwd", "/etc/shadow", ".env", "credentials"];
-        if blocked_paths.iter().any(|p| path.contains(p)) {
+        // Security: canonicalize to resolve symlinks and ..
+        let canonical = tokio::fs::canonicalize(path).await.map_err(|e| {
+            amos_core::AmosError::Internal(format!("Failed to resolve path: {}", e))
+        })?;
+        let canonical_str = canonical.to_string_lossy();
+
+        // Block sensitive system directories
+        let blocked_prefixes = [
+            "/etc", "/proc", "/sys", "/dev", "/root", "/var/run",
+            "/var/log", "/tmp", "/private/tmp", "/private/var",
+        ];
+        if blocked_prefixes.iter().any(|p| canonical_str.starts_with(p)) {
+            return Ok(ToolResult::error(
+                "Access denied: Cannot read files in system directories".to_string(),
+            ));
+        }
+
+        // Block sensitive hidden directories anywhere in path
+        let blocked_components = [".ssh", ".gnupg", ".aws", ".config", ".env"];
+        if canonical.components().any(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            blocked_components.iter().any(|b| s == *b)
+        }) {
             return Ok(ToolResult::error(
                 "Access denied: Cannot read sensitive files".to_string(),
+            ));
+        }
+
+        // Enforce allowed base directory if configured, otherwise use cwd
+        let allowed_base = std::env::var("AMOS__TOOLS__ALLOWED_READ_DIR")
+            .unwrap_or_else(|_| std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "/".to_string()));
+        let allowed_canonical = tokio::fs::canonicalize(&allowed_base).await
+            .unwrap_or_else(|_| Path::new(&allowed_base).to_path_buf());
+
+        if !canonical.starts_with(&allowed_canonical) {
+            return Ok(ToolResult::error(
+                "Access denied: Path is outside allowed directory".to_string(),
             ));
         }
 
@@ -109,29 +144,57 @@ impl Tool for BashTool {
             amos_core::AmosError::Validation("command is required".to_string())
         })?.to_string();
 
-        // Security: Block dangerous commands
-        let blocked_patterns = [
-            "rm -rf",
-            "mkfs",
-            "dd if=",
-            ":(){ :|:& };:",
-            "> /dev/sda",
-            "wget",
-            "curl",
-            "nc ",
-            "netcat",
+        // Security: reject subshell execution and backticks
+        if command.contains("$(") || command.contains('`') {
+            return Ok(ToolResult::error(
+                "Blocked: Subshell execution is not allowed".to_string(),
+            ));
+        }
+
+        // Comprehensive list of blocked commands (checked by token, not substring)
+        const BLOCKED_COMMANDS: &[&str] = &[
+            "rm", "mv", "cp", "chmod", "chown", "chroot", "mount", "umount",
+            "mkfs", "dd", "kill", "killall", "pkill", "shutdown", "reboot",
+            "halt", "poweroff", "systemctl", "service", "useradd", "userdel",
+            "passwd", "su", "sudo", "curl", "wget", "nc", "ncat", "socat",
+            "ssh", "scp", "sftp", "ftp", "telnet", "python", "python3",
+            "ruby", "perl", "node", "php", "lua", "bash", "zsh", "csh",
+            "ksh", "fish", "nohup", "screen", "tmux", "at", "crontab",
+            "eval", "exec", "source", "docker", "podman", "kubectl",
+            "apt", "yum", "dnf", "brew", "pip", "npm", "gem", "netcat",
+            "mknod", "insmod", "modprobe", "iptables", "ip6tables",
         ];
 
-        for pattern in &blocked_patterns {
-            if command.contains(pattern) {
+        // Tokenize: split on whitespace and shell metacharacters
+        let cmd_lower = command.to_lowercase();
+        let tokens: Vec<&str> = cmd_lower
+            .split(|c: char| c.is_whitespace() || ";|&<>()".contains(c))
+            .filter(|t| !t.is_empty())
+            .collect();
+
+        for token in &tokens {
+            // Extract basename for absolute paths (e.g. /usr/bin/curl -> curl)
+            let basename = Path::new(token)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| token.to_string());
+
+            if BLOCKED_COMMANDS.contains(&basename.as_str()) {
                 return Ok(ToolResult::error(format!(
-                    "Blocked: Command contains dangerous pattern: {}",
-                    pattern
+                    "Blocked: Command '{}' is not allowed",
+                    basename
                 )));
             }
         }
 
-        // Execute command
+        // Block output redirection to sensitive paths
+        if command.contains("> /dev/") || command.contains("> /etc/") || command.contains("> /proc/") {
+            return Ok(ToolResult::error(
+                "Blocked: Redirecting output to system paths is not allowed".to_string(),
+            ));
+        }
+
+        // Execute command with timeout
         let output = tokio::task::spawn_blocking(move || {
             Command::new("sh")
                 .arg("-c")
@@ -146,6 +209,11 @@ impl Tool for BashTool {
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        // Limit output size to prevent exfiltration of large files
+        let max_output = 10 * 1024; // 10KB
+        let stdout = if stdout.len() > max_output { stdout[..max_output].to_string() } else { stdout };
+        let stderr = if stderr.len() > max_output { stderr[..max_output].to_string() } else { stderr };
 
         Ok(ToolResult::success(json!({
             "stdout": stdout,

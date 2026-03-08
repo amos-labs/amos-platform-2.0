@@ -66,7 +66,7 @@ pub async fn create_server(
 
     // Initialize file storage
     let storage_config = StorageConfig::from_env();
-    let storage = Arc::new(StorageClient::new(storage_config)?);
+    let storage = Arc::new(StorageClient::new(storage_config).await?);
 
     // Initialize document processor (extract + export pipeline)
     let document_processor = Arc::new(DocumentProcessor::new());
@@ -93,7 +93,7 @@ pub async fn create_server(
         storage,
         document_processor,
         image_gen,
-        active_chats: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        active_chats: Arc::new(dashmap::DashMap::new()),
         api_executor,
         etl_pipeline,
     });

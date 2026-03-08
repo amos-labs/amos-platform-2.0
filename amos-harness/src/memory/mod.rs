@@ -97,7 +97,7 @@ impl WorkingMemory {
             self.entries.sort_by(|a, b| {
                 b.current_salience()
                     .partial_cmp(&a.current_salience())
-                    .unwrap()
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
             self.entries.truncate(self.max_entries);
         }
@@ -124,7 +124,7 @@ impl WorkingMemory {
         self.entries.sort_by(|a, b| {
             b.current_salience()
                 .partial_cmp(&a.current_salience())
-                .unwrap()
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         self.entries.iter().take(n).cloned().collect()
@@ -147,12 +147,16 @@ impl WorkingMemory {
         matching.sort_by(|a, b| {
             b.current_salience()
                 .partial_cmp(&a.current_salience())
-                .unwrap()
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Reinforce accessed entries
-        for entry in &matching {
-            self.reinforce(&entry.id);
+        // Reinforce accessed entries in a single pass over self.entries
+        let matching_ids: std::collections::HashSet<&str> =
+            matching.iter().map(|e| e.id.as_str()).collect();
+        for entry in &mut self.entries {
+            if matching_ids.contains(entry.id.as_str()) {
+                entry.reinforce();
+            }
         }
 
         matching.into_iter().take(limit).collect()
@@ -172,7 +176,7 @@ impl WorkingMemory {
         matching.sort_by(|a, b| {
             b.current_salience()
                 .partial_cmp(&a.current_salience())
-                .unwrap()
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         matching.into_iter().take(limit).collect()

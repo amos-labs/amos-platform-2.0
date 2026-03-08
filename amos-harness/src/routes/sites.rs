@@ -348,6 +348,25 @@ pub async fn handle_form_submit(
         return Err(StatusCode::NOT_FOUND);
     }
 
+    // Verify that a published page on this site has form_collection matching the requested collection
+    let has_form_collection: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(
+            SELECT 1 FROM pages
+            WHERE site_id = $1
+              AND form_collection = $2
+              AND is_published = true
+        )"#,
+    )
+    .bind(site.id)
+    .bind(&collection)
+    .fetch_one(&state.db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !has_form_collection {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     // Create a record in the target collection
     let schema_engine = SchemaEngine::new(state.db_pool.clone());
     let record = schema_engine

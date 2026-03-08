@@ -14,13 +14,11 @@ use crate::{
     tools::ToolRegistry,
 };
 use amos_core::AppConfig;
+use dashmap::DashMap;
 use sqlx::PgPool;
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::AtomicBool,
-        Arc, RwLock,
-    },
+use std::sync::{
+    atomic::AtomicBool,
+    Arc,
 };
 
 /// Shared application state
@@ -62,7 +60,7 @@ pub struct AppState {
 
     /// Active chat cancellation flags, keyed by chat_id.
     /// Set the `AtomicBool` to `true` to cancel a running agent loop.
-    pub active_chats: Arc<RwLock<HashMap<String, Arc<AtomicBool>>>>,
+    pub active_chats: Arc<DashMap<String, Arc<AtomicBool>>>,
 
     /// Universal API executor for making authenticated calls to external APIs
     pub api_executor: Arc<ApiExecutor>,

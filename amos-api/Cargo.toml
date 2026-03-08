@@ -39,6 +39,7 @@ reqwest = { workspace = true }
 dotenvy = { workspace = true }
 config = { workspace = true }
 secrecy = { workspace = true }
+jsonwebtoken = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

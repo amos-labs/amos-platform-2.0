@@ -4,7 +4,59 @@ use super::{Tool, ToolCategory, ToolResult};
 use amos_core::{AppConfig, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
+use std::net::IpAddr;
 use std::sync::Arc;
+
+/// Check if an IP address is in a private/internal range
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// Validate a URL is safe to fetch (prevents SSRF)
+async fn validate_url_safe(raw_url: &str) -> std::result::Result<(), String> {
+    let parsed = url::Url::parse(raw_url)
+        .map_err(|e| format!("Invalid URL: {}", e))?;
+
+    match parsed.scheme() {
+        "http" | "https" => {}
+        s => return Err(format!("URL scheme '{}' not allowed", s)),
+    }
+
+    let host = parsed.host_str().ok_or("URL has no host")?;
+    let blocked_hosts = ["localhost", "0.0.0.0", "[::]", "[::1]"];
+    if blocked_hosts.contains(&host) || host.ends_with(".local") || host.ends_with(".internal") {
+        return Err(format!("Host '{}' is not allowed", host));
+    }
+
+    // Resolve DNS and check for private IPs
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let addr_str = format!("{}:{}", host, port);
+    match tokio::net::lookup_host(&addr_str).await {
+        Ok(addrs) => {
+            for addr in addrs {
+                if is_blocked_ip(addr.ip()) {
+                    return Err(format!("URL resolves to blocked IP: {}", addr.ip()));
+                }
+            }
+        }
+        Err(e) => return Err(format!("DNS resolution failed: {}", e)),
+    }
+
+    Ok(())
+}
 
 /// Search the web
 pub struct WebSearchTool {
@@ -126,8 +178,18 @@ impl Tool for ViewWebPageTool {
             .and_then(|v| v.as_str())
             .unwrap_or("text");
 
-        // Fetch the web page
-        let response: reqwest::Response = reqwest::get(url).await.map_err(|e| {
+        // Validate URL to prevent SSRF
+        validate_url_safe(url).await.map_err(|e| {
+            amos_core::AmosError::Validation(format!("URL blocked: {}", e))
+        })?;
+
+        // Fetch the web page (no redirects to prevent redirect-based SSRF bypass)
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| amos_core::AmosError::Internal(format!("Failed to build HTTP client: {}", e)))?;
+
+        let response: reqwest::Response = client.get(url).send().await.map_err(|e| {
             amos_core::AmosError::Internal(format!("External: Failed to fetch URL: {}", e))
         })?;
 
