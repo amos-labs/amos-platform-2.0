@@ -10,13 +10,13 @@ CREATE TABLE IF NOT EXISTS contribution_activities (
     activity_type VARCHAR(50) NOT NULL,
     points BIGINT NOT NULL CHECK (points > 0 AND points <= 2000),
     reference_id TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Indexes for common queries
-    INDEX idx_contribution_activities_day_index (day_index),
-    INDEX idx_contribution_activities_contributor_id (contributor_id),
-    INDEX idx_contribution_activities_created_at (created_at)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Indexes for contribution_activities
+CREATE INDEX IF NOT EXISTS idx_contribution_activities_day_index ON contribution_activities (day_index);
+CREATE INDEX IF NOT EXISTS idx_contribution_activities_contributor_id ON contribution_activities (contributor_id);
+CREATE INDEX IF NOT EXISTS idx_contribution_activities_created_at ON contribution_activities (created_at);
 
 -- Table: emission_records
 -- Records the daily emission rewards distributed to contributors
@@ -28,13 +28,13 @@ CREATE TABLE IF NOT EXISTS emission_records (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     -- Unique constraint: one emission record per contributor per day
-    UNIQUE (contributor_id, day_index),
-
-    -- Indexes for common queries
-    INDEX idx_emission_records_day_index (day_index),
-    INDEX idx_emission_records_contributor_id (contributor_id),
-    INDEX idx_emission_records_created_at (created_at)
+    UNIQUE (contributor_id, day_index)
 );
+
+-- Indexes for emission_records
+CREATE INDEX IF NOT EXISTS idx_emission_records_day_index ON emission_records (day_index);
+CREATE INDEX IF NOT EXISTS idx_emission_records_contributor_id ON emission_records (contributor_id);
+CREATE INDEX IF NOT EXISTS idx_emission_records_created_at ON emission_records (created_at);
 
 -- Comments for documentation
 COMMENT ON TABLE contribution_activities IS 'Tracks all contribution activities that earn points for contributors';
