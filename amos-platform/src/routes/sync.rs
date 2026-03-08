@@ -18,10 +18,10 @@ use crate::state::PlatformState;
 
 pub fn routes() -> Router<PlatformState> {
     Router::new()
-        .route("/api/v1/sync/heartbeat", post(receive_heartbeat))
-        .route("/api/v1/sync/config", get(get_config))
-        .route("/api/v1/sync/activity", post(receive_activity))
-        .route("/api/v1/sync/version", get(get_latest_version))
+        .route("/sync/heartbeat", post(receive_heartbeat))
+        .route("/sync/config", get(get_config))
+        .route("/sync/activity", post(receive_activity))
+        .route("/sync/version", get(get_latest_version))
 }
 
 // ── Heartbeat ───────────────────────────────────────────────────────────
