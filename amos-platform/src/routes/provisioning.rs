@@ -21,11 +21,11 @@ use crate::{
 pub fn routes() -> Router<PlatformState> {
     Router::new()
         .route("/provision/harness", post(provision_harness))
-        .route("/provision/harness/:id", get(get_harness_status))
-        .route("/provision/harness/:id/start", post(start_harness))
-        .route("/provision/harness/:id/stop", post(stop_harness))
-        .route("/provision/harness/:id", delete(deprovision_harness))
-        .route("/provision/harness/:id/logs", get(get_harness_logs))
+        .route("/provision/harness/{id}", get(get_harness_status))
+        .route("/provision/harness/{id}/start", post(start_harness))
+        .route("/provision/harness/{id}/stop", post(stop_harness))
+        .route("/provision/harness/{id}", delete(deprovision_harness))
+        .route("/provision/harness/{id}/logs", get(get_harness_logs))
 }
 
 //    Provision Harness

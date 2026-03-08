@@ -19,9 +19,9 @@ use crate::{governance::*, state::PlatformState};
 pub fn routes() -> Router<PlatformState> {
     Router::new()
         .route("/governance/proposals", get(list_proposals).post(create_proposal))
-        .route("/governance/proposals/:id", get(get_proposal))
-        .route("/governance/proposals/:id/vote", post(cast_vote))
-        .route("/governance/proposals/:id/gates", get(get_gates))
+        .route("/governance/proposals/{id}", get(get_proposal))
+        .route("/governance/proposals/{id}/vote", post(cast_vote))
+        .route("/governance/proposals/{id}/gates", get(get_gates))
 }
 
 //    List Proposals
