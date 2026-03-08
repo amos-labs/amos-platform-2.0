@@ -1,0 +1,344 @@
+/// AMOS Bounty Program State Accounts
+///
+/// This module defines all on-chain account structures that store the state
+/// of the bounty distribution system. All fields are carefully sized and
+/// documented to ensure transparent, trustless operation.
+
+use anchor_lang::prelude::*;
+
+// ============================================================================
+// BountyConfig - Main Program Configuration
+// ============================================================================
+
+/// The main configuration account for the AMOS Bounty program.
+/// This is a singleton PDA that stores global program state.
+///
+/// Seeds: ["bounty_config"]
+#[account]
+pub struct BountyConfig {
+    /// The oracle authority that validates bounty submissions
+    /// This is the ONLY authority that can submit bounty proofs
+    pub oracle_authority: Pubkey, // 32 bytes
+
+    /// The AMOS token mint
+    pub mint: Pubkey, // 32 bytes
+
+    /// The treasury token account holding the distribution pool
+    pub treasury: Pubkey, // 32 bytes
+
+    /// Unix timestamp when the program was initialized
+    pub start_time: i64, // 8 bytes
+
+    /// Current halving epoch (0-10)
+    /// Increments every 365 days, affects daily emission rate
+    pub halving_epoch: u8, // 1 byte
+
+    /// Current daily emission rate in tokens
+    /// Starts at 16,000, halves each epoch, minimum 100
+    pub daily_emission: u64, // 8 bytes
+
+    /// Total tokens distributed across all time
+    pub total_tokens_distributed: u64, // 8 bytes
+
+    /// Total bounties submitted and approved
+    pub total_bounties: u64, // 8 bytes
+
+    /// Total points awarded across all bounties
+    pub total_points: u64, // 8 bytes
+
+    /// Annual decay rate in basis points (200-2500, default 500 = 5%)
+    /// Can be adjusted by oracle within bounds
+    pub decay_rate_bps: u16, // 2 bytes
+
+    /// PDA bump seed
+    pub bump: u8, // 1 byte
+
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 16], // 128 bytes
+}
+
+impl BountyConfig {
+    /// Size calculation:
+    /// 8 (discriminator) + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 128 = 276 bytes
+    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 128;
+}
+
+// ============================================================================
+// DailyPool - Daily Token Distribution Pool
+// ============================================================================
+
+/// Tracks the token distribution pool for a specific day.
+/// A new DailyPool is created each day to ensure fair, time-based distribution.
+///
+/// Seeds: ["daily_pool", day_index.to_le_bytes()]
+#[account]
+pub struct DailyPool {
+    /// Day index (days since program start)
+    pub day_index: u32, // 4 bytes
+
+    /// Total emission allocated for this day
+    pub daily_emission: u64, // 8 bytes
+
+    /// Total tokens already distributed from this pool
+    pub tokens_distributed: u64, // 8 bytes
+
+    /// Total points accumulated across all bounties today
+    /// Used for proportional distribution calculation
+    pub total_points: u64, // 8 bytes
+
+    /// Number of bounty proofs submitted today
+    pub proof_count: u32, // 4 bytes
+
+    /// Whether this daily pool has been finalized
+    /// Once finalized, no more bounties can be added
+    pub finalized: bool, // 1 byte
+
+    /// PDA bump seed
+    pub bump: u8, // 1 byte
+
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 8], // 64 bytes
+}
+
+impl DailyPool {
+    /// Size calculation:
+    /// 8 (discriminator) + 4 + 8 + 8 + 8 + 4 + 1 + 1 + 64 = 106 bytes
+    pub const SIZE: usize = 8 + 4 + 8 + 8 + 8 + 4 + 1 + 1 + 64;
+}
+
+// ============================================================================
+// BountyProof - Individual Bounty Submission Record
+// ============================================================================
+
+/// Records a single bounty submission with full provenance.
+/// Each bounty is immutable once created, providing complete audit trail.
+///
+/// Seeds: ["bounty_proof", bounty_id]
+#[account]
+pub struct BountyProof {
+    /// Unique identifier for this bounty (external system ID)
+    pub bounty_id: [u8; 32], // 32 bytes
+
+    /// Operator who earned this bounty (human or AI agent)
+    pub operator: Pubkey, // 32 bytes
+
+    /// Base points awarded (before multipliers)
+    pub base_points: u16, // 2 bytes
+
+    /// Adjusted points (after multipliers, used for distribution)
+    pub adjusted_points: u16, // 2 bytes
+
+    /// Quality score (0-100)
+    pub quality_score: u8, // 1 byte
+
+    /// Contribution type (0-7: bug_fix, feature, docs, content, support, testing, design, infra)
+    pub contribution_type: u8, // 1 byte
+
+    /// Whether this was an AI agent submission
+    pub is_agent: bool, // 1 byte
+
+    /// Agent ID if applicable (empty if human)
+    pub agent_id: [u8; 32], // 32 bytes
+
+    /// Trust level of the operator/agent at time of submission (1-5)
+    pub trust_level: u8, // 1 byte
+
+    /// Total tokens awarded (including reviewer portion)
+    pub tokens_earned: u64, // 8 bytes
+
+    /// Reviewer who validated this bounty
+    pub reviewer: Pubkey, // 32 bytes
+
+    /// Reviewer tokens earned (5% of total)
+    pub reviewer_tokens: u64, // 8 bytes
+
+    /// Hash of the evidence/work product
+    pub evidence_hash: [u8; 32], // 32 bytes
+
+    /// Unix timestamp of submission
+    pub timestamp: i64, // 8 bytes
+
+    /// Day index when submitted
+    pub day_index: u32, // 4 bytes
+
+    /// External reference (issue number, PR number, etc.)
+    pub external_reference: [u8; 64], // 64 bytes
+
+    /// PDA bump seed
+    pub bump: u8, // 1 byte
+
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 8], // 64 bytes
+}
+
+impl BountyProof {
+    /// Size calculation:
+    /// 8 (discriminator) + 32 + 32 + 2 + 2 + 1 + 1 + 1 + 32 + 1 + 8 + 32 + 8 + 32 + 8 + 4 + 64 + 1 + 64 = 333 bytes
+    pub const SIZE: usize = 8 + 32 + 32 + 2 + 2 + 1 + 1 + 1 + 32 + 1 + 8 + 32 + 8 + 32 + 8 + 4 + 64 + 1 + 64;
+}
+
+// ============================================================================
+// OperatorStats - Operator Performance and Balance Tracking
+// ============================================================================
+
+/// Tracks statistics and balances for each operator (human or AI agent).
+/// This account enables decay mechanics and operator analytics.
+///
+/// Seeds: ["operator_stats", operator.key()]
+#[account]
+pub struct OperatorStats {
+    /// Operator public key
+    pub operator: Pubkey, // 32 bytes
+
+    /// Total bounties completed
+    pub total_bounties: u32, // 4 bytes
+
+    /// Total points earned across all bounties
+    pub total_points: u64, // 8 bytes
+
+    /// Total tokens earned (before decay)
+    pub total_tokens_earned: u64, // 8 bytes
+
+    /// Current balance subject to decay
+    pub decayable_balance: u64, // 8 bytes
+
+    /// Original allocation (for floor calculation)
+    pub original_allocation: u64, // 8 bytes
+
+    /// Tokens already decayed
+    pub tokens_decayed: u64, // 8 bytes
+
+    /// Tokens burned through decay
+    pub tokens_burned: u64, // 8 bytes
+
+    /// Tokens recycled to treasury through decay
+    pub tokens_recycled: u64, // 8 bytes
+
+    /// Unix timestamp of last activity (earning or spending)
+    pub last_activity_time: i64, // 8 bytes
+
+    /// Unix timestamp of last decay application
+    pub last_decay_time: i64, // 8 bytes
+
+    /// Number of times decay has been applied
+    pub decay_applications: u32, // 4 bytes
+
+    /// Number of bounties submitted today
+    pub daily_bounty_count: u16, // 2 bytes
+
+    /// Day index of last bounty submission
+    pub last_submission_day: u32, // 4 bytes
+
+    /// PDA bump seed
+    pub bump: u8, // 1 byte
+
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 16], // 128 bytes
+}
+
+impl OperatorStats {
+    /// Size calculation:
+    /// 8 (discriminator) + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 2 + 4 + 1 + 128 = 251 bytes
+    pub const SIZE: usize = 8 + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 2 + 4 + 1 + 128;
+}
+
+// ============================================================================
+// AgentTrustRecord - AI Agent Trust and Performance Tracking
+// ============================================================================
+
+/// Tracks trust level and performance for AI agents.
+/// Enables progressive trust system where agents earn higher limits over time.
+///
+/// Seeds: ["agent_trust", agent_id]
+#[account]
+pub struct AgentTrustRecord {
+    /// Unique agent identifier (hash of agent properties)
+    pub agent_id: [u8; 32], // 32 bytes
+
+    /// Operator/controller of this agent
+    pub operator: Pubkey, // 32 bytes
+
+    /// Current trust level (1-5)
+    /// Determines max points per bounty and daily limits
+    pub trust_level: u8, // 1 byte
+
+    /// Total completed bounties
+    pub total_completions: u32, // 4 bytes
+
+    /// Total rejected bounties
+    pub total_rejections: u32, // 4 bytes
+
+    /// Reputation score (0-10000 basis points)
+    /// Calculated as: (completions * 10000) / (completions + rejections)
+    pub reputation_score: u32, // 4 bytes
+
+    /// Total tokens earned by this agent
+    pub total_tokens_earned: u64, // 8 bytes
+
+    /// Total points earned across all bounties
+    pub total_points_earned: u64, // 8 bytes
+
+    /// Unix timestamp of first registration
+    pub created_at: i64, // 8 bytes
+
+    /// Unix timestamp of last activity
+    pub last_activity: i64, // 8 bytes
+
+    /// Unix timestamp of last trust level upgrade
+    pub last_upgrade: i64, // 8 bytes
+
+    /// PDA bump seed
+    pub bump: u8, // 1 byte
+
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 16], // 128 bytes
+}
+
+impl AgentTrustRecord {
+    /// Size calculation:
+    /// 8 (discriminator) + 32 + 32 + 1 + 4 + 4 + 4 + 8 + 8 + 8 + 8 + 8 + 1 + 128 = 254 bytes
+    pub const SIZE: usize = 8 + 32 + 32 + 1 + 4 + 4 + 4 + 8 + 8 + 8 + 8 + 8 + 1 + 128;
+
+    /// Calculate reputation score from completions and rejections
+    pub fn calculate_reputation(completions: u32, rejections: u32) -> u32 {
+        let total = completions.saturating_add(rejections);
+        if total == 0 {
+            return 0;
+        }
+        // Reputation = (completions / total) * 10000
+        (completions as u64 * 10000 / total as u64) as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_account_sizes() {
+        // Verify account sizes are within Solana limits (10KB max)
+        assert!(BountyConfig::SIZE < 10240);
+        assert!(DailyPool::SIZE < 10240);
+        assert!(BountyProof::SIZE < 10240);
+        assert!(OperatorStats::SIZE < 10240);
+        assert!(AgentTrustRecord::SIZE < 10240);
+    }
+
+    #[test]
+    fn test_reputation_calculation() {
+        // Perfect record
+        assert_eq!(AgentTrustRecord::calculate_reputation(10, 0), 10000);
+
+        // 90% success rate
+        assert_eq!(AgentTrustRecord::calculate_reputation(9, 1), 9000);
+
+        // 50% success rate
+        assert_eq!(AgentTrustRecord::calculate_reputation(5, 5), 5000);
+
+        // No activity yet
+        assert_eq!(AgentTrustRecord::calculate_reputation(0, 0), 0);
+
+        // All failures
+        assert_eq!(AgentTrustRecord::calculate_reputation(0, 10), 0);
+    }
+}

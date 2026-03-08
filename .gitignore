@@ -1,0 +1,28 @@
+# Rust build artifacts
+/target/
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.iml
+.metals/
+.bloop/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+*.pdb
+
+# Backup files
+*.bak
+*.orig

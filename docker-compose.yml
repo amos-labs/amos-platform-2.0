@@ -1,0 +1,279 @@
+version: '3.8'
+
+# AMOS Full Stack - Development Environment
+# ==========================================
+# This Docker Compose file runs BOTH harness and platform together with shared infrastructure.
+# This is for local development only. In production, harness and platform are deployed separately.
+#
+# Architecture:
+# - amos-harness: Per-customer AI business OS (port 3000)
+# - amos-platform: Central token economics/governance/billing (HTTP: 4000, gRPC: 4001)
+# - postgres: Shared PostgreSQL 16 with pgvector (port 5432)
+# - redis: Shared Redis 7 (port 6379)
+# - localstack: AWS S3 emulation for dev (port 4566)
+#
+# Note: In production, each harness has its own postgres/redis, and platform has its own.
+# This shared setup is purely for convenience in local development.
+
+services:
+  # PostgreSQL 16 with pgvector extension (shared for dev)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: amos_dev_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-amos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amos_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-amos_development}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - amos_network
+
+  # Redis 7 for caching and job queues (shared for dev)
+  redis:
+    image: redis:7-alpine
+    container_name: amos_dev_redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - amos_network
+
+  # LocalStack for S3 emulation (development only)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: amos_dev_localstack
+    environment:
+      SERVICES: s3
+      DEBUG: 0
+      DATA_DIR: /tmp/localstack/data
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-west-2}
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - amos_network
+
+  # AMOS Platform - Central token economics/governance/billing
+  platform:
+    build:
+      context: .
+      dockerfile: docker/platform/Dockerfile
+    container_name: amos_dev_platform
+    ports:
+      - "4000:4000"  # HTTP API
+      - "4001:4001"  # gRPC
+    environment:
+      # Server
+      AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
+      AMOS__SERVER__HOST: 0.0.0.0
+      AMOS__SERVER__PORT: 4000
+      AMOS__SERVER__GRPC_PORT: 4001
+
+      # Database
+      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/${POSTGRES_DB:-amos_development}
+      AMOS__DATABASE__MAX_CONNECTIONS: 20
+
+      # Redis (using db 1 for platform)
+      AMOS__REDIS__URL: redis://redis:6379/1
+      AMOS__REDIS__POOL_SIZE: 10
+
+      # Solana
+      AMOS__SOLANA__NETWORK: ${SOLANA_NETWORK:-devnet}
+      AMOS__SOLANA__RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      AMOS__SOLANA__WS_URL: ${SOLANA_WS_URL:-wss://api.devnet.solana.com}
+      AMOS__SOLANA__TREASURY_PROGRAM_ID: ${SOLANA_TREASURY_PROGRAM_ID}
+      AMOS__SOLANA__GOVERNANCE_PROGRAM_ID: ${SOLANA_GOVERNANCE_PROGRAM_ID}
+      AMOS__SOLANA__BOUNTY_PROGRAM_ID: ${SOLANA_BOUNTY_PROGRAM_ID}
+      AMOS__SOLANA__TREASURY_KEYPAIR_PATH: /app/keys/treasury.json
+
+      # AWS (LocalStack in dev)
+      AMOS__AWS__REGION: ${AWS_REGION:-us-west-2}
+      AMOS__AWS__ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AMOS__AWS__SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AMOS__AWS__S3_BUCKET: ${AWS_S3_BUCKET:-amos-platform-dev}
+      AMOS__AWS__ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://localstack:4566}
+
+      # Bedrock (for AI operations)
+      AMOS__BEDROCK__AWS_REGION: ${AWS_REGION:-us-west-2}
+      AMOS__BEDROCK__AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AMOS__BEDROCK__AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AMOS__BEDROCK__DEFAULT_MODEL: ${DEFAULT_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+
+      # Observability
+      RUST_LOG: ${RUST_LOG:-info,amos_platform=debug}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+    volumes:
+      - ./keys:/app/keys:ro
+      - platform_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    networks:
+      - amos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # AMOS Harness - Per-customer AI business OS
+  harness:
+    build:
+      context: .
+      dockerfile: docker/harness/Dockerfile
+    container_name: amos_dev_harness
+    ports:
+      - "3000:3000"
+    environment:
+      # Server
+      AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
+      AMOS__SERVER__HOST: 0.0.0.0
+      AMOS__SERVER__PORT: 3000
+
+      # Database
+      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/${POSTGRES_DB:-amos_development}
+      AMOS__DATABASE__MAX_CONNECTIONS: 20
+
+      # Redis (using db 0 for harness)
+      AMOS__REDIS__URL: redis://redis:6379/0
+      AMOS__REDIS__POOL_SIZE: 10
+
+      # Customer configuration
+      AMOS__CUSTOMER__ID: ${CUSTOMER_ID:-dev-customer-001}
+      AMOS__CUSTOMER__NAME: ${CUSTOMER_NAME:-Development Customer}
+
+      # Platform connection
+      AMOS__PLATFORM__URL: http://platform:4000
+      AMOS__PLATFORM__API_KEY: ${PLATFORM_API_KEY:-dev_api_key_change_in_prod}
+
+      # AWS Bedrock (for AI models)
+      AMOS__BEDROCK__AWS_REGION: ${AWS_REGION:-us-west-2}
+      AMOS__BEDROCK__AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AMOS__BEDROCK__AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AMOS__BEDROCK__DEFAULT_MODEL: ${DEFAULT_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+      AMOS__BEDROCK__CHAT_MODEL: ${CHAT_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+      AMOS__BEDROCK__VOICE_MODEL: ${VOICE_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+
+      # Agent configuration
+      AMOS__AGENT__MAX_ITERATIONS: ${AGENT_MAX_ITERATIONS:-50}
+      AMOS__AGENT__MAX_CONTEXT_TOKENS: ${AGENT_MAX_CONTEXT_TOKENS:-100000}
+      AMOS__AGENT__TOKEN_BUDGET: ${AGENT_TOKEN_BUDGET:-200000}
+
+      # Observability
+      RUST_LOG: ${RUST_LOG:-info,amos_harness=debug}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+    volumes:
+      - harness_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      platform:
+        condition: service_healthy
+    networks:
+      - amos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  localstack_data:
+    driver: local
+  platform_data:
+    driver: local
+  harness_data:
+    driver: local
+
+networks:
+  amos_network:
+    driver: bridge
+
+# Environment Variables
+# =====================
+# Copy .env.example to .env and configure:
+#
+# Required for AWS Bedrock:
+# - AWS_ACCESS_KEY_ID
+# - AWS_SECRET_ACCESS_KEY
+#
+# Required for Solana (use devnet in dev):
+# - SOLANA_TREASURY_PROGRAM_ID
+# - SOLANA_GOVERNANCE_PROGRAM_ID
+# - SOLANA_BOUNTY_PROGRAM_ID
+#
+# Optional (defaults shown):
+# - POSTGRES_USER=amos
+# - POSTGRES_PASSWORD=amos_dev_password
+# - POSTGRES_DB=amos_development
+# - ENVIRONMENT=development
+# - AWS_REGION=us-west-2
+# - SOLANA_NETWORK=devnet
+# - CUSTOMER_ID=dev-customer-001
+# - CUSTOMER_NAME=Development Customer
+# - PLATFORM_API_KEY=dev_api_key_change_in_prod
+#
+# Usage:
+# ======
+# 1. Copy .env.example to .env
+# 2. Set AWS credentials for Bedrock
+# 3. Set Solana program IDs (or deploy test programs)
+# 4. Run: docker compose up -d
+# 5. Check services:
+#    - Platform: http://localhost:4000/health
+#    - Harness: http://localhost:3000/health
+#    - Platform gRPC: localhost:4001
+# 6. View logs: docker compose logs -f
+# 7. Stop: docker compose down
+#
+# CLI Usage:
+# ==========
+# cargo run --bin amos health
+# cargo run --bin amos harness status
+# cargo run --bin amos platform status
+# cargo run --bin amos platform token stats
+# cargo run --bin amos config show
+#
+# Production Notes:
+# =================
+# - This setup is NOT for production
+# - In production, deploy harness and platform separately
+# - Each customer harness gets its own postgres/redis
+# - Platform has its own postgres/redis
+# - Use managed databases (RDS, ElastiCache)
+# - Set strong passwords and proper secrets
+# - Enable TLS/SSL
+# - Configure proper monitoring and alerting
+# - Review all security settings
