@@ -47,6 +47,9 @@ pub struct AppConfig {
     /// Authentication and authorization settings.
     #[serde(default)]
     pub auth: AuthConfig,
+    /// Relay connection settings (harness→relay communication).
+    #[serde(default)]
+    pub relay: RelayConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -312,6 +315,41 @@ impl Default for AuthConfig {
     }
 }
 
+/// Relay connection configuration (how harness talks to the AMOS Network Relay).
+#[derive(Debug, Deserialize, Clone)]
+pub struct RelayConfig {
+    /// Relay API URL (e.g., "https://relay.amos.ai").
+    #[serde(default = "default_relay_url")]
+    pub url: String,
+    /// API key for authenticating with the relay.
+    pub api_key: Option<SecretString>,
+    /// Whether relay integration is enabled.
+    #[serde(default = "default_relay_enabled")]
+    pub enabled: bool,
+    /// Heartbeat interval in seconds (how often harness pings relay).
+    #[serde(default = "default_relay_heartbeat_interval")]
+    pub heartbeat_interval_secs: u64,
+    /// Bounty sync interval in seconds (how often to check for new bounties).
+    #[serde(default = "default_relay_bounty_sync_interval")]
+    pub bounty_sync_interval_secs: u64,
+    /// Reputation report interval in seconds (how often to push reputation data).
+    #[serde(default = "default_relay_reputation_interval")]
+    pub reputation_report_interval_secs: u64,
+}
+
+impl Default for RelayConfig {
+    fn default() -> Self {
+        Self {
+            url: default_relay_url(),
+            api_key: None,
+            enabled: default_relay_enabled(),
+            heartbeat_interval_secs: default_relay_heartbeat_interval(),
+            bounty_sync_interval_secs: default_relay_bounty_sync_interval(),
+            reputation_report_interval_secs: default_relay_reputation_interval(),
+        }
+    }
+}
+
 // ── Defaults ─────────────────────────────────────────────────────────────
 
 fn default_host() -> String { "0.0.0.0".into() }
@@ -345,6 +383,11 @@ fn default_jwt_secret() -> SecretString { SecretString::from("CHANGE-ME-in-produ
 fn default_access_token_expiry() -> u64 { 3600 }       // 1 hour
 fn default_refresh_token_expiry() -> u64 { 604_800 }   // 7 days
 fn default_base_domain() -> String { "localhost".into() }
+fn default_relay_url() -> String { "http://localhost:4100".into() }
+fn default_relay_enabled() -> bool { false }
+fn default_relay_heartbeat_interval() -> u64 { 30 }
+fn default_relay_bounty_sync_interval() -> u64 { 60 }
+fn default_relay_reputation_interval() -> u64 { 300 }
 
 impl AppConfig {
     /// Load configuration from environment variables and optional config files.

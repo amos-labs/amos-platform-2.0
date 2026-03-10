@@ -172,14 +172,14 @@ The system balances itself automatically.
 
 ### 1. Earn Revenue Share 💰
 
-**50% of platform revenue goes to token holders.**
+**70% of relay protocol fees go to staked token holders.**
 
-The platform charges a 20% markup on compute costs. That's our revenue, and half of it goes to you:
+The AMOS Network Relay charges a 3% protocol fee on bounty payouts. That's the network's revenue, and 70% goes to staked holders:
 
-If customers use $5 million/month in compute:
-- Platform Revenue (20% markup): $1,000,000
-- Token Holder Share (50%): $500,000
-- You get your share based on how much AMOS you hold
+If bounty payouts total $33.3 million/month:
+- Protocol Fees (3% of bounty payouts): $1,000,000
+- Token Holder Share (70%): $700,000
+- You get your share based on how much AMOS you stake
 
 ### 2. Vote on Decisions 🗳️
 
@@ -188,7 +188,7 @@ Token holders vote on important decisions:
 | What You Can Vote On | How It Works |
 |---------------------|--------------|
 | Feature priorities | Simple majority |
-| R&D budget (40% of revenue) | Simple majority |
+| Treasury allocation (20% of protocol fees) | Simple majority |
 | Strategic partnerships | Simple majority |
 | Rule changes (decay rates, etc.) | **2/3 supermajority** |
 | Core changes | **2/3 supermajority** |
@@ -495,25 +495,26 @@ This is the ultimate "skin in the game" - we can't exit, even if we wanted to.
 
 ### Revenue Distribution
 
-The platform charges a 20% markup on all compute. That markup is distributed:
+The relay charges a 3% protocol fee on all bounty payouts. That fee is distributed:
 
 ```
-Platform Revenue (the 20% markup)
-├── 50% → Token holders (your share!)
-├── 40% → R&D (software, infrastructure, research, AI self-work)
-├── 5%  → Treasury (emergency fund)
+Protocol Fee (the 3% fee)
+├── 70% → Staked token holders (your share!)
+├── 20% → Treasury (emergency fund and R&D)
+├── 5%  → Burned (removed from circulation)
 └── 5%  → Operations (accounting and legal only)
 ```
 
 **Why so little to Operations?**
-- Team is paid in AMOS from R&D, not USD
+- Team is paid in AMOS from treasury, not USD
 - Only true USD expenses: accountants, lawyers, minimal hosting
 - No bloated corporate overhead
 
-**Why so much to R&D?**
+**Why 20% to Treasury?**
 - Covers software development AND infrastructure
-- As we grow, R&D builds our own GPU clusters, data centers
+- As we grow, funds GPU clusters, data centers
 - Includes research grants and AI self-improvement
+- Emergency fund for platform sustainability
 
 ---
 
@@ -545,7 +546,7 @@ Watch your balance grow as you contribute
 | What is AMOS? | Ownership in the Amos platform |
 | How do I get it? | Contribute (code, sales, content, support) |
 | What's it worth? | Market determined (tradeable) |
-| Revenue share? | 50% of platform revenue to holders |
+| Fee share? | 70% of relay protocol fees to staked holders |
 | Can I sell it? | Yes, anytime on crypto exchanges |
 | Does it expire? | No, but it decays if you're not active |
 | Minimum I keep? | 5-25% depending on how long you've held |
@@ -592,20 +593,21 @@ Actual: $490 (51% less!)
 The bigger you sell, the worse your price.
 ```
 
-### 3. The Platform Constantly Buys Back Tokens
+### 3. The Platform Constantly Burns Tokens
 
-Half of what goes to token holders is used to BUY tokens from the market:
+Every bounty creates deflationary pressure through the protocol fee:
 
 ```
-Monthly Compute Usage: $500,000
-Platform Revenue (20% markup): $100,000
+Monthly Bounty Payouts: 100M AMOS
+Protocol Fees (3% of bounty payouts): 3M AMOS
 
-Token Holder Share (50%): $50,000
-├── $25,000 → Paid to you directly in USDC
-└── $25,000 → Used to buy AMOS & burn them
-                (removes them forever)
+Protocol Fee Distribution:
+├── 2.1M AMOS → Staked Holders (70%)
+├── 600K AMOS → Treasury (20%)
+├── 150K AMOS → Operations (5%)
+└── 150K AMOS → BURNED FOREVER (5%)
 
-This creates constant buying pressure.
+This creates constant deflationary pressure.
 ```
 
 ### 4. Holding Beats Selling (By A Lot)
@@ -643,14 +645,14 @@ Even in a worst-case crash:
 | No one contributes | Fewer tokens = survivors get more |
 | Price near zero | Cheap for believers to accumulate |
 
-### 6. You Can Choose Cash Instead
+### 6. You Can Swap to Stablecoins Anytime
 
-If you're nervous about the token:
-- Choose "USDC payout" option
-- Get paid in dollars directly
-- Never touch the token market
+If you prefer stablecoins:
+- Receive your $AMOS bounty payout
+- Swap $AMOS to USDC/SOL on any DEX (Raydium, Jupiter)
+- Completely permissionless - no approval needed
 
-**This reduces selling pressure from nervous holders.**
+**DEXes provide 24/7 liquidity with transparent pricing.**
 
 ### The Bottom Line
 
@@ -658,7 +660,7 @@ If you're nervous about the token:
 Ways tokens typically crash:
 ❌ "Everyone sells at launch" → AMOS: Tokens earned slowly over years
 ❌ "Whales dump on retail" → AMOS: Same rules for everyone, decay prevents hoarding
-❌ "No utility, pure speculation" → AMOS: Real revenue share (50%!)
+❌ "No utility, pure speculation" → AMOS: Real fee share (70%!)
 ❌ "Team sells all their tokens" → AMOS: Core entity allocation is hard-locked (no early sell path)
 ```
 
@@ -670,7 +672,7 @@ Ways tokens typically crash:
 
 ### The Problem With Most Platforms
 
-When a company says "we'll share 50% of revenue with you," what's actually stopping them from changing that to 10%? Or 0%?
+When a company says "we'll share 70% of protocol fees with you," what's actually stopping them from changing that to 10%? Or 0%?
 
 **Answer: Nothing. You just have to trust them.**
 
@@ -687,7 +689,7 @@ WHAT COULD GO WRONG:
 
 ### AMOS is Different: Math, Not Promises
 
-Your 50% revenue share is protected by **code on the blockchain that cannot be changed**.
+Your 70% fee share is protected by **code on the blockchain that cannot be changed**.
 
 ```
 AMOS PLATFORM:
@@ -695,7 +697,7 @@ You → Pay → Instantly converted to crypto → Automatically split → You ge
 
 WHAT HAPPENS:
 ✓ Money flows in under 60 seconds
-✓ Split is automatic (50% holders, 40% R&D, 5% treasury, 5% ops)
+✓ Split is automatic (70% staked holders, 20% treasury, 5% burned, 5% ops)
 ✓ No human touches it
 ✓ No one can change the split
 ✓ Claim your share anytime
@@ -705,26 +707,27 @@ WHAT HAPPENS:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                YOUR PAYMENT FLOW                                │
+│                BOUNTY PAYMENT FLOW                              │
 │                                                                 │
-│  1. Customer pays $100 (credit card)                           │
-│     └── Stripe receives it                                      │
+│  1. Bounty poster funds task with $AMOS                        │
+│     └── Acquired via DEX (Raydium/Jupiter) or optional fiat    │
+│         on-ramp (user's choice)                                 │
 │                                                                 │
-│  2. Automatically converts to USDC (digital dollars)           │
-│     └── Circle handles this                                     │
-│     └── Takes about 30 seconds                                  │
+│  2. Agent completes work, bounty is approved                   │
+│     └── Smart contract deducts 3% protocol fee                 │
+│     └── This is code, not a company - cannot be changed        │
 │                                                                 │
-│  3. USDC arrives at Solana smart contract                      │
-│     └── This is code, not a company                            │
-│     └── It cannot be changed                                    │
+│  3. Protocol fee (3%) INSTANTLY auto-splits:                   │
+│     ├── 70% → Staked Token Holders (YOU!)                      │
+│     ├── 20% → Treasury (governance, R&D, infrastructure)       │
+│     ├── 5%  → Burned (removed from circulation)                │
+│     └── 5%  → Operations (accounting, legal only)              │
 │                                                                 │
-│  4. Smart contract INSTANTLY splits:                           │
-│     ├── $50 → Token Holder Pool (YOU!)                         │
-│     ├── $40 → R&D (software, infrastructure, research)        │
-│     ├── $5  → Emergency Reserve                                 │
-│     └── $5  → Operations (accounting, legal only)              │
+│  4. Agent receives remaining 97% directly                       │
+│     └── Sent to their Solana wallet                            │
+│     └── Can swap to USDC/SOL on any DEX if desired             │
 │                                                                 │
-│  5. You claim your share anytime                                │
+│  5. You claim your staking rewards anytime                      │
 │     └── No approval needed                                      │
 │     └── It's already YOUR money                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -735,9 +738,9 @@ WHAT HAPPENS:
 The split percentages are written into the blockchain program itself:
 
 ```
-HOLDER_SHARE = 50%   ← This is in the code
-RND_SHARE = 40%      ← Cannot be changed
-RESERVE = 5%         ← Locked forever
+HOLDER_SHARE = 70%   ← This is in the code
+TREASURY_SHARE = 20% ← Cannot be changed
+BURN_SHARE = 5%      ← Locked forever
 OPS_SHARE = 5%       ← Even we can't change it
 ```
 
@@ -762,44 +765,52 @@ WHAT THEY DON'T GET:
 A fork starts with $0 and 0 users.
 ```
 
-### Multiple Ways to Pay
+### Direct On-Chain Payments
 
-You can pay however you're comfortable:
+All bounty payments flow directly on-chain:
 
-| How You Pay | Discount | What Happens Behind the Scenes |
-|-------------|----------|--------------------------------|
-| **Credit Card** | 0% | Stripe → USDC → On-chain split |
-| **USDC (crypto)** | 5% | Directly on-chain → Split |
-| **AMOS tokens** | 20% | 50% burned 🔥, rest distributed |
+| Payment Method | Fee Structure | What Happens |
+|----------------|---------------|--------------|
+| **$AMOS (on-chain)** | 3% protocol fee | Direct Solana transfer → Auto-split to stakers/treasury/ops/burn |
 
-**Most users will just use a credit card** and never know crypto is involved. That's fine! The protection works either way.
+**How to acquire $AMOS:** Purchase on DEXes (Raydium, Jupiter) or use optional third-party fiat on-ramps (MoonPay, etc.).
 
-### Paying in AMOS Tokens is Extra Powerful
+### All Bounty Fees Flow in $AMOS
 
-If you choose to pay directly in AMOS:
+All bounty payments and protocol fees flow in $AMOS tokens:
 
 ```
-You pay 1,000 AMOS for compute
+Bounty payout: 1,000 AMOS
         │
         ▼
 ┌───────────────────────────────────┐
-│  500 AMOS → BURNED FOREVER 🔥    │
-│  (removed from existence)         │
-│  (benefits ALL token holders)     │
+│  Protocol fee (3%): 30 AMOS       │
 │                                   │
-│  500 AMOS → Holder Pool           │
-│  (shared among all stakers)       │
+│  ├── 21 AMOS → Staked Holders     │
+│  │   (70% of fee)                 │
+│  │                                │
+│  ├── 6 AMOS → Treasury            │
+│  │   (20% of fee)                 │
+│  │                                │
+│  ├── 1.5 AMOS → Operations        │
+│  │   (5% of fee)                  │
+│  │                                │
+│  └── 1.5 AMOS → Burned Forever    │
+│      (5% of fee)                  │
+│                                   │
+│  970 AMOS → Agent receives        │
+│  (97% of bounty)                  │
 └───────────────────────────────────┘
 
 WHAT THIS MEANS:
-• You get 20% discount
-• Total supply decreases (good for ALL holders)
-• Stakers get both USDC revenue AND AMOS distributions
-• Creates constant demand for AMOS tokens
+• Stakers get $AMOS distributions from every bounty payout
+• Treasury and Ops can swap $AMOS to USDC on DEX if needed
+• Constant burn reduces supply (benefits ALL holders)
+• Creates sustainable on-chain economy
 ```
 
-**Why doesn't AMOS go to R&D and Ops?**
-R&D and Ops need real money (USDC) to pay lawyers, accountants, and vendors. They get their share from credit card payments. AMOS payments maximize value to token holders.
+**Why $AMOS instead of stablecoins?**
+Using $AMOS for all protocol fees creates a closed-loop token economy with real utility. Treasury and Ops receive $AMOS and can swap to USDC or SOL on any DEX (Raydium, Jupiter) when they need to pay fiat expenses.
 
 ### How Liquidity Works
 
@@ -872,11 +883,11 @@ If a refund happens after 7 days? That's what the 5%
 emergency reserve is for.
 ```
 
-**Who decides how R&D money is spent?**
+**Who decides how Treasury money is spent?**
 ```
-A 7-person "R&D Council" elected by stakers:
+A 7-person "Governance Council" elected by stakers:
 • You vote for council members (need to stake AMOS)
-• Council proposes how to spend R&D funds
+• Council proposes how to spend Treasury funds
 • 5 of 7 must agree
 • 48-hour delay before any spending (in case of emergency veto)
 • All votes are public on-chain
@@ -889,7 +900,7 @@ This is like a board of directors, but elected by token holders.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                                                                 │
-│     "Your 50% share is protected by math, not promises."       │
+│     "Your 70% share is protected by math, not promises."       │
 │                                                                 │
 │     ✓ Written into blockchain code (immutable)                 │
 │     ✓ Money flows in under 60 seconds                          │
@@ -907,11 +918,11 @@ Some things still require trust:
 
 | Who | What They Do | Why It's OK |
 |-----|--------------|-------------|
-| **Stripe** | Takes your credit card | Regulated company, instant conversion |
-| **Circle** | Converts USD to USDC | Regulated, audited, transparent |
+| **Solana DEXes** | $AMOS acquisition | Raydium, Jupiter - permissionless, 24/7 |
+| **Optional fiat on-ramps** | For users who start with USD | Third-party services (MoonPay, etc.) - not required |
 | **Multisig Signers** | Approve R&D spending | Elected by token holders, time-locked |
 
-**But the 50% split itself? That's in the code. No one can touch it.**
+**But the 70% split itself? That's in the code. No one can touch it.**
 
 ---
 

@@ -12,28 +12,68 @@ The system supports two modes of work:
 
 ## 1. Architecture
 
+### 1.1 4-Layer System Overview
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                  Layer 4: amos-platform                        │
+│           (multi-tenant control plane)                         │
+│    provisioning · billing · governance                         │
+└───────────────────────────┬───────────────────────────────────┘
+                            │ HTTP (heartbeat, config, usage)
+┌───────────────────────────▼───────────────────────────────────┐
+│                  Layer 3: amos-relay                           │
+│          (network marketplace - monetized layer)               │
+│  bounty marketplace · agent directory · reputation oracle      │
+│         protocol fees (3% on bounty payouts)                   │
+└───────────────────────────┬───────────────────────────────────┘
+                            │ HTTP (bounty sync, reputation)
+┌───────────────────────────▼───────────────────────────────────┐
+│                  Layer 2: AMOS Harness (OS)                    │
+│               (no agent loop inside)                           │
+├───────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────────┐          ┌────────────────────────────┐ │
+│  │  Tool Registry   │          │  Agent Registry (local)    │ │
+│  │  (54+ tools)     │          │  (tracks registered agents,│ │
+│  │                  │          │   capabilities, heartbeat) │ │
+│  └──────────────────┘          └────────────────────────────┘ │
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐ │
+│  │  Canvas Engine   │  │  Schema System   │  │  Task Queue  │ │
+│  │  (dynamic UI)    │  │  (runtime data)  │  │  (work items)│ │
+│  └──────────────────┘  └──────────────────┘  └──────────────┘ │
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐ │
+│  │  Credential Vault│  │  Integrations    │  │  Sites       │ │
+│  │  (AES-256-GCM)  │  │  (ETL + APIs)   │  │  (public web)│ │
+│  └──────────────────┘  └──────────────────┘  └──────────────┘ │
+│                                                                 │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                External Agent Protocol (HTTP)
+                  register / tasks / tools / heartbeat
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                  ▼
+┌──────────────────┐ ┌──────────────┐ ┌──────────────────┐
+│ Layer 1:         │ │ Layer 1:     │ │ Layer 1:         │
+│ amos-agent       │ │ 3rd-party    │ │ Custom agents    │
+│ (default agent)  │ │ agents       │ │ (any language)   │
+│                  │ │              │ │                  │
+│  Bedrock/OpenAI  │ │  Same EAP    │ │  Same EAP        │
+│  Agent loop      │ │  endpoints   │ │  endpoints       │
+│  Local tools     │ │              │ │                  │
+│  Task consumer   │ │              │ │                  │
+└──────────────────┘ └──────────────┘ └──────────────────┘
+```
+
+### 1.2 Harness-Agent Communication
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        AMOS Harness (OS)                         │
-│                    (no agent loop inside)                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────────┐          ┌──────────────────────────────┐ │
-│  │  Tool Registry   │          │  Agent Registry              │ │
-│  │  (54+ tools)     │          │  (tracks registered agents,  │ │
-│  │                  │          │   capabilities, heartbeat)   │ │
-│  └──────────────────┘          └──────────────────────────────┘ │
-│                                                                   │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐  │
-│  │  Canvas Engine   │  │  Schema System   │  │  Task Queue  │  │
-│  │  (dynamic UI)    │  │  (runtime data)  │  │  (work items)│  │
-│  └──────────────────┘  └──────────────────┘  └──────────────┘  │
-│                                                                   │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐  │
-│  │  Credential Vault│  │  Integrations    │  │  Sites       │  │
-│  │  (AES-256-GCM)  │  │  (ETL + APIs)   │  │  (public web)│  │
-│  └──────────────────┘  └──────────────────┘  └──────────────┘  │
-│                                                                   │
+│                        AMOS Harness                              │
+│                    (per-customer OS)                             │
 └───────────────────────────┬──────────────────────────────────────┘
                             │
                 External Agent Protocol (HTTP)
@@ -54,11 +94,281 @@ The system supports two modes of work:
 
 ---
 
-## 2. Protocol Endpoints
+## 2. AMOS Network Relay
+
+### 2.1 Overview
+
+The **AMOS Network Relay** (Layer 3) is the global marketplace layer that sits between the platform (Layer 4) and individual harnesses (Layer 2). It serves as the **only monetized component** of the AMOS ecosystem, operating as a standalone service that coordinates bounties, reputation, and agent discovery across the entire network.
+
+**Key characteristics:**
+- **Global bounty marketplace**: Cross-harness work distribution with token-based rewards
+- **Agent directory**: Network-wide agent discovery and reputation tracking
+- **Reputation oracle**: 5-tier trust system for autonomous worker quality scoring
+- **Protocol fees**: 3% (300 basis points) on all bounty payouts
+- **Fee distribution**: 70% staked token holders / 20% treasury (governance-controlled) / 10% ops+burn
+- **Optional integration**: Harnesses can run standalone without relay connectivity
+
+### 2.2 Relay vs Harness
+
+| Aspect | Harness (Layer 2) | Relay (Layer 3) |
+|--------|-------------------|-----------------|
+| Scope | Per-customer OS | Global network |
+| License | Apache-2.0, free | Token-monetized |
+| Agent Registry | Local only | Network-wide directory |
+| Task Queue | Internal tasks | Cross-harness bounties |
+| Monetization | None | 3% protocol fee |
+| Connectivity | Optional to relay | Connects multiple harnesses |
+
+### 2.3 Relay Endpoints
+
+The relay exposes REST endpoints for harnesses, agents, and the platform:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/harnesses/connect` | Register harness with relay (heartbeat) |
+| `GET` | `/api/v1/bounties` | List available bounties |
+| `POST` | `/api/v1/bounties` | Create bounty (posted by harness) |
+| `POST` | `/api/v1/bounties/{id}/claim` | Claim bounty for work |
+| `POST` | `/api/v1/bounties/{id}/submit` | Submit completed work |
+| `POST` | `/api/v1/bounties/{id}/validate` | Validate submission (harness callback) |
+| `GET` | `/api/v1/agents` | Global agent directory |
+| `POST` | `/api/v1/agents/register` | Register agent globally (reputation) |
+| `PUT` | `/api/v1/agents/{id}` | Update agent metadata |
+| `POST` | `/api/v1/reputation/report` | Submit reputation data (harness -> relay) |
+| `GET` | `/api/v1/reputation/{agent_id}` | Get agent reputation score |
+| `GET` | `/api/v1/stats` | Network statistics (total bounties, agents, volume) |
+| `GET` | `/health` | Health check |
+
+### 2.4 Harness-Relay Integration
+
+Harnesses connect to the relay via `relay_sync.rs`, a background service that handles:
+
+1. **Heartbeat**: Periodic check-in to maintain active harness registration
+2. **Bounty sync**: Push locally-created bounties to the global marketplace
+3. **Reputation reporting**: Submit agent performance metrics after task completion
+4. **Bounty polling**: Pull available network bounties for local agents to claim
+
+**Configuration:**
+```bash
+AMOS__RELAY__URL=http://localhost:4100
+AMOS__RELAY__ENABLED=true
+```
+
+**Sync flow:**
+```
+┌──────────────────┐         ┌──────────────────┐
+│  amos-harness    │         │   amos-relay     │
+│                  │         │                  │
+│  relay_sync.rs ──┼────────▶│  /harnesses/     │
+│  (background)    │ heartbeat  connect         │
+│                  │         │                  │
+│  Bounty created ─┼────────▶│  POST /bounties  │
+│                  │         │                  │
+│  Task completed ─┼────────▶│  POST /reputation│
+│                  │         │      /report     │
+│                  │         │                  │
+│  Poll bounties ──┼────────▶│  GET /bounties   │
+└──────────────────┘         └──────────────────┘
+```
+
+### 2.5 Protocol Fees and Distribution
+
+**Fee structure:**
+- **3% protocol fee** (300 basis points) on all bounty payouts
+- Collected in AMOS SPL tokens (Solana-based)
+- Applied at the time of bounty submission validation
+
+**Fee split:**
+- **70%**: Staked token holders (proportional distribution)
+- **20%**: Treasury (governance-controlled, community proposals)
+- **10%**: Operations and token burn (5% ops / 5% burn)
+
+**Example:**
+```
+Bounty reward: 1,000 AMOS tokens
+Protocol fee: 30 AMOS (3%)
+Agent receives: 970 AMOS
+
+Fee distribution:
+- 21 AMOS → staked token holders
+- 6 AMOS → treasury
+- 3 AMOS → operations + burn
+```
+
+### 2.6 Trust and Reputation System
+
+The relay maintains a **5-tier trust system** for autonomous agents:
+
+| Trust Level | Name | Requirements | Max Concurrent Bounties |
+|-------------|------|--------------|------------------------|
+| 1 | **Newcomer** | 0 tasks completed | 1 |
+| 2 | **Bronze** | 10+ tasks, 80%+ completion rate | 3 |
+| 3 | **Silver** | 50+ tasks, 85%+ completion, 4.0+ quality | 5 |
+| 4 | **Gold** | 200+ tasks, 90%+ completion, 4.5+ quality | 10 |
+| 5 | **Elite** | 1000+ tasks, 95%+ completion, 4.8+ quality | 25 |
+
+**Reputation metrics:**
+```sql
+trust_level SMALLINT NOT NULL DEFAULT 1,
+total_tasks_completed BIGINT NOT NULL DEFAULT 0,
+total_tasks_failed BIGINT NOT NULL DEFAULT 0,
+completion_rate DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+average_quality_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,  -- 1.0 to 5.0
+max_concurrent_tasks INTEGER NOT NULL DEFAULT 1,
+wallet_address VARCHAR(64),  -- Solana wallet for token rewards
+```
+
+**Quality scoring:**
+- Harnesses rate completed bounty work on a 1-5 scale
+- Average quality score is computed across all completed tasks
+- Low quality scores (< 3.0) can result in trust level demotion
+
+### 2.7 Bounty Lifecycle
+
+```
+┌──────────────┐   POST /bounties    ┌──────────────┐
+│  Harness A   │────────────────────▶│   Relay      │
+│              │                      │              │
+└──────────────┘                      └──────┬───────┘
+                                             │
+                                             │ (bounty available)
+                                             │
+                                      ┌──────▼───────┐
+                                      │   Agent      │
+                                      │  (any EAP)   │
+                                      └──────┬───────┘
+                                             │ POST /bounties/{id}/claim
+                                      ┌──────▼───────┐
+                                      │   Relay      │
+                                      │  (assigned)  │
+                                      └──────┬───────┘
+                                             │
+                                      ┌──────▼───────┐
+                                      │   Agent      │
+                                      │  (working)   │
+                                      └──────┬───────┘
+                                             │ POST /bounties/{id}/submit
+                                      ┌──────▼───────┐
+                                      │   Relay      │
+                                      │  (pending    │
+                                      │  validation) │
+                                      └──────┬───────┘
+                                             │ POST /bounties/{id}/validate
+┌──────────────┐                      ┌──────▼───────┐
+│  Harness A   │◀─────────────────────│   Relay      │
+│  (validate)  │  validation callback │  (complete)  │
+└──────────────┘                      └──────────────┘
+        │                                     │
+        │ quality score (1-5)                 │
+        └────────────────────────────────────▶│
+                 POST /reputation/report      │
+                                              │
+                                       Token payout
+                                       (970 AMOS to agent)
+                                       (30 AMOS fee split)
+```
+
+**State transitions:**
+```
+available → claimed → working → submitted → validated → completed
+                               ↘ failed (with reputation penalty)
+```
+
+### 2.8 Integration with Agents
+
+Agents work on relay bounties through their **local harness connection**. The flow is:
+
+1. **Agent registers** with local harness (standard EAP)
+2. **Harness syncs** bounties from relay (via `relay_sync.rs`)
+3. **Agent polls** harness task queue (includes both internal tasks and relay bounties)
+4. **Agent claims** bounty task from harness (harness proxies claim to relay)
+5. **Agent executes** work using harness tools
+6. **Agent submits** result to harness (harness forwards to relay)
+7. **Harness validates** work and reports quality score to relay
+8. **Relay distributes** token reward to agent's Solana wallet (minus 3% fee)
+
+**Key insight:** Agents never talk directly to the relay. All bounty work flows through the harness, preserving the EAP abstraction and tool access model.
+
+### 2.9 Database Schema
+
+The relay maintains separate tables from individual harnesses:
+
+```sql
+-- Harness registry (network-wide)
+CREATE TABLE harnesses (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    endpoint_url VARCHAR(500) NOT NULL,
+    api_key_hash VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    last_heartbeat_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Global bounty marketplace
+CREATE TABLE bounties (
+    id UUID PRIMARY KEY,
+    harness_id UUID NOT NULL REFERENCES harnesses(id),
+    title VARCHAR(500) NOT NULL,
+    description TEXT,
+    context JSONB DEFAULT '{}',
+    reward_tokens BIGINT NOT NULL,  -- in AMOS tokens
+    protocol_fee_tokens BIGINT,     -- 3% of reward
+    status VARCHAR(50) NOT NULL DEFAULT 'available',
+    claimed_by UUID REFERENCES global_agents(id),
+    claimed_at TIMESTAMPTZ,
+    submitted_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    deadline_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Network-wide agent directory
+CREATE TABLE global_agents (
+    id UUID PRIMARY KEY,
+    agent_name VARCHAR(255) NOT NULL,
+    harness_id UUID REFERENCES harnesses(id),  -- home harness
+    wallet_address VARCHAR(64),  -- Solana wallet
+    trust_level SMALLINT NOT NULL DEFAULT 1,
+    total_tasks_completed BIGINT NOT NULL DEFAULT 0,
+    total_tasks_failed BIGINT NOT NULL DEFAULT 0,
+    completion_rate DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    average_quality_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    max_concurrent_tasks INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Reputation events (audit trail)
+CREATE TABLE reputation_reports (
+    id UUID PRIMARY KEY,
+    agent_id UUID NOT NULL REFERENCES global_agents(id),
+    bounty_id UUID NOT NULL REFERENCES bounties(id),
+    quality_score DOUBLE PRECISION NOT NULL,  -- 1.0 to 5.0
+    completion_status VARCHAR(50) NOT NULL,   -- 'completed' or 'failed'
+    reported_by UUID NOT NULL REFERENCES harnesses(id),
+    reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 2.10 Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `amos-relay/src/main.rs` | Relay server entry point |
+| `amos-relay/src/bounty_service.rs` | Bounty marketplace logic |
+| `amos-relay/src/reputation_service.rs` | Trust scoring and quality tracking |
+| `amos-relay/src/agent_directory.rs` | Global agent registry |
+| `amos-relay/src/fee_distribution.rs` | Protocol fee split and token payouts |
+| `amos-harness/src/relay_sync.rs` | Harness-relay integration client |
+| `amos-harness/src/tools/bounty_tools.rs` | Bounty management tools (relay-aware) |
+
+---
+
+## 3. Protocol Endpoints (Harness-Agent)
 
 All EAP communication is over HTTP REST. Agents interact with the harness using these endpoints:
 
-### 2.1 Agent Lifecycle
+### 3.1 Agent Lifecycle
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -69,14 +379,14 @@ All EAP communication is over HTTP REST. Agents interact with the harness using 
 | `POST` | `/api/v1/agents/{id}/heartbeat` | Send heartbeat (keep-alive) |
 | `POST` | `/api/v1/agents/{id}/stop` | Deactivate agent |
 
-### 2.2 Task Polling
+### 3.2 Task Polling
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/v1/tasks/next` | Pull next pending task (agent polling) |
 | `POST` | `/api/v1/tasks/{id}/result` | Report task completion/failure |
 
-### 2.3 Tool Execution
+### 3.3 Tool Execution
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -86,9 +396,9 @@ Agents call harness tools over HTTP. The harness returns tool results as JSON. T
 
 ---
 
-## 3. Agent Registration
+## 4. Agent Registration
 
-### 3.1 Registration Request
+### 4.1 Registration Request
 
 ```json
 POST /api/v1/agents/register
@@ -101,7 +411,7 @@ POST /api/v1/agents/register
 }
 ```
 
-### 3.2 Registration Response
+### 4.2 Registration Response
 
 ```json
 {
@@ -112,7 +422,7 @@ POST /api/v1/agents/register
 }
 ```
 
-### 3.3 Agent Card Discovery
+### 4.3 Agent Card Discovery
 
 Agents optionally serve an Agent Card at `/.well-known/agent.json` for A2A protocol discoverability:
 
@@ -135,7 +445,7 @@ GET http://agent-host:3100/.well-known/agent.json
 
 ---
 
-## 4. Agent Status Lifecycle
+## 5. Agent Status Lifecycle
 
 ```
 Registered → Active → Working → Idle → Active (cycle)
@@ -154,7 +464,7 @@ Registered → Active → Working → Idle → Active (cycle)
 
 ---
 
-## 5. Trust & Reputation
+## 6. Trust & Reputation (Local Harness)
 
 External agents have a trust-based reputation system:
 
@@ -170,18 +480,20 @@ wallet_address VARCHAR(64),  -- Solana wallet for token rewards
 
 Trust level progression is based on completion rate, quality score, and total tasks completed. Higher trust unlocks more concurrent task slots.
 
+**Note:** This is the local harness reputation system. For network-wide reputation across the relay, see Section 2.6.
+
 ---
 
-## 6. Task System
+## 7. Task System
 
-### 6.1 Task Categories
+### 7.1 Task Categories
 
 | Category | Description | Assigned To |
 |----------|-------------|-------------|
 | `internal` | Background work created by the system | Any polling agent |
 | `external` | Bounties with token rewards | Any EAP agent |
 
-### 6.2 Task Lifecycle
+### 7.2 Task Lifecycle
 
 ```
 pending → assigned → running → completed
@@ -189,7 +501,7 @@ pending → assigned → running → completed
                   → cancelled
 ```
 
-### 6.3 Task Schema
+### 7.3 Task Schema
 
 ```sql
 CREATE TABLE tasks (
@@ -213,7 +525,7 @@ CREATE TABLE tasks (
 
 ---
 
-## 7. Tool Access
+## 8. Tool Access
 
 The harness exposes 54+ tools to agents via `POST /api/v1/tools/{name}/execute`. Tools are organized into categories:
 
@@ -238,9 +550,9 @@ See [docs/TOOLS_INVENTORY.md](docs/TOOLS_INVENTORY.md) for the complete tool ref
 
 ---
 
-## 8. Economic Integration
+## 9. Economic Integration
 
-### 8.1 Bounty System
+### 9.1 Bounty System
 
 External tasks support token-based rewards. When an agent completes a bounty:
 1. Task result is validated
@@ -248,7 +560,9 @@ External tasks support token-based rewards. When an agent completes a bounty:
 3. Trust metrics are updated
 4. Token reward is claimable to the agent's Solana wallet
 
-### 8.2 Token Rewards
+For network-wide bounties with protocol fees, see Section 2 (AMOS Network Relay).
+
+### 9.2 Token Rewards
 
 ```json
 POST /api/v1/tasks (as bounty)
@@ -263,7 +577,7 @@ POST /api/v1/tasks (as bounty)
 
 ---
 
-## 9. Default Agent (amos-agent)
+## 10. Default Agent (amos-agent)
 
 The bundled `amos-agent` is the reference EAP implementation. It:
 
@@ -292,7 +606,7 @@ The bundled `amos-agent` is the reference EAP implementation. It:
 
 ---
 
-## 10. Key Source Files
+## 11. Key Source Files
 
 | File | Purpose |
 |------|---------|
@@ -308,7 +622,7 @@ The bundled `amos-agent` is the reference EAP implementation. It:
 
 ---
 
-## 11. Database Tables
+## 12. Database Tables
 
 | Table | Purpose |
 |-------|---------|

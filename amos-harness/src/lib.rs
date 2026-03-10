@@ -31,6 +31,7 @@ pub mod memory;
 pub mod middleware;
 pub mod openclaw;
 pub mod platform_sync;
+pub mod relay_sync;
 pub mod revisions;
 pub mod routes;
 pub mod schema;
@@ -60,6 +61,9 @@ pub use openclaw::{AgentConfig, AgentManager, AgentStatus};
 
 // Re-export platform sync types
 pub use platform_sync::{ActivityCounters, PlatformSyncClient};
+
+// Re-export relay sync types
+pub use relay_sync::RelaySyncClient;
 
 // Re-export task queue types
 pub use task_queue::{Task, TaskCategory, TaskQueue, TaskStatus};

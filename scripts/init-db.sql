@@ -25,5 +25,13 @@ CREATE EXTENSION IF NOT EXISTS vector;
 \c amos_platform_dev
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Create the relay database (if it doesn't already exist)
+SELECT 'CREATE DATABASE amos_relay_dev'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'amos_relay_dev')\gexec
+
+-- Enable pgvector on the relay database
+\c amos_relay_dev
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- Switch back to default
 \c amos_development

@@ -39,7 +39,7 @@ src/
 
 **Sync API**: Harness instances periodically heartbeat the platform, pull config updates, and push usage metrics. Supports both managed and self-hosted deployments.
 
-**Billing**: Tracks compute costs with 20% markup for managed deployments. AMOS token holders get discounts. No markup on customer-owned models (sovereign AI).
+**Billing**: Tracks compute costs for managed deployments. AMOS token holders get discounts via relay staking. Token economy monetization is handled by the relay (3% protocol fee on bounty payouts), not the platform.
 
 **Governance**: On-chain proposal creation, voting, and delegation via Solana programs.
 

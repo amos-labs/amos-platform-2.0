@@ -1,6 +1,6 @@
 # AMOS Token: Technical Whitepaper
 
-**Version 2.1 | January 2026**
+**Version 3.1 | March 2026**
 
 ---
 
@@ -65,7 +65,7 @@ AMOS Token introduces:
 2. **Decay function** - Continuous participation required for maximum stake
 3. **Pool-based rewards** - No external price dependencies
 4. **Transparent distribution** - All ownership publicly verifiable on-chain
-5. **Revenue sharing** - Token holders receive portion of platform revenue
+5. **Protocol fee sharing** - Token holders receive 70% of relay protocol fees
 
 ### 1.3 Design Principles
 
@@ -169,7 +169,7 @@ The Entity Pool (15% = 15,000,000 AMOS) is subject to a **10-year smart contract
 │  CAN DO:                                                                    │
 │  ├── Stake immediately → Earn revenue share                                │
 │  ├── Vote in governance → Participate in decisions                        │
-│  └── Receive USDC payouts → Fund operations                               │
+│  └── Receive $AMOS payouts → Fund operations                              │
 │                                                                             │
 │  CANNOT DO:                                                                 │
 │  ├── Sell tokens                                                           │
@@ -198,15 +198,15 @@ The Entity Pool (15% = 15,000,000 AMOS) is subject to a **10-year smart contract
 AMOS Labs cannot profit from token price speculation. The ONLY way the company earns money:
 
 ```
-Revenue Share Math:
+Protocol Fee Share Math:
 ├── AMOS Labs stakes 15M AMOS
 ├── Total staked (example): 50M AMOS
 ├── AMOS Labs share: 15M / 50M = 30%
-├── Monthly revenue (example): $100,000
-├── Holder pool: $100,000 × 50% = $50,000
-├── AMOS Labs payout: $50,000 × 30% = $15,000/month
+├── Monthly protocol fees (example): $100,000
+├── Holder pool: $100,000 × 70% = $70,000
+├── AMOS Labs payout: $70,000 × 30% = $21,000/month
 │
-└── To pay ourselves, we MUST build a platform that generates revenue.
+└── To pay ourselves, we MUST build a relay that generates fees.
     There is no other path to profitability.
 ```
 
@@ -238,34 +238,61 @@ The lockup is enforced at the protocol level. No admin key, no multisig, no gove
 
 ## 3. Economic Model
 
+**Tokenomics** ($AMOS on Solana — 100M fixed supply):
+- **No pre-mine.** Founders start at zero and earn like everyone.
+- **Revenue sources** (all flow to token holders):
+  - Protocol fee on every bounty payout (default 3%, adjustable 1-5% by Governance Council)
+  - 50% of Managed Hosting markup (while AMOS Labs runs the official cloud)
+- **Distribution** (ultra-holder-friendly):
+  - 70% → staked $AMOS holders (pro-rata claims)
+  - 20% → on-chain Treasury / Governance Fund (voted by council for audits, integrations, marketing, etc.)
+  - 10% → Ops + burn combined (Relay infrastructure, legal, compliance + automatic deflation)
+- **Earning mechanisms** (humans + AI agents):
+  - Bounty completion (paid in $AMOS)
+  - Code/community contributions (points → daily emission pool)
+  - Referrals & sales
+- **Staking utilities**:
+  - Higher trust level → more concurrent agents + priority
+  - Reduced decay rate
+  - Premium Relay access
+- **Deflationary pressure**: Built into the 10% Ops + burn bucket (governance can vote additional burns from treasury).
+- **Decay mechanism** remains (rewards active participants over passive holders).
+
 ### 3.1 Token Utility
 
-1. **Revenue Share**: 50% of platform revenue distributed to holders
-2. **Governance**: Voting rights on multiple proposal categories
-3. **Platform Benefits**: Premium features for staked tokens
+1. **Protocol Fee Share**: 70% of relay protocol fees distributed to staked holders
+2. **Governance**: Voting rights on treasury allocation and protocol parameters
+3. **Marketplace Access**: Staking required for premium bounty tiers and agent reputation
 4. **Trading**: Freely tradeable on Solana DEXs (Jupiter, Raydium)
 
-### 3.2 Business Model
+### 3.2 Business Model (Revenue Flow)
 
-The platform charges a **20% markup on all compute costs**. This markup is the platform's revenue.
+**Revenue Flow**: Revenue for the AMOS Network Relay is generated through a simple, transparent protocol fee on every bounty payout (default 3%, adjustable 1-5% by Governance Council vote). The fee is collected and distributed entirely on-chain in $AMOS — no centralized payment processor, no Stripe, no Circle, no mandatory fiat on-ramp required. Users and agents interact directly with Solana wallets:
+- Bounty posters fund tasks with $AMOS acquired on any DEX (Raydium, Jupiter, etc.) or via optional third-party fiat on-ramps
+- Agents claim rewards directly to their Solana wallet
+- The protocol automatically deducts the fee on payout and routes it according to the 70/20/10 model
 
-```
-Customer Compute Usage: $1,000
-├── $1,000 → Paid to cloud providers (pass-through)
-└── $200   → Platform Revenue (20% markup)
-```
+This design keeps participation fully optional and permissionless while creating direct, scalable value accrual for $AMOS holders. Managed Hosting (AMOS Cloud or any third-party provider) uses separate fiat billing and is completely independent from the Relay economy.
 
-### 3.3 Revenue Allocation
+**Why the relay is the monetization point:**
+- Harness and agent are free to maximize adoption
+- The relay is the natural monetization point (it connects supply and demand)
+- 3% default is low enough to be competitive, high enough to sustain the network
+- Fee is adjustable (1-5%) by Governance Council to respond to market conditions
+- Fee is unavoidable (enforced on-chain by the relay settlement program)
 
-The 20% markup is distributed as follows:
+### 3.3 Protocol Fee Allocation
+
+The 3% protocol fee is distributed as follows:
 
 ```rust
-// Implemented in amos_platform::billing module
-pub const REVENUE_ALLOCATION_BPS: RevenueAllocation = RevenueAllocation {
-    token_holders: 5000,    // 50% - Distributed proportionally to stakers
-    r_and_d: 4000,          // 40% - R&D pool (voted by R&D Council)
-    treasury: 500,          // 5% - Emergency reserves (DAO-controlled)
-    operations: 500,        // 5% - Accounting, legal, minimal hosting
+// Implemented in amos_relay::protocol_fees module
+pub const PROTOCOL_FEE_BPS: u64 = 300;           // 3% protocol fee
+
+pub const FEE_ALLOCATION_BPS: FeeAllocation = FeeAllocation {
+    staked_holders: 7000,   // 70% - Distributed proportionally to stakers
+    treasury: 2000,         // 20% - Governance-controlled treasury
+    ops_and_burn: 1000,     // 10% - 50% burned (deflationary), 50% operations
 };
 ```
 
@@ -273,24 +300,27 @@ pub const REVENUE_ALLOCATION_BPS: RevenueAllocation = RevenueAllocation {
 
 | Pool | % | Rationale |
 |------|---|-----------|
-| **Holders** | 50% | The core value proposition - immutable |
-| **R&D** | 40% | Maximum build speed - software, infrastructure, research, AI self-work |
-| **Treasury** | 5% | Emergency buffer - black swan, refunds, acquisition defense |
-| **Operations** | 5% | Minimal overhead - accounting, legal only. Team paid in AMOS. |
+| **Staked Holders** | 70% | Maximum incentive to stake and participate - the core value proposition |
+| **Treasury** | 20% | Governance-controlled fund for bounties, grants, R&D, and ecosystem growth |
+| **Ops + Burn** | 10% | 5% burned permanently (deflationary), 5% covers minimal operations |
 
-**R&D Pool Scope:**
-- Software development (bounties, grants)
-- Infrastructure (GPU clusters, data centers over time)
+**Treasury Scope (Governance-Controlled):**
+- Software development bounties and grants
+- Infrastructure (relay nodes, indexers)
 - Research grants (academic partnerships, novel AI)
 - AMOS self-work (AI improving the platform)
+- Ecosystem growth and partnerships
 
-**Note:** Contributors and team members are compensated in AMOS tokens from R&D pool, not USD. This keeps operations costs minimal (only true USD-required expenses like legal and accounting).
+**Ops + Burn Breakdown:**
+- 50% of ops+burn allocation is **permanently burned** (deflationary pressure)
+- 50% covers minimal operations (legal, accounting, infrastructure)
+- Team members are compensated in AMOS tokens from treasury bounties, not USD
 
 ### 3.4 Value Accrual
 
 Token value derives from:
 
-1. **Revenue Rights**: Claim on 50% of platform revenue
+1. **Fee Rights**: Claim on 70% of relay protocol fees
 2. **Scarcity**: Fixed supply with ongoing burns
 3. **Utility**: Platform access and governance
 4. **Network Effects**: Growing contributor/user base
@@ -853,29 +883,29 @@ AMOS solves this with **on-chain, immutable revenue distribution**.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    ZERO CUSTODY REVENUE FLOW                                │
 │                                                                             │
-│  CUSTOMER         STRIPE          CIRCLE           SOLANA                   │
-│  ────────         ──────          ──────           ──────                   │
+│  BOUNTY           RELAY           SETTLEMENT       SOLANA                   │
+│  PAYOUT           NODE            PROGRAM          TREASURY                 │
 │                                                                             │
-│  Pays $100 ──────► Receives ─────► Converts ──────► Treasury                │
-│  (instant)        (seconds)       (seconds)        Program                  │
-│                                                      │                      │
+│  Protocol fee ───► Relay ────────► Converts ──────► Treasury                │
+│  (on bounty       settles         (if needed)      Program                  │
+│   payout)         on-chain                           │                      │
 │                                                      │ IMMEDIATE SPLIT      │
 │                                                      ▼                      │
 │                                               ┌──────────────┐              │
-│                                               │  $50 USDC    │              │
+│                                               │  $70 $AMOS   │              │
 │                                               │  Holder Pool │──► Claimable │
 │                                               ├──────────────┤              │
-│                                               │  $40 USDC    │              │
-│                                               │  R&D Multisig│──► Voted     │
+│                                               │  $20 $AMOS   │              │
+│                                               │  Treasury    │──► Governed  │
 │                                               ├──────────────┤              │
-│                                               │   $5 USDC    │              │
-│                                               │  Reserve PDA │──► Locked    │
+│                                               │   $5 $AMOS   │              │
+│                                               │  Burned      │──► Gone     │
 │                                               ├──────────────┤              │
-│                                               │   $5 USDC    │              │
+│                                               │   $5 $AMOS   │              │
 │                                               │  Ops Multisig│──► Budgeted  │
 │                                               └──────────────┘              │
 │                                                                             │
-│  TIME FROM PAYMENT TO ON-CHAIN SPLIT: < 60 seconds                         │
+│  TIME FROM BOUNTY PAYOUT TO ON-CHAIN SPLIT: < 60 seconds                   │
 │  HUMAN CUSTODY TIME: 0 seconds                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -888,9 +918,9 @@ The revenue allocation is **baked into deployed program code**:
 // programs/amos_treasury/src/constants.rs
 // IMMUTABLE - Cannot be changed after deployment
 
-pub const HOLDER_SHARE_BPS: u64 = 5000;   // 50% to token holders
-pub const RND_SHARE_BPS: u64 = 4000;       // 40% to R&D multisig
-pub const RESERVE_SHARE_BPS: u64 = 500;    // 5% to emergency reserve
+pub const HOLDER_SHARE_BPS: u64 = 7000;   // 70% to staked token holders
+pub const TREASURY_SHARE_BPS: u64 = 2000;  // 20% to governance treasury
+pub const BURN_SHARE_BPS: u64 = 500;       // 5% permanently burned
 pub const OPS_SHARE_BPS: u64 = 500;        // 5% to operations
 
 pub const MIN_STAKE_DAYS: i64 = 30;        // Must hold 30 days for revenue
@@ -913,16 +943,16 @@ Users can pay in multiple ways, with crypto rails invisible to those who want si
 │  TIER 1: NORMIE MODE (Default)                                             │
 │  ─────────────────────────────                                              │
 │  • Pay in USD, see USD prices                                               │
-│  • Behind scenes: Auto-convert to USDC on-chain                            │
+│  • Behind scenes: Fiat on-ramp to $AMOS (optional third-party)             │
 │  • Customer never knows about crypto                                        │
 │  • Enterprise-friendly, no wallet required                                  │
 │                                                                             │
 │  TIER 2: CRYPTO-AWARE (Opt-in)                                             │
 │  ────────────────────────────                                               │
-│  • "Pay in USDC - Save 5%" option                                          │
-│  • "Pay in AMOS - Save 20%" option                                         │
+│  • "Pay in $AMOS" option (direct wallet payment)                           │
 │  • Connect Solana wallet                                                    │
-│  • Direct crypto payments, skip Stripe fees                                │
+│  • Direct on-chain payments, zero middlemen                                │
+│  • Swap from USDC/SOL via DEX if needed                                    │
 │                                                                             │
 │  TIER 3: BUILDER MODE (Advanced)                                           │
 │  ───────────────────────────────                                            │
@@ -945,29 +975,33 @@ Customer pays 10,000 AMOS
 │  AMOS PAYMENT PROCESSOR       │
 │  ─────────────────────────    │
 │                               │
-│  50% BURNED 🔥 (5,000 AMOS)  │
-│  └── Permanently removed      │
-│  └── Deflationary pressure    │
-│  └── Benefits ALL holders     │
+│  70% to Holder Pool           │
+│  └── 7,000 AMOS distributed   │
+│  └── To staked token holders   │
 │                               │
-│  50% to Holder Pool           │
-│  └── Distributed to stakers   │
-│  └── Additional to USDC share │
+│  20% to Treasury              │
+│  └── 2,000 AMOS governed      │
+│  └── Funds bounties & grants   │
+│                               │
+│  10% Ops + Burn               │
+│  └── 500 AMOS burned          │
+│  └── 500 AMOS to operations   │
 └───────────────────────────────┘
 
 RESULT:
-• Constant buy pressure (users need AMOS)
-• Maximum deflationary pressure (50% of payments burned)
-• Double holder benefit: USDC revenue + AMOS holder pool
-• R&D/Ops funded via USDC flow (need real currency for vendors)
+• Constant buy pressure (users need AMOS for bounties)
+• Deflationary pressure (5% of all fees burned permanently)
+• 70% flows directly to staked holders
+• Treasury funded for ecosystem growth via governance
 ```
 
-**Why 50/50 instead of 50/25/25?**
+**Why 70/20/10?**
 
-R&D and Ops need USDC to pay vendors (lawyers, accountants, AWS). AMOS tokens can't pay these bills. So:
-- USDC payments fund all four pools (50/40/5/5)
-- AMOS payments maximize holder value (50% burn, 50% holder)
-- The burn benefits ALL holders, not just stakers
+The relay-first model maximizes holder returns while maintaining sustainability:
+- 70% to holders is the highest share of any comparable protocol
+- 20% treasury ensures long-term ecosystem funding via governance
+- 10% ops+burn keeps operations lean while maintaining deflationary pressure
+- When fees are paid in AMOS tokens, the same 70/20/10 split applies
 
 ### Claim Mechanism
 
@@ -994,7 +1028,7 @@ pub fn claim_revenue(ctx: Context<ClaimRevenue>) -> Result<()> {
     let share_bps = (holder.stake_amount * 10000) / total_eligible_stake;
     let payout = (pool.balance * share_bps) / 10000;
 
-    // Transfer USDC to holder's wallet - NO APPROVAL NEEDED
+    // Transfer $AMOS to holder's wallet - NO APPROVAL NEEDED
     token::transfer(ctx.accounts.to_holder_wallet(), payout)?;
     
     Ok(())
@@ -1013,18 +1047,18 @@ For funds that require human judgment:
 
 | Pool | Control | Time-Lock | Purpose |
 |------|---------|-----------|---------|
-| **Holder Pool** (50%) | Automatic | None | Direct claims by stakers |
-| **R&D Pool** (40%) | 5-of-7 multisig (R&D Council) | 48 hours | Software, infra, research, AI work |
-| **Ops Pool** (5%) | 2-of-3 multisig | 24 hours | Accounting, legal only |
-| **Reserve** (5%) | DAO vote (66%+30% quorum) | 7 days | Emergency fund |
+| **Holder Pool** (70%) | Automatic | None | Direct claims by stakers |
+| **Treasury** (20%) | 5-of-7 multisig (Governance Council) | 48 hours | Bounties, grants, R&D, ecosystem |
+| **Burn** (5%) | Automatic | None | Permanently burned (deflationary) |
+| **Ops Pool** (5%) | 2-of-3 multisig | 24 hours | Accounting, legal, infrastructure |
 
-### R&D Council Structure
+### Governance Council Structure
 
-The R&D Pool (40% of revenue) is controlled by an elected council:
+The Treasury (20% of protocol fees) is controlled by an elected council:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    R&D COUNCIL GOVERNANCE                                   │
+│                    GOVERNANCE COUNCIL                                       │
 │                                                                             │
 │  COMPOSITION:                                                               │
 │  • 7 members elected by token stakers                                      │
@@ -1059,15 +1093,15 @@ The R&D Pool (40% of revenue) is controlled by an elected council:
 **What happens if no one is staking at launch?**
 
 ```
-Week 1: Platform launches
-├── Revenue: $10,000
-├── Holder Pool: $5,000 (50%)
+Week 1: Relay launches
+├── Protocol Fees: $10,000
+├── Holder Pool: $7,000 (70%)
 ├── Stakers: 0
 └── Result: Pool ACCUMULATES
 
 Week 2: First staker joins
-├── Accumulated Pool: $10,000 (two weeks of revenue)
-├── Staker with 10,000 AMOS: Can claim $10,000!
+├── Accumulated Pool: $14,000 (two weeks of fees)
+├── Staker with 10,000 AMOS: Can claim $14,000!
 └── Result: Early stakers get accumulated rewards
 
 DESIGN RATIONALE:
@@ -1082,47 +1116,43 @@ DESIGN RATIONALE:
 Revenue doesn't flow on-chain instantly to handle refunds:
 
 ```
-Day 0:   Customer pays $100
-         ├── $80 reserved for AWS (bank account)
-         └── $20 held in PENDING pool (not yet on-chain)
+Bounty approved and settled on relay:
+├── Agent receives 97% of bounty reward (instant, on-chain)
+└── 3% protocol fee withheld by relay settlement program
 
-Day 1-7: Refund window open
-         └── If refund: Cancel pending, refund from bank
+Fee distribution (immediate, on-chain):
+├── 70% → Holder Pool PDA → Claimable by stakers
+├── 20% → Treasury PDA → Governance-controlled
+├── 5%  → Burn address → Permanently removed
+└── 5%  → Ops multisig → Operations budget
 
-Day 7:   No refund?
-         └── $20 → Circle → USDC → Solana Treasury → Instant split
-
-WEEKLY DISTRIBUTION:
-• Every Monday, 7-day-old payments go on-chain
-• Batch processing reduces transaction costs
-• Matches Stripe chargeback window
-
-POST-SETTLEMENT REFUND:
-• Already distributed? Absorb from Treasury (5% buffer)
-• This is what the emergency reserve is for
+SETTLEMENT TIMING:
+• Fees flow on-chain immediately upon bounty approval
+• No batching needed - each settlement is a single transaction
+• No refund window - bounty approval is final
+• Dispute resolution happens BEFORE approval, not after
 ```
 
-### Cost Reconciliation
+### Fee Reconciliation
 
-The 80% compute pass-through is ACTUAL cost, not estimated:
+Protocol fees are calculated and enforced on-chain by the relay settlement program:
 
 ```
-PRICING MODEL:
-Customer Price = Actual AWS Cost × 1.20
+FEE MODEL:
+Protocol Fee = Bounty Payout × 0.03 (3%)
 
 Example:
-├── User runs workflow
-├── Bedrock cost: $8.34 (metered by AWS)
-├── Customer pays: $8.34 × 1.20 = $10.01
-└── Revenue: $1.67 (exactly 20% of cost)
+├── Bounty posted: 10,000 AMOS reward
+├── Agent completes and submits work
+├── Poster approves submission
+├── Settlement: 9,700 AMOS to agent, 300 AMOS protocol fee
+└── Fee split: 210 holder / 60 treasury / 15 burned / 15 ops
 
-MONTHLY RECONCILIATION:
-├── Track: Sum all metered costs
-├── Verify: Match against AWS invoice
-├── If variance > 5%: Alert ops team
-└── Adjust: Next month's reserve if needed
-
-The 5% Ops budget includes buffer for any variance.
+ALL ON-CHAIN:
+├── Every fee is a Solana transaction
+├── Verifiable by anyone on block explorer
+├── No reconciliation needed - math is in the program
+└── Treasury reports generated from on-chain data
 ```
 
 ### Trust Guarantees
@@ -1131,10 +1161,10 @@ The 5% Ops budget includes buffer for any variance.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    AMOS TRUST GUARANTEE                                     │
 │                                                                             │
-│  "Your revenue share is protected by math, not promises"                    │
+│  "Your fee share is protected by math, not promises"                        │
 │                                                                             │
-│  ✓ 50% holder share is IMMUTABLE (in deployed program code)                │
-│  ✓ Money flows in < 60 seconds (no custody window)                         │
+│  ✓ 70% holder share is IMMUTABLE (in deployed program code)                │
+│  ✓ Fees flow on-chain immediately upon bounty settlement                   │
 │  ✓ All transactions on-chain (publicly auditable)                          │
 │  ✓ Claim anytime (no waiting for monthly distribution)                     │
 │  ✓ No admin keys can change the split                                       │
@@ -1148,10 +1178,10 @@ Complete honesty about what you still must trust:
 
 | Trust Point | Why It Exists | Mitigation |
 |-------------|---------------|------------|
-| **Stripe** | Holds fiat before conversion | Immediate conversion, regulated |
-| **Circle** | USD → USDC conversion | Regulated, audited, transparent |
-| **Webhook Code** | Triggers the conversion | Open source, minimal logic |
-| **Multi-sig Signers** | Approve R&D/Ops spending | Elected by token holders, time-locks |
+| **Relay Operator** | Runs relay node infrastructure | Open source, decentralizable |
+| **Bounty Approval** | Human/AI reviews work quality | Dispute resolution before settlement |
+| **Multi-sig Signers** | Approve treasury/ops spending | Elected by token holders, time-locks |
+| **Oracle (future)** | DEX price feeds for market data | Multiple oracle aggregation planned |
 
 ---
 
@@ -1171,7 +1201,7 @@ Token holders vote on multiple categories with different requirements:
 
 | Category | Description | Min Stake | Quorum | Threshold |
 |----------|-------------|-----------|--------|-----------|
-| **R&D Allocation** | 20% revenue budget | 1,000 | 30% | 50% (majority) |
+| **Treasury Allocation** | 20% fee budget | 1,000 | 30% | 50% (majority) |
 | **Treasury Usage** | Fund usage proposals | 5,000 | 40% | 50% (majority) |
 | **Feature Priority** | Feature prioritization | 500 | 20% | 50% (majority) |
 | **Partnership** | Strategic partnerships | 2,500 | 35% | 50% (majority) |
@@ -1596,11 +1626,11 @@ The constant-product AMM formula provides natural protection against sell pressu
 
 Monthly revenue creates sustained buying pressure that exceeds worst-case sell pressure:
 
-| Annual Revenue | Buyback (50%) | vs Sell Pressure | Net Effect |
-|----------------|---------------|------------------|------------|
-| $1.2M | $300k/year | ~$29k worst case | Strong net buying |
-| $5M | $1.25M/year | ~$50k worst case | Dominant buying |
-| $20M | $5M/year | ~$100k worst case | Price appreciation |
+| Annual Protocol Fees | Holder Pool (70%) | vs Sell Pressure | Net Effect |
+|----------------------|-------------------|------------------|------------|
+| $1.2M | $840k/year | ~$29k worst case | Strong net buying |
+| $5M | $3.5M/year | ~$50k worst case | Dominant buying |
+| $20M | $14M/year | ~$100k worst case | Price appreciation |
 
 ### 11.5 Long-Term Supply Dynamics
 
@@ -1628,7 +1658,7 @@ Monthly revenue creates sustained buying pressure that exceeds worst-case sell p
 | **Zero Revenue** | Token still has governance value; platform can pivot |
 | **Mass Exodus** | Decay returns tokens to treasury for new contributors |
 | **Better Alternative** | Governance can vote to adapt mechanics |
-| **Regulatory** | Hybrid USDC payouts reduce token dependency |
+| **Regulatory** | DEX liquidity allows optional exit to stables |
 | **Liquidity Drain** | Treasury can add emergency liquidity |
 
 #### Self-Healing Mechanisms
@@ -1637,7 +1667,7 @@ Monthly revenue creates sustained buying pressure that exceeds worst-case sell p
 If price crashes 90%:
 1. Buyback buys 10x more tokens per dollar → Accelerated burn
 2. Success multiplier stays at 1.0x → No contributor penalty
-3. USDC payout option → Contributors unaffected
+3. DEX liquidity → Contributors can swap to USDC/SOL
 4. Low prices attract value investors → Natural floor
 
 If everyone stops contributing:
@@ -1652,7 +1682,7 @@ If everyone stops contributing:
 |--------|------|----------------|-------------------|
 | **Earning Method** | Work | Buy | Buy/Vest |
 | **Decay/Dilution** | Yes (40%/yr initial) | No | Yes (issuance) |
-| **Revenue Rights** | 50% | 0% | Dividends (2-4%) |
+| **Fee Rights** | 70% | 0% | Dividends (2-4%) |
 | **Governance** | Yes | Sometimes | Shareholder votes |
 | **Tradability** | Yes | Yes | Limited (private) |
 | **Early Advantage** | Moderate | Massive | Massive |
@@ -1740,6 +1770,8 @@ Fast revenue growth creates a significant price premium, similar to high-growth 
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.1 | Mar 2026 | Removed Stripe/Circle payment pipeline (all fees native $AMOS on-chain); Protocol fee now governance-adjustable (1-5%, default 3%); Added managed hosting markup as secondary revenue source; All payment flows are now direct, permissionless, and optional |
+| 3.0 | Mar 2026 | Relay-first model: 3% protocol fee, 70/20/10 split, relay as only monetization layer |
 | 2.1 | Jan 2026 | Added AI Participation & Universal Collaboration (Section 13) |
 | 2.0 | Jan 2026 | Pool-based rewards, graduated floor, success multipliers, expanded governance |
 | 1.0 | Jan 2026 | Initial release |

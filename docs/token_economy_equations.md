@@ -65,26 +65,26 @@ Where:
 
 ## 💵 REVENUE EQUATIONS
 
-### Customer Billing
+### Protocol Fee Collection
 
 ```
-Customer Charge = AWS Cost × 1.20  (20% markup)
+Protocol Fee = Bounty Payout × 0.03  (3% protocol fee)
 ```
 
 **Example:**
 ```
-$100 AWS cost → $120 customer charge → $20 margin
+$100 bounty payout → $3 protocol fee collected by AMOS Network Relay
 ```
 
-### Monthly Revenue
+### Monthly Protocol Fees
 
 ```
-R_monthly = R_subscriptions + R_compute + R_enterprise
+R_monthly = R_protocol
 
 Where:
-  R_subscriptions = Sum of all active plan fees
-  R_compute       = Customer compute charges (with 20% markup)
-  R_enterprise    = One-time deals and custom pricing
+  R_protocol = Bounty payout protocol fees (3% fee)
+
+Note: The AMOS Network Relay is the ONLY monetized layer
 ```
 
 ---
@@ -238,29 +238,29 @@ P_bounty = Bounty Value (in AMOS)
 
 ## 💸 REVENUE SHARE EQUATIONS
 
-### Revenue Allocation
+### Protocol Fee Allocation
 
 ```
-Token Holders:  50% of Revenue (immutable on-chain)
-R&D:            40% of Revenue (software, infrastructure, research, AI work)
-Treasury:        5% of Revenue (emergency fund, DAO-controlled)
-Operations:      5% of Revenue (accounting, legal only)
+Staked Holders: 70% of Protocol Fees (immutable on-chain)
+Treasury:       20% of Protocol Fees (DAO-controlled)
+Operations:      5% of Protocol Fees (accounting, legal only)
+Burn:            5% of Protocol Fees (deflationary mechanism)
 ```
 
 ### Your Payout
 
 ```
                   Your Stake
-Your Payout = ──────────────── × (Revenue × 50%)
+Your Payout = ──────────────── × (Protocol Fees × 70%)
               Total Staked
 ```
 
 **Example:**
 ```
-You: 50,000 AMOS, Total: 10,000,000 AMOS, Revenue: $100,000
+You: 50,000 AMOS, Total: 10,000,000 AMOS, Protocol Fees: $100,000
 
-Holder Pool = $100,000 × 50% = $50,000
-Your Payout = (50,000 / 10,000,000) × $50,000 = $250/month
+Holder Pool = $100,000 × 70% = $70,000
+Your Payout = (50,000 / 10,000,000) × $70,000 = $350/month
 ```
 
 ---
@@ -310,8 +310,8 @@ After 90 days: Stake is confirmed permanent
 │  Daily Emission:        16,000 AMOS (halving annually)           │
 │  Base Decay:            10% annual                               │
 │  Min/Max Decay:         2% - 25% annual                          │
-│  Compute Markup:        20%                                      │
-│  Revenue to Holders:    50%                                      │
+│  Protocol Fee:          3% on bounty payouts                     │
+│  Fees to Stakers:       70%                                      │
 │  Grace Period:          12 months                                │
 │  Clawback Period:       90 days                                  │
 └──────────────────────────────────────────────────────────────────┘
@@ -320,16 +320,16 @@ After 90 days: Stake is confirmed permanent
 │                     THE FLOW                                      │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  AWS Costs ──→ 20% Markup ──→ Revenue                            │
-│                                 │                                │
-│                                 ▼                                │
-│                          Profit Ratio                            │
-│                                 │                                │
-│                                 ▼                                │
-│                          Decay Rate                              │
-│                                 │                                │
-│                                 ▼                                │
-│                       Token Value Stability                      │
+│  Bounty Payouts ──→ 3% Protocol Fee ──→ Revenue                  │
+│                                           │                      │
+│                                           ▼                      │
+│                                    Profit Ratio                  │
+│                                           │                      │
+│                                           ▼                      │
+│                                    Decay Rate                    │
+│                                           │                      │
+│                                           ▼                      │
+│                                 Token Value Stability            │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 
@@ -366,18 +366,17 @@ STEP 1: AWS Usage (Platform Level)
   ──────────────────────────────
   Total Costs:          $40,000
 
-STEP 2: Revenue
-  Subscriptions:        $25,000
-  Compute (w/ 20%):     $24,000  ($20K cost + $4K margin)
-  Enterprise deals:     $10,000
+STEP 2: Protocol Fees
+  Bounty payouts:       $2,000,000
+  Protocol fee (3%):       $60,000
   ──────────────────────────────
-  Total Revenue:        $59,000
+  Total Protocol Fees:     $60,000
 
 STEP 3: Profit Ratio
-  π = ($59,000 - $40,000) / $40,000 = 0.475 (47.5% profit!)
+  π = ($60,000 - $40,000) / $40,000 = 0.50 (50% profit!)
 
 STEP 4: Decay Rate
-  δ = 10% - (0.475 × 5%) = 10% - 2.375% = 7.625%
+  δ = 10% - (0.50 × 5%) = 10% - 2.5% = 7.5%
   (Very healthy - low decay rewards holders)
 
 STEP 5: Your Contribution
@@ -398,23 +397,23 @@ STEP 7: Monthly Token Earnings
 
 STEP 8: Decay on Existing Stake
   Previous stake: 10,000 AMOS
-  Annual decay: 7.625%
-  Monthly decay: ~0.65%
-  Decay amount: 10,000 × 0.65% = 65 AMOS
+  Annual decay: 7.5%
+  Monthly decay: ~0.64%
+  Decay amount: 10,000 × 0.64% = 64 AMOS
 
 STEP 9: Net Position
   Previous: 10,000 AMOS
   Earned:   +2,880 AMOS
-  Decayed:     -65 AMOS
+  Decayed:     -64 AMOS
   ─────────────────────
-  New stake: 12,815 AMOS  (+28% growth!)
+  New stake: 12,816 AMOS  (+28% growth!)
 
-STEP 10: Revenue Share
-  Your stake: 12,815 AMOS
+STEP 10: Protocol Fee Share
+  Your stake: 12,816 AMOS
   Total staked: 10,000,000 AMOS
   Your share: 0.128%
-  Holder pool: $59,000 × 50% = $29,500
-  Your payout: 0.128% × $29,500 = $37.80/month
+  Holder pool: $60,000 × 70% = $42,000
+  Your payout: 0.128% × $42,000 = $53.76/month
 ```
 
 ---

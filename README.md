@@ -11,50 +11,88 @@ amos-automate/
 ├── amos-core       Shared types, config, errors, token economics
 ├── amos-harness    Per-customer OS (tools, canvas engine, schemas, sites, agent registry)
 ├── amos-agent      Default autonomous agent (Bedrock, model registry, task consumer)
+├── amos-relay      Network relay (bounty marketplace, agent directory, reputation oracle)
 ├── amos-platform   Multi-tenant control plane (provisioning, billing, governance)
 ├── amos-cli        Command-line interface for both harness and platform
 ├── amos-solana/    On-chain programs (treasury, bounties, governance) -- built via Anchor
-├── docker/         Production Dockerfiles (harness, platform, agent)
+├── docker/         Production Dockerfiles (harness, platform, agent, relay)
 └── docs/           Whitepaper, token economics
 ```
 
-### How it fits together
+### 4-Layer Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  amos-platform                       │
-│          (multi-tenant control plane)                │
-│   provisioning · billing · governance · sync API     │
-└───────────────┬─────────────────────────────────────┘
-                │ HTTP (heartbeat, config, usage)
-┌───────────────▼─────────────────────────────────────┐
-│                  amos-harness                         │
-│      (per-customer OS / tool host / marketplace)     │
-│                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐ │
-│  │  Canvas   │  │  Schema   │  │      Tools         │ │
-│  │  Engine   │  │ (runtime  │  │  (54+ tools:       │ │
-│  │  (iframe) │  │  defined) │  │   db, web, files,  │ │
-│  └──────────┘  └──────────┘  │   canvas, agents)   │ │
-│  ┌──────────┐  ┌──────────┐  └────────────────────┘ │
-│  │ Sessions  │  │   Sites   │  ┌──────────────────┐  │
-│  │ Memory    │  │  (public) │  │  Agent Registry   │  │
-│  └──────────┘  └──────────┘  └──────────────────┘  │
-└──────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Layer 4: amos-platform                   │
+│              (multi-tenant control plane)                    │
+│      provisioning · billing · governance · sync API          │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ HTTP (heartbeat, config, usage)
+┌───────────────────────▼─────────────────────────────────────┐
+│                     Layer 3: amos-relay                      │
+│            (network marketplace - monetized layer)           │
+│   bounty marketplace · agent directory · reputation oracle   │
+│              protocol fees (3% on bounty payouts)            │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ HTTP (bounty sync, reputation reporting)
+┌───────────────────────▼─────────────────────────────────────┐
+│                     Layer 2: amos-harness                    │
+│           (per-customer OS / tool host / registry)           │
+│                                                               │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────────────┐ │
+│  │  Canvas   │  │  Schema   │  │      Tools                 │ │
+│  │  Engine   │  │ (runtime  │  │  (54+ tools:               │ │
+│  │  (iframe) │  │  defined) │  │   db, web, files,          │ │
+│  └──────────┘  └──────────┘  │   canvas, agents, bounties) │ │
+│  ┌──────────┐  ┌──────────┐  └────────────────────────────┘ │
+│  │ Sessions  │  │   Sites   │  ┌──────────────────────────┐  │
+│  │ Memory    │  │  (public) │  │  Agent Registry (local)   │  │
+│  └──────────┘  └──────────┘  └──────────────────────────┘  │
+└──────────────────────┬────────────────────────────────────────┘
                        │ External Agent Protocol (register, tasks, tools, heartbeat)
           ┌────────────┴────────────┐
           ▼                         ▼
-┌──────────────────┐  ┌──────────────────────────────┐
-│   amos-agent     │  │  External / 3rd-party agents  │
-│  (default agent) │  │  (same protocol, same access) │
-│                  │  │                                │
-│  Agent Loop      │  │  Any language / framework      │
-│  Bedrock/OpenAI  │  │  EAP-compatible                │
-│  Model Registry  │  │  /.well-known/agent.json       │
-│  Local Tools     │  │                                │
-│  Task Consumer   │  │                                │
-└──────────────────┘  └──────────────────────────────┘
+┌──────────────────┐  ┌──────────────────────────────────────┐
+│ Layer 1:         │  │  Layer 1:                             │
+│ amos-agent       │  │  External / 3rd-party agents          │
+│ (default agent)  │  │  (same protocol, same access)         │
+│                  │  │                                        │
+│  Agent Loop      │  │  Any language / framework              │
+│  Bedrock/OpenAI  │  │  EAP-compatible                        │
+│  Model Registry  │  │  /.well-known/agent.json               │
+│  Local Tools     │  │                                        │
+│  Task Consumer   │  │                                        │
+└──────────────────┘  └──────────────────────────────────────┘
 ```
+
+### Architecture Layers Explained
+
+**Layer 1: Agents** (free, open-source)
+- Default autonomous worker (`amos-agent`) included
+- BYOK (bring your own key) for AWS Bedrock or OpenAI-compatible models
+- No vendor lock-in -- use any EAP-compatible agent
+- Open protocol allows 3rd-party agent integration
+
+**Layer 2: Harness** (free, open-source)
+- Per-customer OS with 54+ tools
+- Canvas engine for dynamic UI
+- Schema system for runtime-defined data models
+- Agent registry and task queue
+- 100% Apache-2.0 licensed with no monetization
+
+**Layer 3: Relay** (token-monetized)
+- Global bounty marketplace (cross-harness work distribution)
+- Agent directory (reputation and discovery)
+- Reputation oracle (trust scoring)
+- 3% protocol fee on bounty payouts
+- Fee split: 70% staked token holders / 20% treasury (governance-controlled) / 10% ops+burn
+- Optional layer -- harnesses run standalone without relay
+
+**Layer 4: Platform** (managed hosting)
+- Multi-tenant provisioning and orchestration
+- Billing infrastructure
+- Governance and compliance
+- Separate business model from relay tokenomics
 
 ## Quick Start
 
@@ -79,13 +117,19 @@ AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_dev \
   cargo run --bin amos-harness
 # → http://localhost:3000
 
-# Run the platform (terminal 2)
+# Run the relay (terminal 2)
+AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_relay_dev \
+  AMOS__SERVER__PORT=4100 \
+  cargo run --bin amos-relay
+# → http://localhost:4100
+
+# Run the platform (terminal 3)
 AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_platform_dev \
   AMOS__SERVER__PORT=4000 \
   cargo run --bin amos-platform
 # → http://localhost:4000
 
-# Run the agent (terminal 3)
+# Run the agent (terminal 4)
 cargo run --bin amos-agent
 # → Interactive mode, type messages to chat
 
@@ -97,8 +141,14 @@ AMOS_SERVE=true cargo run --bin amos-agent
 ### Docker Development
 
 ```bash
-# Start everything (postgres, redis, localstack, platform, harness, agent)
+# Start everything (postgres, redis, localstack, platform, relay, harness, agent)
 docker compose up --build
+
+# Check services:
+# - Platform: http://localhost:4000/health
+# - Relay: http://localhost:4100/health
+# - Harness: http://localhost:3000/health
+# - Agent: http://localhost:3100/health
 
 # Or just infrastructure
 docker compose up postgres redis -d
@@ -115,6 +165,8 @@ All config uses the `AMOS__` prefix with `__` as nested separator:
 | `AMOS__REDIS__URL` | `redis://127.0.0.1:6379` | Redis connection string |
 | `AMOS__AGENT__MAX_ITERATIONS` | `25` | Max agent loop iterations per request |
 | `AMOS__DEPLOYMENT__MODE` | `managed` | `managed` or `self_hosted` |
+| `AMOS__RELAY__URL` | `http://localhost:4100` | Relay connection URL |
+| `AMOS__RELAY__ENABLED` | `false` | Enable relay integration |
 
 AWS credentials for Bedrock are read from the standard AWS credential chain.
 
@@ -146,6 +198,21 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 | `GET` | `/s/{slug}` | Public site |
 | `GET` | `/health` | Health check |
 
+### Relay Endpoints -- amos-relay :4100
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/bounties` | List available bounties |
+| `POST` | `/api/v1/bounties` | Create bounty (posted by harness) |
+| `POST` | `/api/v1/bounties/{id}/claim` | Claim bounty for work |
+| `POST` | `/api/v1/bounties/{id}/submit` | Submit completed work |
+| `GET` | `/api/v1/agents` | Global agent directory |
+| `POST` | `/api/v1/agents/register` | Register agent globally (reputation) |
+| `POST` | `/api/v1/reputation/report` | Submit reputation data |
+| `GET` | `/api/v1/reputation/{agent_id}` | Get agent reputation score |
+| `POST` | `/api/v1/harnesses/connect` | Register harness with relay |
+| `GET` | `/health` | Health check |
+
 ### Agent Endpoints -- amos-agent :3100
 
 | Method | Path | Description |
@@ -156,13 +223,17 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 
 ## Deployment Modes
 
-**Managed** (default): AMOS provisions and manages harness containers. Compute costs include 20% markup.
+**Managed** (default): AMOS provisions and manages harness containers. Relay integration enabled by default for bounty marketplace access. Protocol fees (3%) on bounty payouts fund the token economy.
 
-**Self-Hosted**: Customers run AMOS on their own infrastructure with their own models. No compute markup on customer-owned models. Supports air-gapped operation.
+**Self-Hosted**: Customers run AMOS on their own infrastructure with their own models. No compute costs to AMOS. Supports air-gapped operation. Relay integration is optional.
 
 ## Token Economics
 
-AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixed supply. 50% of platform revenue distributed to token holders.
+AMOS monetizes exclusively through the **Network Relay** -- a 3% protocol fee (300 basis points) on bounty payouts. Fee split: 70% staked token holders, 20% treasury (governance-controlled), 10% ops+burn.
+
+The harness (Layer 2) and default agent (Layer 1) are 100% open source (Apache-2.0) with no monetization. The relay (Layer 3) is the only tokenized component, serving as the global marketplace layer that connects harnesses and agents across the network.
+
+AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixed supply.
 
 See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full specification.
 

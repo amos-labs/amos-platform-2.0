@@ -3,6 +3,7 @@ members = [
     "amos-core",
     "amos-harness",
     "amos-platform",
+    "amos-relay",
     "amos-cli",
     "amos-agent",
     # Solana programs are built separately via Anchor (not part of cargo workspace)

@@ -1,5 +1,5 @@
-# Multi-stage build for AMOS Platform
-# Central token economics, governance, billing
+# Multi-stage build for AMOS Relay
+# Network relay / bounty marketplace
 
 # Stage 1: Builder
 FROM rust:bookworm AS builder
@@ -17,8 +17,8 @@ COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay
 
-# Build only the platform binary
-RUN cargo build --release --bin amos-platform
+# Build only the relay binary
+RUN cargo build --release --bin amos-relay
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
@@ -32,22 +32,22 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/amos-platform /usr/local/bin/
+COPY --from=builder /app/target/release/amos-relay /usr/local/bin/
 
 # Create non-root user
 RUN useradd -m -u 1000 amos && \
-    mkdir -p /app/data /app/keys && \
+    mkdir -p /app/data && \
     chown -R amos:amos /app
 
 USER amos
 WORKDIR /app
 
-# Expose HTTP and gRPC ports
-EXPOSE 4000 4001
+# Expose HTTP port
+EXPOSE 4100
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:4000/health || exit 1
+    CMD curl -f http://localhost:4100/health || exit 1
 
-# Run the platform
-CMD ["amos-platform"]
+# Run the relay
+CMD ["amos-relay"]

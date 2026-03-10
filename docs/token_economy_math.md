@@ -34,32 +34,34 @@
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        INTERNAL WORK TOKEN ECONOMY                          │
+│                        AMOS NETWORK RELAY PROTOCOL                          │
 │                                                                              │
-│  Work Tokens (WT) represent computational resources consumed by users       │
+│  The Relay facilitates bounty payouts and collects protocol fees            │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  WT = Σ (AI_tokens × model_weight) + (emails × email_rate)          │    │
-│  │       + (storage_gb × storage_rate) + (api_calls × api_rate)        │    │
-│  │       + (other_compute × compute_rate)                              │    │
+│  │  Protocol Fee = Bounty Payout × 0.03 (3% fee)                       │    │
 │  │                                                                     │    │
-│  │  Customer Charge = WT × (1 + MARKUP%)  where MARKUP = 20%           │    │
+│  │  Fee Distribution:                                                  │    │
+│  │  • 70% → Staked token holders                                       │    │
+│  │  • 20% → Treasury                                                   │    │
+│  │  • 5%  → Operations                                                 │    │
+│  │  • 5%  → Burn (deflationary)                                        │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                              │
-│  This creates the bridge: Real AWS costs → Work Tokens → Customer Revenue   │
+│  This creates the bridge: Bounty Payouts → Protocol Fees → Token Value     │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         AMOS TOKEN ECONOMY                                   │
 │                                                                              │
-│  AMOS tokens represent ownership of future platform revenue                  │
+│  AMOS tokens represent ownership of future relay protocol fees               │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │  Key Dynamics:                                                      │    │
 │  │  • Emission: Pool-based daily distribution (16K/day, halving)       │    │
 │  │  • Decay: Dynamic rate tied to platform economics (2-25%)           │    │
-│  │  • Revenue Share: 50% of platform revenue to token holders          │    │
+│  │  • Fee Share: 70% of relay protocol fees to staked token holders    │    │
 │  │  • Fixed Supply: 100M tokens ever, deflationary                     │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -163,20 +165,20 @@ C_doc = (textract_pages × $0.0012) +
 ```
 R_total = R_compute + R_enterprise + R_other
 ```
-#### 3.1.2 Compute Revenue (with 20% Markup)
+#### 3.1.2 Protocol Fee Revenue (3% on Bounty Payouts)
 
 ```
-R_compute = C_compute_usage × (1 + MARKUP)
+R_protocol = C_bounty_payouts × (1 + PROTOCOL_FEE)
 
-Where MARKUP = 0.20 (20%)
+Where PROTOCOL_FEE = 0.03 (3%)
 ```
 
-This is the key link between AWS costs and revenue:
-- **We charge customers 20% more than our AWS costs**
-- This margin contributes to platform profitability
-- AMOS payment discount: 20% off when paying with AMOS tokens
+This is the key link between bounty payouts and revenue:
+- **The AMOS Network Relay charges a 3% protocol fee on all bounty payouts**
+- This fee is the ONLY monetized layer in the system
+- All protocol fees go to staked token holders, treasury, and operations
 
-**Example**: $100 in raw AWS compute costs → $120 customer charge → $20 margin
+**Example**: $100 in bounty payouts → $3 protocol fee collected by relay
 
 ### 3.2 Monthly Revenue Calculation
 
@@ -490,12 +492,12 @@ V_new = 1,000 + (9,000 × 0.90) = 1,000 + 8,100 = 9,100 AMOS
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     REVENUE ALLOCATION                                  │
+│                     PROTOCOL FEE ALLOCATION                             │
 │                                                                         │
-│  R_holders   = R_total × 0.50  (50% to token holders)                   │
-│  R_r_and_d   = R_total × 0.40  (40% to R&D)                             │
-│  R_treasury  = R_total × 0.05  (5% to emergency fund)                   │
+│  R_holders   = R_total × 0.70  (70% to staked token holders)            │
+│  R_treasury  = R_total × 0.20  (20% to treasury)                        │
 │  R_ops       = R_total × 0.05  (5% to operations)                       │
+│  R_burn      = R_total × 0.05  (5% to burn)                             │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -512,74 +514,74 @@ V_new = 1,000 + (9,000 × 0.90) = 1,000 + 8,100 = 9,100 AMOS
 │  Where:                                                                 │
 │  • S_you = Your current AMOS stake                                      │
 │  • S_total = Total AMOS staked on platform                              │
-│  • R_holders = 50% of platform revenue                                  │
+│  • R_holders = 70% of relay protocol fees                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Example**: You hold 50,000 AMOS, total staked is 10,000,000 AMOS, monthly revenue is $100,000
 ```
-R_holders = $100,000 × 0.50 = $50,000
+R_holders = $100,000 × 0.70 = $70,000
 
 Your share:
-Payout_you = (50,000 / 10,000,000) × $50,000 = 0.005 × $50,000 = $250/month
+Payout_you = (50,000 / 10,000,000) × $70,000 = 0.005 × $70,000 = $350/month
 ```
 
 ---
 
-## 10. Work Token Bridge (Internal Economy)
+## 10. AMOS Network Relay Protocol
 
-### 10.1 Work Token Calculation
+### 10.1 Protocol Fee Calculation
 
-Work tokens abstract AWS costs into a unified billing unit:
+The AMOS Network Relay is the ONLY monetized layer in the system:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     WORK TOKEN FORMULA                                  │
+│                     PROTOCOL FEE FORMULA                                │
 │                                                                         │
-│  WT_ai = (input_tokens + output_tokens × 3) × model_multiplier          │
-│  WT_email = emails × 5                                                  │
-│  WT_storage = storage_mb × 0.1                                          │
-│  WT_api = api_calls × 0.5                                               │
-│  WT_compute = cost_usd × 100                                            │
+│  Protocol_Fee = Bounty_Payout × 0.03                                    │
 │                                                                         │
-│  WT_total = WT_ai + WT_email + WT_storage + WT_api + WT_compute         │
+│  Where:                                                                 │
+│  • Bounty_Payout = Total amount paid to bounty recipients               │
+│  • 0.03 = 3% protocol fee                                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 10.2 Customer Billing
+### 10.2 Fee Distribution
 
 ```
-Customer_charge = (WT_total × rate_per_token) × (1 + MARKUP)
+Protocol Fee Collection → Distribution to Stakeholders
 
-Where:
-• rate_per_token = $0.0001 (roughly 10K tokens = $1)
-• MARKUP = 20%
+70% → Staked Token Holders (proportional to stake)
+20% → Treasury (DAO-controlled)
+5%  → Operations (accounting, legal)
+5%  → Burn (deflationary mechanism)
 ```
 
-### 10.3 Profit Flow
+### 10.3 Revenue Flow
 
 ```
-Customer Payment
+Bounty Payout
        │
        ▼
 ┌──────────────────┐
-│  Raw AWS Cost    │◄──── $100 (tracked in WorkTokenUsageSummary.raw_cost_cents)
-│  + 20% Markup    │◄──── $20  (uplifted_cost_cents - raw_cost_cents)
+│  Relay Processes │
+│  Payment         │◄──── Bounty payout via AMOS Network Relay
 └──────────────────┘
        │
        ▼
 ┌──────────────────┐
-│  Customer Pays   │◄──── $120
+│  Protocol Fee    │◄──── 3% fee collected by relay
+│  (3%)            │
 └──────────────────┘
        │
        ▼
 ┌──────────────────┐
-│  Profit/Margin   │◄──── $20 → feeds into platform profit ratio (π)
+│  Fee Split       │◄──── 70/20/5/5 distribution
 └──────────────────┘
        │
        ▼
 ┌──────────────────┐
-│  Token Economy   │◄──── π determines decay rate (δ)
+│  Token Economy   │◄──── Fees feed platform profit ratio (π) → decay rate (δ)
 └──────────────────┘
 ```
 
@@ -599,19 +601,19 @@ Customer Payment
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  2. WORK TOKENS CALCULATED                                                  │
-│     • AI query: 5,000 tokens × model_rate = 150 WT                          │
-│     • Email: 1 × 5 = 5 WT                                                   │
-│     • Total: 155 WT                                                         │
-│     • Tracked by WorkTokenService                                           │
+│  2. BOUNTIES COMPLETED                                                      │
+│     • Agent completes bounty work                                           │
+│     • Bounty validated and approved                                         │
+│     • Payout processed via AMOS Network Relay                               │
+│     • Tracked by BountyService                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  3. CUSTOMER CHARGED                                                        │
-│     • Raw cost: $0.05                                                       │
-│     • With 20% markup: $0.06                                                │
-│     • Tracked by UserBillingAccount                                         │
+│  3. PROTOCOL FEE CHARGED                                                    │
+│     • Bounty payout: $100.00                                                │
+│     • With 3% protocol fee: $3.00                                           │
+│     • Tracked by AMOS Network Relay                                         │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -651,10 +653,10 @@ Customer Payment
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  8. REVENUE DISTRIBUTED (MONTHLY)                                           │
+│  8. PROTOCOL FEES DISTRIBUTED (MONTHLY)                                     │
 │     • Your stake: 50,000 AMOS (0.5% of total)                               │
-│     • Holder pool: $50,000 × 50% = $25,000                                  │
-│     • Your payout: 0.5% × $25,000 = $125 USDC                               │
+│     • Holder pool: $50,000 × 70% = $35,000                                  │
+│     • Your payout: 0.5% × $35,000 = $175 $AMOS                              │
 │     • Managed by RevenueDistribution                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -669,10 +671,10 @@ C_ai = Σ(input × input_rate + output × output_rate)
 C_total = C_ai + C_email + C_compute + C_storage + C_other
 ```
 
-### Revenue
+### Protocol Fees
 ```
-R_compute = C_compute_usage × 1.20 (20% markup)
-R_total = R_subscriptions + R_compute + R_enterprise
+R_protocol = C_bounty_payouts × 0.03 (3% protocol fee)
+R_total = R_protocol (relay is the ONLY monetized layer)
 ```
 
 ### Profit Ratio
@@ -749,7 +751,7 @@ Payout_you = (S_you / S_total) × R_holders
 | Token Economics | Constants & core types | `amos-core/src/token/economics.rs` |
 | Decay Engine | Dynamic decay, profit calc | `amos-core/src/token/decay.rs` |
 | Emission Engine | Points → tokens, halving | `amos-core/src/token/emission.rs` |
-| Revenue Distribution | USDC/AMOS splits, claims | `amos-core/src/token/revenue.rs` |
+| Revenue Distribution | $AMOS distribution, claims | `amos-core/src/token/revenue.rs` |
 | Trust System | Agent trust levels 1-5 | `amos-core/src/token/trust.rs` |
 | Treasury Program | On-chain revenue & staking | `amos-solana/programs/amos-treasury/` |
 | Bounty Program | On-chain bounty distribution | `amos-solana/programs/amos-bounty/` |

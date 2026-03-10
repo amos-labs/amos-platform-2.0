@@ -1,0 +1,76 @@
+[package]
+name = "amos-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "AMOS Network Relay - global bounty marketplace, agent directory, and reputation oracle"
+
+[[bin]]
+name = "amos-relay"
+path = "src/main.rs"
+
+[dependencies]
+# Internal dependencies
+amos-core = { path = "../amos-core", features = ["db", "http"] }
+
+# Async runtime
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Redis
+redis = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Solana
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+
+# Time and UUID
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Config
+config = { workspace = true }
+dotenvy = { workspace = true }
+secrecy = { workspace = true }
+
+# Crypto
+bs58 = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+
+# Auth
+jsonwebtoken = { workspace = true }
+
+# Misc
+rand = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+pretty_assertions = "1.4"

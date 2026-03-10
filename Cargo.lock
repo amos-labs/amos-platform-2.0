@@ -288,6 +288,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "amos-relay"
+version = "0.1.0"
+dependencies = [
+ "amos-core",
+ "anyhow",
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "bs58",
+ "chrono",
+ "config",
+ "dotenvy",
+ "futures",
+ "hex",
+ "jsonwebtoken",
+ "pretty_assertions",
+ "rand 0.8.5",
+ "redis",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "solana-client",
+ "solana-sdk",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
