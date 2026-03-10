@@ -281,7 +281,11 @@ impl Tool for CreateConnectionTool {
                 },
                 "credentials": {
                     "type": "object",
-                    "description": "Credentials data as JSON object (e.g., {\"api_key\": \"sk_123\"} or {\"username\": \"user\", \"password\": \"pass\"})"
+                    "description": "Credentials data as JSON object (e.g., {\"api_key\": \"sk_123\"} or {\"username\": \"user\", \"password\": \"pass\"}). Not required if vault_credential_id is provided."
+                },
+                "vault_credential_id": {
+                    "type": "string",
+                    "description": "UUID of a credential stored in the encrypted vault (from collect_credential tool). Use this instead of passing plaintext credentials."
                 },
                 "name": {
                     "type": "string",
@@ -292,7 +296,7 @@ impl Tool for CreateConnectionTool {
                     "description": "Optional: Connection-specific configuration settings"
                 }
             },
-            "required": ["integration_id", "auth_type", "credentials"]
+            "required": ["integration_id", "auth_type"]
         })
     }
 
@@ -313,10 +317,29 @@ impl Tool for CreateConnectionTool {
             .ok_or_else(|| amos_core::AmosError::Validation("auth_type is required".to_string()))?
             .to_string();
 
-        let credentials = params
-            .get("credentials")
-            .ok_or_else(|| amos_core::AmosError::Validation("credentials is required".to_string()))?
-            .clone();
+        // Support vault_credential_id as an alternative to plaintext credentials.
+        // When vault_credential_id is provided, store it as a reference in credentials_data
+        // so the ApiExecutor can resolve it at runtime from the encrypted vault.
+        let vault_credential_id = params
+            .get("vault_credential_id")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let credentials = if let Some(ref vault_id) = vault_credential_id {
+            // Validate the UUID format
+            Uuid::from_str(vault_id).map_err(|_| {
+                amos_core::AmosError::Validation("Invalid vault_credential_id UUID".to_string())
+            })?;
+            // Store vault reference — ApiExecutor will decrypt at runtime
+            json!({ "vault_credential_id": vault_id })
+        } else {
+            params
+                .get("credentials")
+                .ok_or_else(|| amos_core::AmosError::Validation(
+                    "Either credentials or vault_credential_id is required".to_string(),
+                ))?
+                .clone()
+        };
 
         let name = params.get("name").and_then(|v| v.as_str()).map(String::from);
 

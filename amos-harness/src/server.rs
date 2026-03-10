@@ -2,8 +2,9 @@
 
 use crate::{
     agent::BedrockClient, canvas::CanvasEngine, documents::DocumentProcessor,
-    image_gen::ImageGenClient, integrations::{etl::EtlPipeline, executor::ApiExecutor},
-    middleware, openclaw::AgentManager, routes,
+    geo::GeoLocator, image_gen::ImageGenClient,
+    integrations::{etl::EtlPipeline, executor::ApiExecutor},
+    openclaw::AgentManager, routes,
     state::AppState, storage::{StorageClient, StorageConfig}, task_queue::TaskQueue,
     tools::ToolRegistry,
 };
@@ -50,8 +51,12 @@ pub async fn create_server(
         }
     };
 
-    // Initialize integration subsystem
-    let api_executor = Arc::new(ApiExecutor::new(db_pool.clone()));
+    // Initialize credential vault (AES-256-GCM encryption)
+    let vault = Arc::new(amos_core::CredentialVault::from_env()?);
+    tracing::info!("Credential vault initialized");
+
+    // Initialize integration subsystem (with vault for encrypted credential resolution)
+    let api_executor = Arc::new(ApiExecutor::with_vault(db_pool.clone(), vault.clone()));
     let etl_pipeline = Arc::new(EtlPipeline::new(db_pool.clone()));
 
     let tool_registry = Arc::new(ToolRegistry::default_registry(
@@ -71,6 +76,18 @@ pub async fn create_server(
     // Initialize document processor (extract + export pipeline)
     let document_processor = Arc::new(DocumentProcessor::new());
     tracing::info!("Document processor initialized (PDF + DOCX extraction/export)");
+
+    // Initialize IP geolocation service
+    let geo_locator = Arc::new(GeoLocator::new());
+    tracing::info!("GeoLocator initialized (IP-based location with caching)");
+
+    // Initialize model registry (built-in Bedrock models + custom BYOK providers)
+    let model_registry = Arc::new(
+        crate::agent::ModelRegistry::with_custom_models(&config.custom_models)
+    );
+    let model_count = model_registry.list_all().len();
+    let custom_count = model_registry.get_customer_owned().len();
+    tracing::info!("ModelRegistry initialized ({model_count} models, {custom_count} customer-owned)");
 
     // Initialize image generation (Google Imagen API)
     let image_gen = ImageGenClient::from_env().map(|client| {
@@ -96,6 +113,9 @@ pub async fn create_server(
         active_chats: Arc::new(dashmap::DashMap::new()),
         api_executor,
         etl_pipeline,
+        vault,
+        geo_locator,
+        model_registry,
     });
 
     // Build router with all routes
@@ -130,17 +150,24 @@ pub async fn create_server(
         .layer(trace_layer)
         .layer(cors)
         .layer(CompressionLayer::new())
-        .layer(TimeoutLayer::new(Duration::from_secs(60)))
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            middleware::error_handler::handle_error,
-        ));
+        .layer(TimeoutLayer::new(Duration::from_secs(60)));
 
-    // Configure static file serving with SPA fallback
-    // Resolve the static dir relative to the harness crate, not the cwd
-    let static_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static");
+    // Configure static file serving with SPA fallback.
+    // Resolve static dir: AMOS_STATIC_DIR env > ./static (cwd) > compile-time fallback.
+    let static_dir = std::env::var("AMOS_STATIC_DIR")
+        .map(std::path::PathBuf::from)
+        .ok()
+        .filter(|p| p.exists())
+        .or_else(|| {
+            let cwd = std::path::PathBuf::from("./static");
+            if cwd.exists() { Some(cwd) } else { None }
+        })
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")
+        });
+    tracing::info!(path = %static_dir.display(), "Serving static files from");
     let serve_dir = ServeDir::new(&static_dir)
-        .not_found_service(ServeDir::new(&static_dir).append_index_html_on_directories(true));
+        .append_index_html_on_directories(true);
 
     // Build the application router
     // API routes take precedence over static files

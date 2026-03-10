@@ -14,6 +14,7 @@ COPY amos-core ./amos-core
 COPY amos-harness ./amos-harness
 COPY amos-platform ./amos-platform
 COPY amos-cli ./amos-cli
+COPY amos-agent ./amos-agent
 
 # Build only the harness binary
 RUN cargo build --release --bin amos-harness
@@ -31,6 +32,9 @@ RUN apt-get update && \
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/amos-harness /usr/local/bin/
+
+# Copy static assets (chat UI) into runtime image
+COPY --from=builder /app/amos-harness/static /app/static
 
 # Create non-root user
 RUN useradd -m -u 1000 amos && \

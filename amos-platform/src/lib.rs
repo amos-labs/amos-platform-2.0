@@ -24,6 +24,7 @@
 //! - Harness provisioning via Docker
 //! - Solana on-chain integration
 
+pub mod auth;
 pub mod billing;
 pub mod governance;
 pub mod middleware;

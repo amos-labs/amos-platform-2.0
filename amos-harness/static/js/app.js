@@ -212,6 +212,21 @@ function handleCanvasMessage(event) {
             }
             break;
 
+        case 'amos-credential-saved':
+            // Secure Input Canvas saved a credential — close canvas and notify agent
+            closeCanvas();
+            if (data.credential_id && data.service) {
+                sendQuickMessage(
+                    `I've securely saved my ${data.service} credential. Credential ID: ${data.credential_id}`
+                );
+            }
+            break;
+
+        case 'amos-credential-cancelled':
+            // User cancelled the secure input — close canvas
+            closeCanvas();
+            break;
+
         default:
             // Ignore unknown message types
             break;
@@ -432,6 +447,12 @@ async function sendMessage() {
                                 currentToolIndicator = null;
                             }
                             console.log('Tool completed:', data.tool_name, 'Duration:', data.duration_ms, 'ms');
+
+                            // Check for canvas actions in tool result metadata
+                            const metadata = data.result && data.result.metadata;
+                            if (metadata && metadata.__canvas_action === 'secure_input') {
+                                openSecureInputCanvas(metadata);
+                            }
                         }
                         // Handle turn_end event
                         else if (data.type === 'turn_end') {
@@ -743,6 +764,8 @@ function showToolIndicator(messageEl, toolName, toolInput) {
         'query_database': 'Querying database',
         'call_api': 'Calling API',
         'run_code': 'Running code',
+        'collect_credential': 'Preparing secure input',
+        'list_vault_credentials': 'Checking stored credentials',
     };
 
     const displayName = toolDisplayNames[toolName] || `Using ${toolName}`;
@@ -754,6 +777,175 @@ function showToolIndicator(messageEl, toolName, toolInput) {
 
     content.appendChild(indicator);
     return indicator;
+}
+
+// ============================================================================
+// Secure Input Canvas (Credential Collection)
+// ============================================================================
+
+/**
+ * Open the Secure Input Canvas in the canvas panel.
+ * Called when a tool_end event contains __canvas_action: "secure_input".
+ * The canvas shows a masked input field and POSTs directly to /api/v1/credentials.
+ */
+function openSecureInputCanvas(metadata) {
+    const service = metadata.service || 'unknown';
+    const label = metadata.label || 'Credential';
+    const credentialType = metadata.credential_type || 'api_key';
+    const instructions = metadata.instructions || '';
+    const placeholder = metadata.placeholder || '';
+
+    const typeLabel = credentialType.replace(/_/g, ' ');
+
+    const html = `
+<div class="container py-4" style="max-width: 520px; margin: 0 auto;">
+    <div class="text-center mb-4">
+        <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning bg-opacity-10 mb-3" style="width:64px;height:64px;">
+            <i data-lucide="shield-check" class="text-warning" style="width:32px;height:32px;"></i>
+        </div>
+        <h4 class="mb-1">Secure Credential Input</h4>
+        <p class="text-muted small mb-0">Your ${escapeAttr(typeLabel)} for <strong>${escapeAttr(service)}</strong> will be encrypted and stored securely. It will never appear in the chat.</p>
+    </div>
+
+    ${instructions ? `<div class="alert alert-info small"><i data-lucide="info" class="me-1" style="width:14px;height:14px;"></i> ${escapeAttr(instructions)}</div>` : ''}
+
+    <form id="secureInputForm" autocomplete="off">
+        <label for="secretValue" class="form-label fw-semibold">${escapeAttr(label)}</label>
+        <div class="input-group mb-3">
+            <input type="password" class="form-control form-control-lg" id="secretValue"
+                   placeholder="${escapeAttr(placeholder)}" autocomplete="off" spellcheck="false"
+                   style="font-family: monospace; letter-spacing: 0.05em;">
+            <button class="btn btn-outline-secondary" type="button" id="toggleVisibility" title="Show/hide">
+                <i data-lucide="eye" id="visIcon" style="width:18px;height:18px;"></i>
+            </button>
+        </div>
+
+        <div id="errorAlert" class="alert alert-danger small d-none"></div>
+        <div id="successAlert" class="alert alert-success small d-none"></div>
+
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-warning btn-lg" id="submitBtn">
+                <i data-lucide="lock" class="me-1" style="width:18px;height:18px;"></i>
+                Encrypt & Save
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="cancelBtn">Cancel</button>
+        </div>
+    </form>
+</div>`;
+
+    const css = `
+body { background: #f8f9fa; }
+.form-control:focus { border-color: #ffc107; box-shadow: 0 0 0 0.25rem rgba(255,193,7,.25); }
+`;
+
+    const js = `
+(function() {
+    const form = document.getElementById('secureInputForm');
+    const input = document.getElementById('secretValue');
+    const toggleBtn = document.getElementById('toggleVisibility');
+    const visIcon = document.getElementById('visIcon');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const errorAlert = document.getElementById('errorAlert');
+    const successAlert = document.getElementById('successAlert');
+
+    // Toggle password visibility
+    toggleBtn.addEventListener('click', function() {
+        if (input.type === 'password') {
+            input.type = 'text';
+            visIcon.setAttribute('data-lucide', 'eye-off');
+        } else {
+            input.type = 'password';
+            visIcon.setAttribute('data-lucide', 'eye');
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+
+    // Cancel
+    cancelBtn.addEventListener('click', function() {
+        window.parent.postMessage({ type: 'amos-credential-cancelled' }, '*');
+    });
+
+    // Submit
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        errorAlert.classList.add('d-none');
+        successAlert.classList.add('d-none');
+
+        const value = input.value.trim();
+        if (!value) {
+            errorAlert.textContent = 'Please enter a value.';
+            errorAlert.classList.remove('d-none');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Encrypting...';
+
+        try {
+            const response = await fetch('/api/v1/credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service: ${JSON.stringify(service)},
+                    label: ${JSON.stringify(label)},
+                    credential_type: ${JSON.stringify(credentialType)},
+                    secret_value: value,
+                }),
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to save credential (HTTP ' + response.status + ')');
+            }
+
+            const result = await response.json();
+
+            // Clear the input immediately
+            input.value = '';
+
+            successAlert.textContent = 'Credential saved securely.';
+            successAlert.classList.remove('d-none');
+
+            // Notify parent after brief delay so user sees success
+            setTimeout(function() {
+                window.parent.postMessage({
+                    type: 'amos-credential-saved',
+                    credential_id: result.credential_id,
+                    service: ${JSON.stringify(service)},
+                }, '*');
+            }, 800);
+
+        } catch (err) {
+            errorAlert.textContent = err.message;
+            errorAlert.classList.remove('d-none');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i data-lucide="lock" class="me-1" style="width:18px;height:18px;"></i> Encrypt & Save';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    });
+
+    // Focus the input on load
+    input.focus();
+})();
+`;
+
+    // Use the existing canvas infrastructure to display
+    showCanvas({
+        name: 'Secure Input - ' + label,
+        html_content: html,
+        css_content: css,
+        javascript: js,
+    });
+}
+
+/**
+ * Escape a string for use in HTML attributes (used by secure input canvas).
+ */
+function escapeAttr(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ============================================================================

@@ -1,7 +1,5 @@
-//! Middleware for authentication and error handling
+//! Middleware for authentication
 
 pub mod auth;
-pub mod error_handler;
 
-pub use auth::authenticate;
-pub use error_handler::handle_error;
+pub use auth::{authenticate, Claims};

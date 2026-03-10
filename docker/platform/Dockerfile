@@ -14,6 +14,7 @@ COPY amos-core ./amos-core
 COPY amos-harness ./amos-harness
 COPY amos-platform ./amos-platform
 COPY amos-cli ./amos-cli
+COPY amos-agent ./amos-agent
 
 # Build only the platform binary
 RUN cargo build --release --bin amos-platform

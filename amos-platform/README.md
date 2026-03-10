@@ -1,120 +1,46 @@
-# AMOS Platform
+# amos-platform
 
-The central service for the Autonomous Management Operating System (AMOS).
+Multi-tenant control plane for AMOS. Manages harness lifecycle, billing, governance, and the sync API.
 
-## Overview
+## Binary
 
-This is the **single centralized platform** that all customer harnesses connect to. It provides:
-
-- **Token Economics Engine**: Decay calculations, emission schedules, revenue distribution
-- **Governance System**: On-chain proposals, voting, quality gates
-- **Customer Billing**: Subscription management, usage tracking, plan limits
-- **Harness Provisioning**: Docker-based container lifecycle management for customer harnesses
-- **Solana Integration**: On-chain data queries and transaction submission
-- **gRPC API**: Harness-to-platform communication
-- **REST API**: Admin dashboard and operations
+```bash
+AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_platform_dev \
+  AMOS__SERVER__PORT=4000 \
+  cargo run --bin amos-platform
+# → HTTP: http://localhost:4000, gRPC: localhost:4001
+```
 
 ## Architecture
 
 ```
-Customer Harness 1 ──┐
-Customer Harness 2 ──┼──> [gRPC Server:4001]
-Customer Harness N ──┘              │
-                                    │
-Admin Dashboard ──────────> [HTTP Server:4000]
-                                    │
-                                    ▼
-                           ┌──────────────────┐
-                           │  Platform State  │
-                           │  (DB, Redis, RPC)│
-                           └────────┬─────────┘
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-            ┌───────▼──────┐ ┌──────▼─────┐ ┌──────▼─────┐
-            │ Token Econ.  │ │ Governance │ │ Provisioning│
-            │ (amos-core)  │ │  Module    │ │   (Docker) │
-            └──────────────┘ └────────────┘ └────────────┘
-                    │
-                    ▼
-            [Solana Devnet/Mainnet]
+src/
+├── routes/             # REST API handlers
+│   ├── health.rs       # Health + readiness checks
+│   ├── provisioning.rs # Harness lifecycle (create, start, stop, deprovision)
+│   ├── sync.rs         # Harness sync (heartbeat, config, activity, version)
+│   ├── governance.rs   # Proposals, voting, delegation
+│   ├── billing.rs      # Subscription plans, usage tracking
+│   └── token.rs        # Token economics endpoints
+├── provisioning/       # Docker-based harness provisioning (bollard)
+├── solana/             # Solana RPC client (treasury, governance, bounty programs)
+├── billing/            # Subscription plans, compute cost tracking
+├── services/           # Business logic services
+│   ├── bounty.rs       # Bounty generation + quality scoring
+│   └── governance.rs   # On-chain governance operations
+├── server.rs           # Axum server setup
+├── state.rs            # Shared application state
+└── main.rs             # Entry point
 ```
 
-## Components
+## Key Concepts
 
-### Core Modules
+**Provisioning**: Creates Docker containers for per-customer harness instances via the bollard Docker API. Each harness gets its own postgres database.
 
-- **`billing/`**: Customer accounts, subscriptions, usage metrics, plan limits
-- **`governance/`**: Proposals, voting, quality gates (benchmark, A/B test, feedback, steward)
-- **`provisioning/`**: Harness container lifecycle using Docker API (bollard)
-- **`solana/`**: RPC client for on-chain treasury, governance, and bounty programs
-- **`middleware/`**: Authentication (API keys, harness tokens) and error handling
+**Sync API**: Harness instances periodically heartbeat the platform, pull config updates, and push usage metrics. Supports both managed and self-hosted deployments.
 
-### API Routes
+**Billing**: Tracks compute costs with 20% markup for managed deployments. AMOS token holders get discounts. No markup on customer-owned models (sovereign AI).
 
-- **`/api/v1/health`**: Liveness check
-- **`/api/v1/readiness`**: Readiness check (DB, Redis, Solana)
-- **`/api/v1/token/*`**: Token economics endpoints (stats, decay, emission, revenue split)
-- **`/api/v1/governance/*`**: Governance endpoints (proposals, votes, gates)
-- **`/api/v1/billing/*`**: Customer management and billing
-- **`/api/v1/provision/*`**: Harness provisioning and lifecycle
+**Governance**: On-chain proposal creation, voting, and delegation via Solana programs.
 
-## Running
-
-### Prerequisites
-
-- PostgreSQL (connection pool for persistent state)
-- Redis (session and cache)
-- Docker (for harness provisioning)
-- Solana RPC endpoint (devnet or mainnet)
-
-### Configuration
-
-Set environment variables (or use `.env` file):
-
-```bash
-AMOS_DATABASE__URL=postgres://user:pass@localhost/amos_platform
-AMOS_REDIS__URL=redis://localhost:6379
-AMOS_SOLANA__RPC_URL=https://api.devnet.solana.com
-AMOS_SERVER__PORT=4000
-AMOS_SERVER__GRPC_PORT=4001
-```
-
-### Start the server
-
-```bash
-cargo run --bin amos-platform
-```
-
-The platform will:
-1. Load configuration from environment
-2. Connect to PostgreSQL and Redis
-3. Initialize Solana client (if available)
-4. Run database migrations
-5. Start HTTP server on port 4000
-6. Start gRPC server on port 4001 (placeholder)
-
-## Development Status
-
-- **Token Economics API**: ✅ Complete (uses real amos-core functions)
-- **Health Checks**: ✅ Complete (DB, Redis, Solana)
-- **Governance API**: 🚧 Stub endpoints (database integration pending)
-- **Billing API**: 🚧 Stub endpoints (payment provider integration pending)
-- **Provisioning API**: 🚧 Stub endpoints (full Docker integration pending)
-- **gRPC Server**: 📝 Placeholder (needs tonic service definitions)
-- **Database Migrations**: 📝 Directory created (migrations pending)
-
-## Testing
-
-```bash
-cargo test --lib -p amos-platform
-```
-
-## Dependencies
-
-- **amos-core**: Shared types, config, error handling, token economics
-- **axum**: HTTP framework
-- **tonic**: gRPC framework (pending implementation)
-- **sqlx**: PostgreSQL client with compile-time query verification
-- **redis**: Redis client
-- **bollard**: Docker API client
-- **solana-client**: Solana RPC client
+**Bounty Service**: Nightly emission distribution -- calculates daily token rewards proportional to contributor points. Optionally submits on-chain proofs to Solana.

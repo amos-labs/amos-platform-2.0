@@ -3,6 +3,7 @@
 //! Tools are the primary way the agent interacts with the world.
 
 pub mod canvas_tools;
+pub mod credential_tools;
 pub mod document_tools;
 pub mod image_gen_tools;
 pub mod integration_tools;
@@ -345,6 +346,14 @@ impl ToolRegistry {
             db_pool.clone(),
         )));
         registry.register(Arc::new(revision_tools::CheckTemplateUpdatesTool::new(
+            db_pool.clone(),
+        )));
+
+        // Register credential vault tools
+        registry.register(Arc::new(credential_tools::CollectCredentialTool::new(
+            db_pool.clone(),
+        )));
+        registry.register(Arc::new(credential_tools::ListVaultCredentialsTool::new(
             db_pool.clone(),
         )));
 

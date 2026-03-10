@@ -1,8 +1,10 @@
 //! Application state shared across all request handlers
 
 use crate::{
+    agent::ModelRegistry,
     canvas::CanvasEngine,
     documents::DocumentProcessor,
+    geo::GeoLocator,
     image_gen::ImageGenClient,
     integrations::{
         etl::EtlPipeline,
@@ -13,7 +15,7 @@ use crate::{
     task_queue::TaskQueue,
     tools::ToolRegistry,
 };
-use amos_core::AppConfig;
+use amos_core::{AppConfig, CredentialVault};
 use dashmap::DashMap;
 use sqlx::PgPool;
 use std::sync::{
@@ -67,6 +69,15 @@ pub struct AppState {
 
     /// ETL pipeline for syncing external API data into AMOS collections
     pub etl_pipeline: Arc<EtlPipeline>,
+
+    /// Credential vault for AES-256-GCM encrypted secret storage
+    pub vault: Arc<CredentialVault>,
+
+    /// IP geolocation service (cached lookups)
+    pub geo_locator: Arc<GeoLocator>,
+
+    /// Model registry (built-in Bedrock models + custom BYOK providers)
+    pub model_registry: Arc<ModelRegistry>,
 }
 
 impl AppState {

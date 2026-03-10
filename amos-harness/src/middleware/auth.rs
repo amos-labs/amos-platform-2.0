@@ -1,108 +1,98 @@
 //! Authentication middleware
 
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
+    Json,
 };
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
-use serde::Deserialize;
-use std::sync::OnceLock;
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use secrecy::ExposeSecret;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use crate::state::AppState;
 
-static API_KEY: OnceLock<Option<String>> = OnceLock::new();
-static JWT_SECRET: OnceLock<Option<String>> = OnceLock::new();
-
-fn get_api_key() -> &'static Option<String> {
-    API_KEY.get_or_init(|| std::env::var("AMOS__AUTH__API_KEY").ok())
-}
-
-fn get_jwt_secret() -> &'static Option<String> {
-    JWT_SECRET.get_or_init(|| std::env::var("AMOS__AUTH__JWT_SECRET").ok())
-}
-
-#[derive(Debug, Deserialize)]
-struct Claims {
-    sub: String,
-    exp: usize,
-    #[serde(default)]
-    iss: Option<String>,
-    #[serde(default)]
-    permissions: Vec<String>,
+/// JWT claims (matches platform's auth::Claims)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Claims {
+    pub sub: String,
+    pub tenant_id: String,
+    pub role: String,
+    pub tenant_slug: String,
+    pub iat: i64,
+    pub exp: i64,
 }
 
 /// Authentication middleware (JWT + API key)
 pub async fn authenticate(
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
-    // Check for API key in header
+) -> Result<Response, Response> {
+    // Check X-API-Key header
     if let Some(api_key) = headers.get("X-API-Key") {
-        if is_valid_api_key(api_key.to_str().unwrap_or("")) {
-            return Ok(next.run(request).await);
+        if let Ok(key_str) = api_key.to_str() {
+            if is_valid_api_key(key_str, &state).await {
+                return Ok(next.run(request).await);
+            }
         }
     }
 
-    // Check for JWT token
+    // Check Authorization: Bearer <JWT>
     if let Some(auth_header) = headers.get("Authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
             if auth_str.starts_with("Bearer ") {
                 let token = &auth_str[7..];
-                if is_valid_jwt(token) {
-                    return Ok(next.run(request).await);
+                match validate_jwt(token, &state) {
+                    Ok(claims) => {
+                        let mut request = request;
+                        request.extensions_mut().insert(claims);
+                        return Ok(next.run(request).await);
+                    }
+                    Err(_) => {}
                 }
             }
         }
     }
 
-    // No valid authentication found
-    Err(StatusCode::UNAUTHORIZED)
+    Err((
+        StatusCode::UNAUTHORIZED,
+        Json(serde_json::json!({
+            "error": "Missing or invalid authentication",
+            "code": "unauthorized",
+            "hint": "Provide 'Authorization: Bearer <jwt>' or 'X-API-Key: <key>' header"
+        })),
+    ).into_response())
 }
 
-/// Constant-time comparison to prevent timing attacks
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut result: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        result |= x ^ y;
-    }
-    result == 0
-}
-
-/// Validate API key using constant-time comparison against configured key.
-/// Fails closed: if AMOS__AUTH__API_KEY is not set, all keys are rejected.
-fn is_valid_api_key(api_key: &str) -> bool {
-    match get_api_key() {
-        Some(configured_key) => constant_time_eq(api_key.as_bytes(), configured_key.as_bytes()),
-        None => {
-            tracing::warn!("AMOS__AUTH__API_KEY not set; rejecting all API key auth");
-            false
-        }
-    }
-}
-
-/// Validate JWT token by decoding and verifying signature, expiration, and issuer.
-/// Fails closed: if AMOS__AUTH__JWT_SECRET is not set, all tokens are rejected.
-fn is_valid_jwt(token: &str) -> bool {
-    let secret = match get_jwt_secret() {
-        Some(s) => s,
-        None => {
-            tracing::warn!("AMOS__AUTH__JWT_SECRET not set; rejecting all JWT auth");
-            return false;
-        }
-    };
-
-    let mut validation = Validation::new(Algorithm::HS256);
-    validation.set_issuer(&["amos"]);
-    validation.validate_exp = true;
-
+fn validate_jwt(token: &str, state: &AppState) -> Result<Claims, ()> {
+    let jwt_secret = state.config.auth.jwt_secret.expose_secret();
+    let validation = Validation::default();
     decode::<Claims>(
         token,
-        &DecodingKey::from_secret(secret.as_bytes()),
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &validation,
     )
-    .is_ok()
+    .map(|data| data.claims)
+    .map_err(|_| ())
+}
+
+/// Validate API key against database (check api_keys table)
+async fn is_valid_api_key(api_key: &str, state: &AppState) -> bool {
+    if api_key.is_empty() { return false; }
+    // Hash the key and look it up in the database
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    let key_hash = hex::encode(hasher.finalize());
+
+    sqlx::query("SELECT 1 FROM api_keys WHERE key_hash = $1 AND revoked = FALSE AND (expires_at IS NULL OR expires_at > NOW())")
+        .bind(&key_hash)
+        .fetch_optional(&state.db_pool)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
 }

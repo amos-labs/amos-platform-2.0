@@ -1,5 +1,3 @@
-version: '3.8'
-
 # AMOS Full Stack - Development Environment
 # ==========================================
 # This Docker Compose file runs BOTH harness and platform together with shared infrastructure.
@@ -89,8 +87,8 @@ services:
       AMOS__SERVER__PORT: 4000
       AMOS__SERVER__GRPC_PORT: 4001
 
-      # Database
-      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/${POSTGRES_DB:-amos_development}
+      # Database (platform uses its own DB)
+      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/amos_platform_dev
       AMOS__DATABASE__MAX_CONNECTIONS: 20
 
       # Redis (using db 1 for platform)
@@ -135,11 +133,11 @@ services:
     networks:
       - amos_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # AMOS Harness - Per-customer AI business OS
   harness:
@@ -155,8 +153,8 @@ services:
       AMOS__SERVER__HOST: 0.0.0.0
       AMOS__SERVER__PORT: 3000
 
-      # Database
-      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/${POSTGRES_DB:-amos_development}
+      # Database (harness uses its own DB)
+      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/amos_harness_dev
       AMOS__DATABASE__MAX_CONNECTIONS: 20
 
       # Redis (using db 0 for harness)
@@ -200,10 +198,10 @@ services:
       - amos_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   postgres_data:

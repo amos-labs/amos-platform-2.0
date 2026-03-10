@@ -37,10 +37,52 @@ pub fn build_system_prompt(user_context: serde_json::Value) -> Result<String> {
         })
         .unwrap_or_else(|| "none configured".to_string());
 
+    let organization_name = user_context
+        .get("organization_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let location = user_context
+        .get("location")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let timezone = user_context
+        .get("timezone")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // If a user timezone is available, also show local time
+    let local_time_str = if !timezone.is_empty() {
+        if let Ok(tz) = timezone.parse::<chrono_tz::Tz>() {
+            let local = now.with_timezone(&tz);
+            format!(
+                " (local: {})",
+                local.format("%A, %B %d, %Y at %I:%M %p %Z")
+            )
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
     let canvas_context = user_context
         .get("current_canvas")
         .and_then(|v| v.as_str())
         .unwrap_or("No canvas currently active");
+
+    // Build optional context lines (omitted when empty)
+    let org_line = if !organization_name.is_empty() {
+        format!("\n- **Organization**: {}", organization_name)
+    } else {
+        String::new()
+    };
+    let location_line = if !location.is_empty() {
+        format!("\n- **Location**: {}", location)
+    } else {
+        String::new()
+    };
 
     let prompt = format!(
         r#"You are AMOS (Autonomous Management Operating System), an AI-native business operating system.
@@ -51,9 +93,9 @@ You are the primary interface for {business_name}. You help manage, automate, an
 
 ## Current Context
 
-- **Current Time**: {datetime_str}
+- **Current Time**: {datetime_str}{local_time_str}
 - **User**: {user_name}
-- **Business**: {business_name}
+- **Business**: {business_name}{org_line}{location_line}
 - **Active Integrations**: {integrations}
 - **Current Canvas**: {canvas_context}
 
@@ -120,12 +162,15 @@ You maintain working memory to track important information across conversations.
 **Tools**: `remember_this`, `search_memory`
 
 ### 8. Integrations
-You can interact with connected third-party services:
-- CRM systems (Salesforce, HubSpot, etc.)
-- Email providers (Gmail, Outlook, SendGrid)
-- Payment processors (Stripe, PayPal)
-- Calendar systems (Google Calendar, Outlook)
-- Cloud storage (Dropbox, Google Drive, S3)
+You can connect to and interact with third-party services (CRMs, email providers, payment processors, calendars, cloud storage, and more). The integration subsystem handles the full lifecycle:
+
+1. **Browse available integrations** — see what connectors exist (Stripe, Salesforce, HubSpot, Gmail, etc.)
+2. **Create connections** — authenticate with a service using API keys, OAuth tokens, or basic auth. Always use the Credential Vault (`collect_credential`) to securely gather secrets — never ask for API keys in the chat.
+3. **Test connections** — verify a connection is working before relying on it
+4. **Execute operations** — call API endpoints on a connected service (list customers, create invoices, send emails, etc.)
+5. **Set up data syncs** — configure ETL pipelines that pull data from an integration into a local collection on a schedule
+
+**Tools**: `list_integrations`, `list_connections`, `create_connection`, `test_connection`, `execute_integration_action`, `list_integration_operations`, `create_sync_config`, `trigger_sync`
 
 ### 9. Task Management (Background Work)
 You can delegate work to run in the background while continuing the conversation with the user. This is how you spawn agents:
@@ -166,6 +211,37 @@ You can generate images using the `generate_image` tool. Provide a detailed text
 
 Use this for hero images, banners, product visuals, illustrations, profile pictures, or any creative image need. Write detailed, specific prompts for the best results.
 
+### 13. Credential Vault
+When a user needs to connect a service that requires an API key, secret token, or password, **never ask for the secret in the chat**. Instead, use `collect_credential` to open a secure input form where the user enters their secret directly. The secret is encrypted at rest (AES-256-GCM) and stored in the vault. You receive only an opaque credential ID — you never see the actual secret.
+
+Use `list_vault_credentials` to see what credentials are already stored (names and metadata only, not the secret values). When creating integration connections, pass the `vault_credential_id` instead of plaintext credentials.
+
+**Tools**: `collect_credential`, `list_vault_credentials`
+
+### 14. Revisions & Templates
+Every significant entity (canvases, collections, sites, records) has automatic revision history. You can browse, inspect, and revert changes:
+- **List revisions** for any entity to see its change history
+- **Get a specific revision** to see what the entity looked like at that version
+- **Revert** an entity to a previous version if something went wrong
+
+You can also work with **templates** — pre-built configurations that entities can subscribe to for updates:
+- **List templates** to see available templates in the registry
+- **Check for updates** to see if an entity's upstream template has a newer version
+
+**Tools**: `list_revisions`, `get_revision`, `revert_entity`, `list_templates`, `check_template_updates`
+
+### 15. Workspace (Shell & Files)
+You have a sandboxed workspace with shell and filesystem access. This is your general-purpose escape hatch for tasks that don't fit neatly into the specialized tools above:
+- **Run shell commands** — execute scripts, process data with `python3`, manipulate files with standard Unix tools (`jq`, `awk`, `sort`, `csvkit`, etc.)
+- **Read files** — inspect uploaded files, generated documents, script output, or any file in your workspace
+- **Write scripts** — create and run Python, bash, or other scripts for data transformation, analysis, or automation
+
+Use the workspace for data wrangling, one-off computations, prototyping API calls with `curl`, generating complex reports, or anything the structured tools cannot handle. Prefer the specialized tools (Schema, Canvas, Integration, etc.) for their intended purpose, and fall back to the workspace when you need maximum flexibility.
+
+**Important**: The workspace is sandboxed. Certain dangerous operations (e.g., `rm -rf /`, fork bombs, raw network listeners) are blocked for safety.
+
+**Tools**: `bash`, `read_file`
+
 ## Tool Usage Guidelines
 
 - **Canvas tools** are for creating UI — they display data, they do NOT store it.
@@ -175,6 +251,10 @@ Use this for hero images, banners, product visuals, illustrations, profile pictu
 - **Document tools** (`generate_document`) are for creating downloadable PDF/DOCX files. You provide the text content; the harness renders the document.
 - **Image generation tools** (`generate_image`) are for creating images from text prompts. Use detailed, descriptive prompts for best results.
 - **Platform tools** are for legacy/pre-existing module data.
+- **Integration tools** (`list_integrations`, `create_connection`, etc.) are for connecting to third-party services. Always use `collect_credential` to gather secrets before creating a connection — never accept API keys or passwords directly in the chat.
+- **Credential vault tools** (`collect_credential`, `list_vault_credentials`) are for securely handling secrets. The vault encrypts at rest with AES-256-GCM. You never see secret values — only opaque credential IDs.
+- **Revision tools** (`list_revisions`, `revert_entity`, etc.) are for inspecting and rolling back entity history. Use them when the user wants to undo a change or compare versions.
+- **Workspace tools** (`bash`, `read_file`) are your general-purpose escape hatch. Use specialized tools first; fall back to the workspace for data wrangling, scripting, file manipulation, and tasks that no structured tool covers.
 
 ### Communication Style
 - Be proactive and helpful
@@ -274,6 +354,48 @@ mod tests {
     }
 
     #[test]
+    fn test_prompt_includes_organization_and_location() {
+        let ctx = serde_json::json!({
+            "business_name": "Acme Corp",
+            "user_name": "Alice",
+            "organization_name": "Acme LLC",
+            "location": "San Francisco, California, United States",
+            "timezone": "America/Los_Angeles"
+        });
+        let prompt = build_system_prompt(ctx).unwrap();
+        assert!(prompt.contains("**Organization**: Acme LLC"), "missing organization line");
+        assert!(prompt.contains("**Location**: San Francisco, California, United States"), "missing location line");
+        // Timezone should produce a (local: ...) suffix
+        assert!(prompt.contains("(local:"), "missing local time from timezone");
+    }
+
+    #[test]
+    fn test_prompt_omits_empty_org_and_location() {
+        // When organization_name and location are absent, those lines should NOT appear
+        let ctx = serde_json::json!({
+            "business_name": "Acme Corp",
+            "user_name": "Alice"
+        });
+        let prompt = build_system_prompt(ctx).unwrap();
+        assert!(!prompt.contains("**Organization**:"), "should omit Organization line when empty");
+        assert!(!prompt.contains("**Location**:"), "should omit Location line when empty");
+        assert!(!prompt.contains("(local:"), "should omit local time when no timezone");
+    }
+
+    #[test]
+    fn test_prompt_invalid_timezone_graceful() {
+        let ctx = serde_json::json!({
+            "business_name": "Test Co",
+            "user_name": "Bob",
+            "timezone": "Not/A/Real/Timezone"
+        });
+        let prompt = build_system_prompt(ctx).unwrap();
+        // Should not crash, and should not show a local time
+        assert!(!prompt.contains("(local:"), "invalid timezone should not produce local time");
+        assert!(prompt.contains("Test Co"));
+    }
+
+    #[test]
     fn test_build_minimal_prompt() {
         let prompt = build_minimal_prompt();
         assert!(prompt.contains("AMOS"));
@@ -296,6 +418,9 @@ mod tests {
         assert!(prompt.contains("### 10. File Attachments"), "missing File Attachments section");
         assert!(prompt.contains("### 11. Document Generation"), "missing Document Generation section");
         assert!(prompt.contains("### 12. Image Generation"), "missing Image Generation section");
+        assert!(prompt.contains("### 13. Credential Vault"), "missing Credential Vault section");
+        assert!(prompt.contains("### 14. Revisions & Templates"), "missing Revisions & Templates section");
+        assert!(prompt.contains("### 15. Workspace (Shell & Files)"), "missing Workspace section");
     }
 
     #[test]
@@ -348,6 +473,45 @@ mod tests {
         ] {
             assert!(prompt.contains(tool), "missing task tool: {tool}");
         }
+    }
+
+    #[test]
+    fn test_prompt_contains_integration_tools() {
+        let prompt = build_system_prompt(sample_context()).unwrap();
+        for tool in &[
+            "list_integrations", "list_connections", "create_connection",
+            "test_connection", "execute_integration_action",
+            "list_integration_operations", "create_sync_config", "trigger_sync",
+        ] {
+            assert!(prompt.contains(tool), "missing integration tool: {tool}");
+        }
+    }
+
+    #[test]
+    fn test_prompt_contains_credential_tools() {
+        let prompt = build_system_prompt(sample_context()).unwrap();
+        for tool in &["collect_credential", "list_vault_credentials"] {
+            assert!(prompt.contains(tool), "missing credential tool: {tool}");
+        }
+    }
+
+    #[test]
+    fn test_prompt_contains_revision_tools() {
+        let prompt = build_system_prompt(sample_context()).unwrap();
+        for tool in &[
+            "list_revisions", "get_revision", "revert_entity",
+            "list_templates", "check_template_updates",
+        ] {
+            assert!(prompt.contains(tool), "missing revision tool: {tool}");
+        }
+    }
+
+    #[test]
+    fn test_prompt_contains_workspace_tools() {
+        let prompt = build_system_prompt(sample_context()).unwrap();
+        // Section 15 tools
+        assert!(prompt.contains("`bash`"), "missing bash tool reference");
+        assert!(prompt.contains("`read_file`"), "missing read_file tool reference");
     }
 
     #[test]

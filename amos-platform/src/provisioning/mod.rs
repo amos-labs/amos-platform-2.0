@@ -5,6 +5,7 @@ use bollard::{
         Config, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
         StopContainerOptions,
     },
+    models::{HostConfig, PortBinding},
     Docker,
 };
 use chrono::{DateTime, Utc};
@@ -39,18 +40,84 @@ impl HarnessManager {
             format!("PLATFORM_GRPC_URL={}", config.platform_grpc_url),
         ];
 
+        // Forward all AMOS__* env vars from the platform process so the harness
+        // gets database, redis, bedrock, platform, and auth configuration.
+        // Rewrite localhost/127.0.0.1 to host.docker.internal so the container
+        // can reach host-network services (DB, Redis, platform API).
+        for (key, val) in std::env::vars() {
+            if key.starts_with("AMOS__") {
+                let docker_val = val
+                    .replace("localhost", "host.docker.internal")
+                    .replace("127.0.0.1", "host.docker.internal");
+                env_vars.push(format!("{}={}", key, docker_val));
+            }
+        }
+
+        // Forward platform-level cloud credentials so the harness can reach
+        // AI backends. These are read from the platform process environment.
+        let forwarded_env_keys = [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "AWS_PROFILE",
+            "GOOGLE_CLOUD_PROJECT",
+            "OPENCLAW_GATEWAY_URL",
+        ];
+        for key in &forwarded_env_keys {
+            if let Ok(val) = std::env::var(key) {
+                env_vars.push(format!("{}={}", key, val));
+            }
+        }
+
+        // Harness-specific overrides (the AMOS__* forwarding above may have
+        // copied platform-specific values like SERVER__PORT=4000 that must be
+        // corrected for the harness).
+        env_vars.push("AMOS__SERVER__PORT=3000".to_string());
+
+        // The harness needs its own database, NOT the platform database.
+        // In production this would be a per-customer database; for development
+        // we use amos_dev. The platform DB URL (amos_platform_dev) was forwarded
+        // above and must be overridden here.
+        // TODO: In production, create per-customer databases dynamically.
+        env_vars.push(
+            "AMOS__DATABASE__URL=postgres://rickbarkley@host.docker.internal:5432/amos_dev"
+                .to_string(),
+        );
+
+        // Point the harness's platform URL back at the host-running platform.
+        env_vars.push(format!(
+            "AMOS__PLATFORM__URL=http://host.docker.internal:{}",
+            std::env::var("AMOS__SERVER__PORT").unwrap_or_else(|_| "4000".to_string())
+        ));
+
+        // Explicit config from HarnessConfig.env_vars takes highest precedence.
         for (key, value) in &config.env_vars {
             env_vars.push(format!("{}={}", key, value));
         }
 
-        // Create container
+        // Create container with host port bindings so it's reachable from the host.
+        // Empty host_port ("") means Docker auto-assigns a random available port.
+        let port_bindings = HashMap::from([
+            (
+                "3000/tcp".to_string(),
+                Some(vec![PortBinding {
+                    host_ip: Some("0.0.0.0".to_string()),
+                    host_port: Some("".to_string()), // auto-assign
+                }]),
+            ),
+        ]);
+
         let container_config = Config {
             image: Some(image.to_string()),
             env: Some(env_vars),
             exposed_ports: Some(HashMap::from([
-                ("50051/tcp".to_string(), HashMap::new()), // gRPC port
-                ("4000/tcp".to_string(), HashMap::new()),  // HTTP port
+                ("3000/tcp".to_string(), HashMap::new()), // HTTP port
             ])),
+            host_config: Some(HostConfig {
+                port_bindings: Some(port_bindings),
+                ..Default::default()
+            }),
             labels: Some(HashMap::from([
                 ("app".to_string(), "amos-harness".to_string()),
                 ("customer_id".to_string(), config.customer_id.to_string()),
@@ -106,6 +173,27 @@ impl HarnessManager {
             .map_err(|e| AmosError::Internal(format!("Failed to remove container: {}", e)))?;
 
         Ok(())
+    }
+
+    /// Inspect a running container and return the host port mapped to container port 3000.
+    pub async fn inspect_host_port(&self, container_id: &str) -> Result<Option<u16>> {
+        let info = self
+            .docker
+            .inspect_container(container_id, None)
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to inspect container: {}", e)))?;
+
+        // Navigate: info.network_settings.ports["3000/tcp"][0].host_port
+        let port = info
+            .network_settings
+            .and_then(|ns| ns.ports)
+            .and_then(|ports| ports.get("3000/tcp").cloned())
+            .flatten()
+            .and_then(|bindings| bindings.first().cloned())
+            .and_then(|binding| binding.host_port)
+            .and_then(|p| p.parse::<u16>().ok());
+
+        Ok(port)
     }
 
     /// Get current status of a harness container.

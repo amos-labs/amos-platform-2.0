@@ -1,14 +1,14 @@
 //! Agent chat routes (streaming and synchronous) with session persistence
 
 use crate::{
-    agent::{bedrock::BedrockClient, loop_runner::{AgentLoop, LoopConfig}, AgentEvent},
+    agent::{provider::create_provider, loop_runner::{AgentLoop, LoopConfig}, AgentEvent},
     routes::uploads::load_upload_data,
     sessions,
     state::AppState,
 };
 use axum::{
     extract::{Path, Query, State, ws::{Message, WebSocket, WebSocketUpgrade}},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{sse::{Event, KeepAlive}, IntoResponse, Sse},
     routing::{delete, get, post},
     Json, Router,
@@ -29,6 +29,10 @@ pub struct ChatRequest {
     pub user_context: Option<serde_json::Value>,
     /// Upload IDs to attach to this message (images become vision content blocks)
     pub attachments: Option<Vec<String>>,
+    /// Optional model ID override. When set, forces a specific model provider.
+    /// Use `custom:<provider-name>` for BYOK models (e.g. "custom:qwen-local").
+    /// When omitted, the smart router selects the best model automatically.
+    pub model_id: Option<String>,
 }
 
 /// Chat response
@@ -56,6 +60,7 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/chat", post(chat_stream))
         .route("/chat/sync", post(chat_sync))
         .route("/chat/cancel", post(chat_cancel))
+        .route("/models", get(list_models))
         .route("/sessions", get(list_sessions))
         .route("/sessions/{id}", get(get_session))
         .route("/sessions/{id}", delete(delete_session))
@@ -65,9 +70,27 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
 /// SSE streaming chat endpoint with session persistence
 pub async fn chat_stream(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(req): Json<ChatRequest>,
 ) -> impl IntoResponse {
-    let user_context = req.user_context.unwrap_or(json!({}));
+    let mut user_context = req.user_context.unwrap_or(json!({}));
+
+    // ── Enrich user_context with IP-based location ───────────────────────
+    let client_ip = extract_client_ip(&headers);
+    if let Some(ref ip) = client_ip {
+        if let Some(geo) = state.geo_locator.lookup(ip).await {
+            if user_context.get("location").is_none() {
+                user_context["location"] = json!(geo.display_location());
+            }
+            if user_context.get("timezone").is_none() && !geo.timezone.is_empty() {
+                user_context["timezone"] = json!(geo.timezone);
+            }
+            if user_context.get("organization_name").is_none() && !geo.org.is_empty() {
+                user_context["organization_name"] = json!(geo.org);
+            }
+        }
+    }
+
     let db_pool = state.db_pool.clone();
 
     // ── Resolve or create session ────────────────────────────────────────
@@ -128,19 +151,23 @@ pub async fn chat_stream(
         }
     };
 
-    // ── Create agent loop ────────────────────────────────────────────────
-    let bedrock_client = match BedrockClient::new(None, None, None) {
-        Ok(client) => client,
+    // ── Create agent loop (with pluggable model provider) ──────────────
+    // Use explicit model_id if provided, otherwise default (auto-routed by AgentLoop)
+    let model_id = req.model_id.as_deref().unwrap_or(
+        state.model_registry.get_cheapest().id.as_str()
+    );
+    let provider = match create_provider(model_id, &state.model_registry, &state.config) {
+        Ok(p) => p,
         Err(e) => {
-            tracing::error!("Failed to create Bedrock client: {:?}", e);
+            tracing::error!("Failed to create model provider for '{}': {:?}", model_id, e);
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Failed to initialize Bedrock client: {}", e)})),
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("Invalid model '{}': {}", model_id, e)})),
             ).into_response();
         }
     };
     let config = LoopConfig::default();
-    let (mut agent_loop, cancel_flag) = AgentLoop::new(config, state.tool_registry.clone(), bedrock_client);
+    let (mut agent_loop, cancel_flag) = AgentLoop::new(config, state.tool_registry.clone(), provider);
 
     // Pre-seed with prior conversation history
     if !prior_messages.is_empty() {
@@ -409,13 +436,16 @@ pub async fn chat_sync(
         }
     };
 
-    let bedrock_client = BedrockClient::new(None, None, None)
+    let model_id = req.model_id.as_deref().unwrap_or(
+        state.model_registry.get_cheapest().id.as_str()
+    );
+    let provider = create_provider(model_id, &state.model_registry, &state.config)
         .map_err(|e| {
-            tracing::error!("Failed to create Bedrock client: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            tracing::error!("Failed to create model provider for '{}': {:?}", model_id, e);
+            StatusCode::BAD_REQUEST
         })?;
     let config = LoopConfig::default();
-    let (mut agent_loop, _cancel_flag) = AgentLoop::new(config, state.tool_registry.clone(), bedrock_client);
+    let (mut agent_loop, _cancel_flag) = AgentLoop::new(config, state.tool_registry.clone(), provider);
 
     if !prior_messages.is_empty() {
         agent_loop.set_conversation(prior_messages);
@@ -526,18 +556,21 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<AppState>) {
             if let Ok(req) = serde_json::from_str::<ChatRequest>(&text) {
                 let user_context = req.user_context.unwrap_or(json!({}));
 
-                // Create agent loop
-                let bedrock_client = match BedrockClient::new(None, None, None) {
-                    Ok(client) => client,
+                // Create agent loop (with pluggable model provider)
+                let model_id = req.model_id.as_deref().unwrap_or(
+                    state.model_registry.get_cheapest().id.as_str()
+                );
+                let provider = match create_provider(model_id, &state.model_registry, &state.config) {
+                    Ok(p) => p,
                     Err(e) => {
-                        tracing::error!("Failed to create Bedrock client: {:?}", e);
-                        let error_msg = json!({"error": format!("Failed to initialize Bedrock client: {}", e)});
+                        tracing::error!("Failed to create model provider for '{}': {:?}", model_id, e);
+                        let error_msg = json!({"error": format!("Invalid model '{}': {}", model_id, e)});
                         let _ = socket.send(Message::Text(error_msg.to_string().into())).await;
                         continue;
                     }
                 };
                 let config = LoopConfig::default();
-                let (mut agent_loop, _cancel_flag) = AgentLoop::new(config, state.tool_registry.clone(), bedrock_client);
+                let (mut agent_loop, _cancel_flag) = AgentLoop::new(config, state.tool_registry.clone(), provider);
 
                 let mut event_rx = agent_loop.subscribe();
 
@@ -566,7 +599,58 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<AppState>) {
     }
 }
 
+/// List available models (for UI model selector dropdown)
+pub async fn list_models(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let models: Vec<serde_json::Value> = state
+        .model_registry
+        .list_all()
+        .iter()
+        .map(|m| {
+            json!({
+                "id": m.id,
+                "display_name": m.display_name,
+                "provider": m.provider,
+                "tier": m.tier,
+                "context_window": m.context_window,
+                "customer_owned": m.customer_owned,
+            })
+        })
+        .collect();
+
+    Json(json!({ "models": models }))
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Extract client IP from request headers.
+/// Checks X-Forwarded-For (first entry), X-Real-IP, then falls back to None.
+fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
+    // X-Forwarded-For: client, proxy1, proxy2 — take the first (leftmost) IP
+    if let Some(xff) = headers.get("x-forwarded-for") {
+        if let Ok(val) = xff.to_str() {
+            if let Some(first_ip) = val.split(',').next() {
+                let ip = first_ip.trim().to_string();
+                if !ip.is_empty() {
+                    return Some(ip);
+                }
+            }
+        }
+    }
+
+    // X-Real-IP: single client IP (set by nginx/reverse proxies)
+    if let Some(xri) = headers.get("x-real-ip") {
+        if let Ok(val) = xri.to_str() {
+            let ip = val.trim().to_string();
+            if !ip.is_empty() {
+                return Some(ip);
+            }
+        }
+    }
+
+    None
+}
 
 /// Check whether a MIME content type represents a text-based format
 /// whose contents can be included inline as readable text.

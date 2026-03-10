@@ -7,8 +7,10 @@ pub mod bedrock;
 pub mod loop_runner;
 pub mod model_registry;
 pub mod prompt_builder;
+pub mod provider;
 
 pub use bedrock::{BedrockClient, StreamEvent, TokenUsage};
 pub use loop_runner::{AgentEvent, AgentLoop, LoopConfig};
 pub use model_registry::{ModelInfo, ModelRegistry};
 pub use prompt_builder::build_system_prompt;
+pub use provider::{ModelProvider, BedrockProvider, OpenAiProvider, create_provider};

@@ -1,0 +1,73 @@
+[package]
+name = "amos-agent"
+description = "AMOS Agent - standalone autonomous agent with local tools, MCP client, and harness integration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "amos-agent"
+path = "src/main.rs"
+
+[dependencies]
+amos-core = { path = "../amos-core", features = ["http"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client (for harness client, web search, model providers)
+reqwest = { workspace = true }
+
+# Web framework (for Agent Card server)
+axum = { workspace = true }
+tower-http = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Config
+clap = { workspace = true }
+config = { workspace = true }
+dotenvy = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Async utilities
+async-trait = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+
+# Local memory store (SQLite)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# AWS signing (for Bedrock provider)
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+
+# Misc
+rand = { workspace = true }
+url = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+secrecy = { workspace = true }
+
+# WebSocket (for harness streaming)
+tokio-tungstenite = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3.14"

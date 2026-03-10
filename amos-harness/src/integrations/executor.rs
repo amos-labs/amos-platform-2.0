@@ -4,11 +4,13 @@
 //! and credential configurations stored in the database.
 
 use crate::integrations::types::*;
+use amos_core::CredentialVault;
 use chrono::Utc;
 use reqwest::{Client, Method, RequestBuilder};
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -53,6 +55,10 @@ impl std::error::Error for ExecutionError {}
 pub struct ApiExecutor {
     client: Client,
     db_pool: PgPool,
+    /// Optional credential vault for resolving encrypted secrets at runtime.
+    /// When a credential's `credentials_data` contains a `vault_credential_id`,
+    /// the executor decrypts the secret from the vault instead of reading plaintext.
+    vault: Option<Arc<CredentialVault>>,
 }
 
 impl ApiExecutor {
@@ -63,7 +69,17 @@ impl ApiExecutor {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { client, db_pool }
+        Self { client, db_pool, vault: None }
+    }
+
+    /// Create a new API executor with vault support for encrypted credential resolution
+    pub fn with_vault(db_pool: PgPool, vault: Arc<CredentialVault>) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("Failed to build HTTP client");
+
+        Self { client, db_pool, vault: Some(vault) }
     }
 
     /// Execute an API operation with the given connection and parameters
@@ -109,7 +125,7 @@ impl ApiExecutor {
         })?;
 
         // Load credential from database if credential_id is set
-        let credential = if let Some(credential_id) = connection.credential_id {
+        let mut credential = if let Some(credential_id) = connection.credential_id {
             sqlx::query_as::<_, CredentialRow>(
                 "SELECT * FROM integration_credentials WHERE id = $1",
             )
@@ -120,6 +136,61 @@ impl ApiExecutor {
         } else {
             None
         };
+
+        // Resolve vault credential references: if credentials_data contains
+        // a `vault_credential_id`, decrypt the secret from the encrypted vault
+        // and inject it into credentials_data so add_auth_headers works unchanged.
+        if let Some(ref mut cred) = credential {
+            if let Some(vault_id_str) = cred.credentials_data.get("vault_credential_id").and_then(|v| v.as_str()) {
+                if let Some(ref vault) = self.vault {
+                    let vault_id = Uuid::parse_str(vault_id_str).map_err(|_| {
+                        ExecutionError::ConfigError("Invalid vault_credential_id UUID".to_string())
+                    })?;
+
+                    // Decrypt the secret from the vault
+                    let decrypted = crate::routes::credentials::decrypt_credential(
+                        &self.db_pool,
+                        vault.as_ref(),
+                        vault_id,
+                    )
+                    .await
+                    .map_err(|status| {
+                        ExecutionError::AuthError(format!(
+                            "Failed to decrypt vault credential {}: HTTP {}",
+                            vault_id,
+                            status.as_u16()
+                        ))
+                    })?;
+
+                    // Determine the key name based on auth_type (clone to String
+                    // so we release the immutable borrow before as_object_mut).
+                    let key_name: String = cred.credentials_data.get("vault_key_name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| match cred.auth_type.as_str() {
+                            "api_key" => "api_key".to_string(),
+                            "bearer_token" | "oauth2" => "access_token".to_string(),
+                            "basic_auth" => "password".to_string(),
+                            _ => "api_key".to_string(),
+                        });
+
+                    // Inject the decrypted value into credentials_data
+                    if let Some(obj) = cred.credentials_data.as_object_mut() {
+                        obj.insert(key_name, JsonValue::String(decrypted));
+                        // Remove the vault reference so it doesn't leak into logs
+                        obj.remove("vault_credential_id");
+                        obj.remove("vault_key_name");
+                    }
+
+                    debug!("Resolved vault credential {} for auth_type={}", vault_id, cred.auth_type);
+                } else {
+                    warn!("Credential references vault_credential_id but vault is not configured");
+                    return Err(ExecutionError::ConfigError(
+                        "Credential vault not configured".to_string(),
+                    ));
+                }
+            }
+        }
 
         // Load operation from database
         let operation = sqlx::query_as::<_, OperationRow>(

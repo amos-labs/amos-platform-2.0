@@ -24,6 +24,7 @@
 pub mod agent;
 pub mod canvas;
 pub mod documents;
+pub mod geo;
 pub mod image_gen;
 pub mod integrations;
 pub mod memory;

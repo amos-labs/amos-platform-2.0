@@ -9,7 +9,7 @@
 //! Think of sub-agents as AMOS's internal workforce -- they do the heavy
 //! lifting in the background while AMOS continues talking to the user.
 
-use crate::agent::{BedrockClient, loop_runner::{AgentEvent, AgentLoop, LoopConfig}};
+use crate::agent::{BedrockClient, provider::BedrockProvider, loop_runner::{AgentEvent, AgentLoop, LoopConfig}};
 use crate::tools::ToolRegistry;
 use super::{
     MessageDirection, MessageType, Task, TaskQueue, TaskStatus,
@@ -184,7 +184,10 @@ async fn run_sub_agent_loop(
         ..Default::default()
     };
 
-    let (mut agent_loop, _cancel_flag) = AgentLoop::new(config, tool_registry, bedrock_client);
+    let provider: Box<dyn crate::agent::provider::ModelProvider> = Box::new(
+        BedrockProvider::new(bedrock_client)
+    );
+    let (mut agent_loop, _cancel_flag) = AgentLoop::new(config, tool_registry, provider);
 
     // Subscribe to events to capture the final assistant output
     let mut event_rx = agent_loop.subscribe();

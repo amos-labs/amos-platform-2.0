@@ -8,7 +8,7 @@
 //! - Conversation compaction
 //! - Steering messages
 
-use super::{bedrock::BedrockClient, model_registry::ModelRegistry, prompt_builder};
+use super::{bedrock::StreamEvent, model_registry::ModelRegistry, prompt_builder, provider::ModelProvider};
 use crate::tools::ToolRegistry;
 use amos_core::{
     types::{ContentBlock, Message, Role},
@@ -142,7 +142,7 @@ pub struct AgentLoop {
     config: LoopConfig,
     tool_registry: Arc<ToolRegistry>,
     model_registry: ModelRegistry,
-    bedrock_client: BedrockClient,
+    provider: Box<dyn ModelProvider>,
     conversation: Vec<Message>,
     current_model: String,
     total_tokens: u64,
@@ -160,7 +160,7 @@ impl AgentLoop {
     pub fn new(
         config: LoopConfig,
         tool_registry: Arc<ToolRegistry>,
-        bedrock_client: BedrockClient,
+        provider: Box<dyn ModelProvider>,
     ) -> (Self, Arc<AtomicBool>) {
         let (event_tx, _) = broadcast::channel(1000);
         let model_registry = ModelRegistry::new();
@@ -171,7 +171,7 @@ impl AgentLoop {
             config,
             tool_registry,
             model_registry,
-            bedrock_client,
+            provider,
             conversation: Vec::new(),
             current_model,
             total_tokens: 0,
@@ -331,9 +331,9 @@ impl AgentLoop {
 
     /// Execute a single turn of the agent loop
     async fn execute_turn(&mut self, system_prompt: &str) -> Result<bool> {
-        // Stream response from model
+        // Stream response from model (via provider abstraction)
         let mut stream_rx = self
-            .bedrock_client
+            .provider
             .converse_stream(
                 &self.current_model,
                 system_prompt,
@@ -360,24 +360,24 @@ impl AgentLoop {
             }
 
             match event {
-                super::bedrock::StreamEvent::TextDelta(text) => {
+                StreamEvent::TextDelta(text) => {
                     current_text.push_str(&text);
                     self.emit_event(AgentEvent::MessageDelta { content: text })
                         .await;
                 }
-                super::bedrock::StreamEvent::ToolUse { id, name, input } => {
+                StreamEvent::ToolUse { id, name, input } => {
                     tool_uses.push((id, name, input));
                 }
-                super::bedrock::StreamEvent::Stop => {
+                StreamEvent::Stop => {
                     break;
                 }
-                super::bedrock::StreamEvent::Error(e) => {
+                StreamEvent::Error(e) => {
                     return Err(AmosError::Internal(format!(
                         "Stream error: {}",
                         e
                     )));
                 }
-                super::bedrock::StreamEvent::TokenUsage(usage) => {
+                StreamEvent::TokenUsage(usage) => {
                     turn_tokens = usage.total_tokens;
                     self.total_tokens += turn_tokens;
                 }
@@ -673,5 +673,340 @@ impl AgentLoop {
     /// Call this *before* `run()` to restore a previous session.
     pub fn set_conversation(&mut self, messages: Vec<Message>) {
         self.conversation = messages;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STANDALONE AGENT LOOP TESTS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// These tests prove the agent loop can be constructed, configured, and driven
+// with a mock ModelProvider — no database, no HTTP server, no AWS credentials.
+// This is the foundation for running the agent in a separate container.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::bedrock::{StreamEvent, TokenUsage};
+    use crate::agent::provider::ModelProvider;
+    use crate::tools::{Tool, ToolCategory, ToolResult};
+    use async_trait::async_trait;
+    use serde_json::json;
+    use std::sync::atomic::Ordering;
+
+    // ── Mock ModelProvider ────────────────────────────────────────────
+    // Returns a canned text response and then a stop event.
+
+    struct MockProvider {
+        response_text: String,
+    }
+
+    #[async_trait]
+    impl ModelProvider for MockProvider {
+        async fn converse_stream(
+            &self,
+            _model_id: &str,
+            _system_prompt: &str,
+            _messages: &[Message],
+            _tools: &[serde_json::Value],
+        ) -> amos_core::Result<tokio::sync::mpsc::Receiver<StreamEvent>> {
+            let (tx, rx) = tokio::sync::mpsc::channel(10);
+            let text = self.response_text.clone();
+            tokio::spawn(async move {
+                let _ = tx.send(StreamEvent::TextDelta(text)).await;
+                let _ = tx.send(StreamEvent::Stop).await;
+            });
+            Ok(rx)
+        }
+
+        async fn converse(
+            &self,
+            _model_id: &str,
+            _system_prompt: &str,
+            _messages: &[Message],
+            _tools: &[serde_json::Value],
+        ) -> amos_core::Result<(Message, TokenUsage)> {
+            let msg = Message {
+                role: Role::Assistant,
+                content: vec![ContentBlock::Text { text: self.response_text.clone() }],
+                tool_use_id: None,
+                timestamp: Utc::now(),
+            };
+            let usage = TokenUsage { input_tokens: 10, output_tokens: 5, total_tokens: 15 };
+            Ok((msg, usage))
+        }
+
+        fn provider_name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    // ── Mock Tool ────────────────────────────────────────────────────
+    // A trivial tool for testing tool execution without a real database.
+
+    struct EchoTool;
+
+    #[async_trait]
+    impl Tool for EchoTool {
+        fn name(&self) -> &str {
+            "echo"
+        }
+
+        fn description(&self) -> &str {
+            "Echoes back the input"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"}
+                }
+            })
+        }
+
+        async fn execute(&self, params: serde_json::Value) -> amos_core::Result<ToolResult> {
+            let msg = params.get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(no message)");
+            Ok(ToolResult::success(json!({"echo": msg})))
+        }
+
+        fn category(&self) -> ToolCategory {
+            ToolCategory::System
+        }
+    }
+
+    // ── Helper: build a minimal ToolRegistry without a database ──────
+    // Uses a PgPool that never connects (options-only construction).
+
+    fn test_tool_registry() -> Arc<crate::tools::ToolRegistry> {
+        // Build a PgPool from options that will never actually connect.
+        // ToolRegistry::new just stores the pool; it doesn't query on creation.
+        let pool_opts = sqlx::postgres::PgPoolOptions::new().max_connections(1);
+        let pool = pool_opts.connect_lazy("postgres://test@localhost/amos_test").unwrap();
+
+        let settings = config::Config::builder()
+            .set_default("database.url", "postgres://test@localhost/amos_test")
+            .unwrap()
+            .build()
+            .unwrap();
+        let app_config: amos_core::AppConfig = settings.try_deserialize().unwrap();
+        let config = Arc::new(app_config);
+
+        let mut registry = crate::tools::ToolRegistry::new(pool, config);
+        registry.register(Arc::new(EchoTool));
+        Arc::new(registry)
+    }
+
+    // ── Tests ────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_agent_loop_construction_no_external_deps() {
+        // Prove AgentLoop can be created with only a mock provider and
+        // a lightweight tool registry — no database connection, no AWS,
+        // no HTTP server needed.
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "Hello from mock".to_string(),
+        });
+
+        let (agent, cancel_flag) = AgentLoop::new(LoopConfig::default(), registry, provider);
+
+        // Agent starts at iteration 0
+        assert_eq!(agent.iteration, 0);
+        assert_eq!(agent.total_tokens, 0);
+        assert!(agent.conversation.is_empty());
+        assert!(!cancel_flag.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_event_subscription() {
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "test".to_string(),
+        });
+
+        let (agent, _cancel) = AgentLoop::new(LoopConfig::default(), registry, provider);
+
+        // We should be able to subscribe to events
+        let _rx1 = agent.subscribe();
+        let _rx2 = agent.subscribe();
+        // Multiple subscribers should work (broadcast channel)
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_cancellation_flag() {
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "test".to_string(),
+        });
+
+        let (_agent, cancel_flag) = AgentLoop::new(LoopConfig::default(), registry, provider);
+
+        assert!(!cancel_flag.load(Ordering::Relaxed));
+        cancel_flag.store(true, Ordering::Relaxed);
+        assert!(cancel_flag.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_custom_config() {
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "test".to_string(),
+        });
+
+        let config = LoopConfig {
+            max_iterations: 5,
+            compaction_threshold: 50_000,
+            tool_timeout: Duration::from_secs(10),
+            detect_hallucinations: false,
+            enable_escalation: false,
+        };
+
+        let (agent, _cancel) = AgentLoop::new(config.clone(), registry, provider);
+        assert_eq!(agent.config.max_iterations, 5);
+        assert_eq!(agent.config.compaction_threshold, 50_000);
+        assert!(!agent.config.detect_hallucinations);
+        assert!(!agent.config.enable_escalation);
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_steer_and_conversation() {
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "test".to_string(),
+        });
+
+        let (mut agent, _cancel) = AgentLoop::new(LoopConfig::default(), registry, provider);
+
+        assert!(agent.get_conversation().is_empty());
+
+        // Inject a steering message
+        agent.steer("Please focus on task X".to_string());
+        assert_eq!(agent.get_conversation().len(), 1);
+        assert_eq!(agent.get_conversation()[0].role, Role::User);
+
+        // Inject another
+        agent.steer("Actually, prioritize task Y".to_string());
+        assert_eq!(agent.get_conversation().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_set_conversation_restores_history() {
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "test".to_string(),
+        });
+
+        let (mut agent, _cancel) = AgentLoop::new(LoopConfig::default(), registry, provider);
+
+        let history = vec![
+            Message {
+                role: Role::User,
+                content: vec![ContentBlock::Text { text: "Hello".to_string() }],
+                tool_use_id: None,
+                timestamp: Utc::now(),
+            },
+            Message {
+                role: Role::Assistant,
+                content: vec![ContentBlock::Text { text: "Hi there!".to_string() }],
+                tool_use_id: None,
+                timestamp: Utc::now(),
+            },
+        ];
+
+        agent.set_conversation(history);
+        assert_eq!(agent.get_conversation().len(), 2);
+        assert_eq!(agent.get_conversation()[0].role, Role::User);
+        assert_eq!(agent.get_conversation()[1].role, Role::Assistant);
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_run_with_mock_provider() {
+        // Full integration test: run the agent loop end-to-end with a mock
+        // provider. No database, no AWS, no HTTP server.
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "I've completed the task.".to_string(),
+        });
+
+        let (mut agent, _cancel) = AgentLoop::new(
+            LoopConfig {
+                max_iterations: 3,
+                ..Default::default()
+            },
+            registry,
+            provider,
+        );
+
+        // Subscribe to capture events
+        let mut event_rx = agent.subscribe();
+
+        // Spawn event collector
+        let events = tokio::spawn(async move {
+            let mut collected = Vec::new();
+            while let Ok(event) = event_rx.recv().await {
+                collected.push(event);
+            }
+            collected
+        });
+
+        // Run the agent loop
+        let result = agent.run(
+            "Say hello".to_string(),
+            json!({"business_name": "Test Co", "user_name": "Tester"}),
+        ).await;
+
+        assert!(result.is_ok(), "Agent loop should complete successfully: {:?}", result.err());
+
+        // The mock returns text without tool calls, so the loop should
+        // complete in 1 iteration (no tools → natural_completion).
+        assert_eq!(agent.iteration, 1);
+        assert_eq!(agent.get_conversation().len(), 2); // user + assistant
+
+        // Wait briefly for events
+        drop(agent); // drop to close broadcast channel
+        let collected = events.await.unwrap();
+        assert!(!collected.is_empty(), "Should have received at least one event");
+
+        // Check we got TurnStart, MessageStart, MessageDelta, MessageEnd, TurnEnd, AgentEnd
+        let event_types: Vec<String> = collected.iter().map(|e| {
+            serde_json::to_value(e).unwrap()["type"].as_str().unwrap().to_string()
+        }).collect();
+        assert!(event_types.contains(&"turn_start".to_string()));
+        assert!(event_types.contains(&"message_start".to_string()));
+        assert!(event_types.contains(&"message_delta".to_string()));
+        assert!(event_types.contains(&"message_end".to_string()));
+        assert!(event_types.contains(&"agent_end".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_cancellation_stops_early() {
+        let registry = test_tool_registry();
+        let provider: Box<dyn ModelProvider> = Box::new(MockProvider {
+            response_text: "Working on it...".to_string(),
+        });
+
+        let (mut agent, cancel_flag) = AgentLoop::new(
+            LoopConfig {
+                max_iterations: 10,
+                ..Default::default()
+            },
+            registry,
+            provider,
+        );
+
+        // Set cancellation before running
+        cancel_flag.store(true, Ordering::Relaxed);
+
+        let result = agent.run(
+            "Do something".to_string(),
+            json!({"business_name": "Test", "user_name": "Tester"}),
+        ).await;
+
+        assert!(result.is_ok());
+        // Should have stopped at iteration 0 (cancelled before first turn)
+        assert_eq!(agent.iteration, 0);
     }
 }

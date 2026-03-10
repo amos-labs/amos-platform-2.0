@@ -44,6 +44,9 @@ pub struct AppConfig {
     /// Custom model providers (for sovereign AI / self-hosted Qwen).
     #[serde(default)]
     pub custom_models: CustomModelsConfig,
+    /// Authentication and authorization settings.
+    #[serde(default)]
+    pub auth: AuthConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -281,6 +284,34 @@ pub struct CustomModelProvider {
     pub customer_owned: bool,
 }
 
+/// Authentication and authorization settings.
+#[derive(Debug, Deserialize, Clone)]
+pub struct AuthConfig {
+    /// JWT signing secret. MUST be set in production via AMOS__AUTH__JWT_SECRET.
+    #[serde(default = "default_jwt_secret")]
+    pub jwt_secret: SecretString,
+    /// Access token lifetime in seconds (default: 3600 = 1 hour).
+    #[serde(default = "default_access_token_expiry")]
+    pub access_token_expiry_secs: u64,
+    /// Refresh token lifetime in seconds (default: 604800 = 7 days).
+    #[serde(default = "default_refresh_token_expiry")]
+    pub refresh_token_expiry_secs: u64,
+    /// Base domain for subdomain routing (e.g. "amos.ai").
+    #[serde(default = "default_base_domain")]
+    pub base_domain: String,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            jwt_secret: default_jwt_secret(),
+            access_token_expiry_secs: default_access_token_expiry(),
+            refresh_token_expiry_secs: default_refresh_token_expiry(),
+            base_domain: default_base_domain(),
+        }
+    }
+}
+
 // ── Defaults ─────────────────────────────────────────────────────────────
 
 fn default_host() -> String { "0.0.0.0".into() }
@@ -310,6 +341,10 @@ fn default_activity_interval() -> u64 { 60 }
 fn default_telemetry_enabled() -> bool { true }
 fn default_custom_context_window() -> usize { 131_072 }
 fn default_custom_tier() -> u8 { 2 }
+fn default_jwt_secret() -> SecretString { SecretString::from("CHANGE-ME-in-production-amos-jwt-secret-2025".to_string()) }
+fn default_access_token_expiry() -> u64 { 3600 }       // 1 hour
+fn default_refresh_token_expiry() -> u64 { 604_800 }   // 7 days
+fn default_base_domain() -> String { "localhost".into() }
 
 impl AppConfig {
     /// Load configuration from environment variables and optional config files.

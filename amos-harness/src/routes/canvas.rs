@@ -167,3 +167,37 @@ pub async fn serve_public_canvas(
 
     Ok(Html(response.content))
 }
+
+/// Serve a system canvas by its slug as a full-page HTML document.
+/// Used for auth pages (/login, /register, /forgot-password) that are
+/// rendered as standalone pages outside the main app shell.
+pub async fn serve_auth_canvas(
+    State(state): State<Arc<AppState>>,
+    slug: &str,
+) -> Result<Html<String>, StatusCode> {
+    let canvas = state.canvas_engine.get_canvas_by_slug(slug).await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let response = state.canvas_engine.render_canvas(&canvas, None).await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Html(response.content))
+}
+
+pub async fn serve_login(
+    State(state): State<Arc<AppState>>,
+) -> Result<Html<String>, StatusCode> {
+    serve_auth_canvas(State(state), "system-login").await
+}
+
+pub async fn serve_register(
+    State(state): State<Arc<AppState>>,
+) -> Result<Html<String>, StatusCode> {
+    serve_auth_canvas(State(state), "system-register").await
+}
+
+pub async fn serve_forgot_password(
+    State(state): State<Arc<AppState>>,
+) -> Result<Html<String>, StatusCode> {
+    serve_auth_canvas(State(state), "system-forgot-password").await
+}

@@ -40,8 +40,16 @@ pub async fn start_http_server(state: PlatformState) -> Result<()> {
 fn build_http_router(state: PlatformState) -> Router {
     let api_routes = routes::api_routes();
 
+    let ui_routes = routes::ui::routes();
+
     Router::new()
+        // UI routes (SSR pages: /login, /register, /dashboard, /settings)
+        .merge(ui_routes)
+        // Root path: redirect browsers to login, serve API catalog for agents
+        .route("/", axum::routing::get(routes::discovery::api_catalog))
         .nest("/api/v1", api_routes)
+        // Fallback: agent-friendly 404 with suggestions
+        .fallback(routes::discovery::not_found)
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())

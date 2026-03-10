@@ -10,7 +10,9 @@ pub mod config;
 pub mod error;
 pub mod token;
 pub mod types;
+pub mod vault;
 
 pub use config::AppConfig;
 pub use error::{AmosError, Result};
 pub use token::economics;
+pub use vault::CredentialVault;
