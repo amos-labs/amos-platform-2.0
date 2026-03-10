@@ -465,17 +465,7 @@ pub fn create_provider(
             )?))
         }
         "bedrock" => {
-            // For now, use OpenAI provider as a placeholder.
-            // The actual Bedrock provider with AWS SigV4 signing lives in amos-harness.
-            // When running as a standalone agent, the user should either:
-            // 1. Use OpenAI-compatible providers directly
-            // 2. Connect to the harness which proxies through Bedrock
-            Err(AmosError::Config(
-                "Direct Bedrock access from amos-agent is not yet implemented. \
-                 Use --model-provider=openai with an OpenAI-compatible endpoint, \
-                 or let the harness handle model invocation."
-                    .to_string(),
-            ))
+            Ok(Box::new(crate::bedrock::BedrockProvider::from_env()?))
         }
         _ => Err(AmosError::Config(format!(
             "Unknown model provider: '{}'. Supported: openai, ollama, vllm, bedrock",
@@ -501,9 +491,11 @@ mod tests {
     }
 
     #[test]
-    fn test_create_provider_bedrock_errors() {
-        let result = create_provider("bedrock", "claude-3", None, None);
-        assert!(result.is_err());
+    fn test_create_provider_bedrock() {
+        // Bedrock provider creation depends on AWS credentials being available.
+        // In CI without credentials, it will fail with a config error.
+        // This test just verifies the code path runs without panicking.
+        let _result = create_provider("bedrock", "claude-3", None, None);
     }
 
     #[test]

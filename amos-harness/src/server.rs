@@ -1,7 +1,7 @@
 //! Axum server setup and configuration
 
 use crate::{
-    agent::BedrockClient, canvas::CanvasEngine, documents::DocumentProcessor,
+    bedrock::BedrockClient, canvas::CanvasEngine, documents::DocumentProcessor,
     geo::GeoLocator, image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::AgentManager, routes,
@@ -81,14 +81,6 @@ pub async fn create_server(
     let geo_locator = Arc::new(GeoLocator::new());
     tracing::info!("GeoLocator initialized (IP-based location with caching)");
 
-    // Initialize model registry (built-in Bedrock models + custom BYOK providers)
-    let model_registry = Arc::new(
-        crate::agent::ModelRegistry::with_custom_models(&config.custom_models)
-    );
-    let model_count = model_registry.list_all().len();
-    let custom_count = model_registry.get_customer_owned().len();
-    tracing::info!("ModelRegistry initialized ({model_count} models, {custom_count} customer-owned)");
-
     // Initialize image generation (Google Imagen API)
     let image_gen = ImageGenClient::from_env().map(|client| {
         tracing::info!("Image generation client initialized (Google Imagen)");
@@ -110,12 +102,10 @@ pub async fn create_server(
         storage,
         document_processor,
         image_gen,
-        active_chats: Arc::new(dashmap::DashMap::new()),
         api_executor,
         etl_pipeline,
         vault,
         geo_locator,
-        model_registry,
     });
 
     // Build router with all routes

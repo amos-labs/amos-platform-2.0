@@ -2,19 +2,19 @@
 
 **Autonomous Management Operating System** -- an AI-native business operating system written in pure Rust.
 
-AMOS provides a per-customer AI harness where an AI agent builds workflows, automations, integrations, websites, and applications through natural language conversation. The system combines a tool-driven agent loop with a dynamic canvas engine and runtime-defined data schemas.
+AMOS provides a per-customer AI harness (the "operating system") that hosts tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. The harness never runs its own agent loop; agents are independent processes that register, pull tasks, call harness tools over HTTP, and report results.
 
 ## Architecture
 
 ```
 amos-automate/
 ├── amos-core       Shared types, config, errors, token economics
-├── amos-harness    Per-customer AI runtime (agent loop, tools, UI, canvas engine)
+├── amos-harness    Per-customer OS (tools, canvas engine, schemas, sites, agent registry)
+├── amos-agent      Default autonomous agent (Bedrock, model registry, task consumer)
 ├── amos-platform   Multi-tenant control plane (provisioning, billing, governance)
 ├── amos-cli        Command-line interface for both harness and platform
-├── amos-agent      Standalone autonomous agent (same protocol as external agents)
 ├── amos-solana/    On-chain programs (treasury, bounties, governance) -- built via Anchor
-├── docker/         Production Dockerfiles
+├── docker/         Production Dockerfiles (harness, platform, agent)
 └── docs/           Whitepaper, token economics
 ```
 
@@ -29,24 +29,31 @@ amos-automate/
                 │ HTTP (heartbeat, config, usage)
 ┌───────────────▼─────────────────────────────────────┐
 │                  amos-harness                         │
-│            (per-customer instance)                    │
+│      (per-customer OS / tool host / marketplace)     │
 │                                                       │
-│  ┌─────────┐  ┌──────────┐  ┌────────────────────┐  │
-│  │  Agent   │  │  Canvas   │  │      Tools         │  │
-│  │  Loop    │→ │  Engine   │  │  (30+ tools:       │  │
-│  │ (Bedrock)│  │  (iframe) │  │   db, web, files,  │  │
-│  └─────────┘  └──────────┘  │   schema, agents)   │  │
-│       ↕                      └────────────────────┘  │
-│  ┌─────────┐  ┌──────────┐  ┌──────────────────┐    │
-│  │ Sessions │  │  Schema   │  │    Sites          │    │
-│  │ Memory   │  │ (runtime  │  │  (public pages)   │    │
-│  │          │  │  defined) │  │                    │    │
-│  └─────────┘  └──────────┘  └──────────────────┘    │
-└──────────────────────────────────────────────────────┘
-                ↕ same protocol
-┌──────────────────────────────────────────────────────┐
-│  amos-agent (standalone) / external agents            │
-└──────────────────────────────────────────────────────┘
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐ │
+│  │  Canvas   │  │  Schema   │  │      Tools         │ │
+│  │  Engine   │  │ (runtime  │  │  (54+ tools:       │ │
+│  │  (iframe) │  │  defined) │  │   db, web, files,  │ │
+│  └──────────┘  └──────────┘  │   canvas, agents)   │ │
+│  ┌──────────┐  ┌──────────┐  └────────────────────┘ │
+│  │ Sessions  │  │   Sites   │  ┌──────────────────┐  │
+│  │ Memory    │  │  (public) │  │  Agent Registry   │  │
+│  └──────────┘  └──────────┘  └──────────────────┘  │
+└──────────────────────┬──────────────────────────────┘
+                       │ External Agent Protocol (register, tasks, tools, heartbeat)
+          ┌────────────┴────────────┐
+          ▼                         ▼
+┌──────────────────┐  ┌──────────────────────────────┐
+│   amos-agent     │  │  External / 3rd-party agents  │
+│  (default agent) │  │  (same protocol, same access) │
+│                  │  │                                │
+│  Agent Loop      │  │  Any language / framework      │
+│  Bedrock/OpenAI  │  │  EAP-compatible                │
+│  Model Registry  │  │  /.well-known/agent.json       │
+│  Local Tools     │  │                                │
+│  Task Consumer   │  │                                │
+└──────────────────┘  └──────────────────────────────┘
 ```
 
 ## Quick Start
@@ -64,25 +71,33 @@ amos-automate/
 # Build the workspace
 cargo build
 
-# Run tests (346 tests)
+# Run tests (~300 tests)
 cargo test --workspace
 
-# Run the harness
+# Run the harness (terminal 1)
 AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_dev \
   cargo run --bin amos-harness
 # → http://localhost:3000
 
-# Run the platform (separate terminal)
+# Run the platform (terminal 2)
 AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_platform_dev \
   AMOS__SERVER__PORT=4000 \
   cargo run --bin amos-platform
 # → http://localhost:4000
+
+# Run the agent (terminal 3)
+cargo run --bin amos-agent
+# → Interactive mode, type messages to chat
+
+# Or in service mode (HTTP API + task consumer):
+AMOS_SERVE=true cargo run --bin amos-agent
+# → http://localhost:3100 (auto-registers with harness)
 ```
 
 ### Docker Development
 
 ```bash
-# Start everything (postgres, redis, localstack, platform, harness)
+# Start everything (postgres, redis, localstack, platform, harness, agent)
 docker compose up --build
 
 # Or just infrastructure
@@ -105,27 +120,38 @@ AWS credentials for Bedrock are read from the standard AWS credential chain.
 
 ## API
 
-### Chat (SSE streaming)
+### Agent Chat (SSE streaming) -- amos-agent :3100
 
 ```
-POST /api/v1/agent/chat
+POST /api/v1/chat
 Content-Type: application/json
 
-{"message": "Create a dashboard showing monthly revenue", "session_id": null}
+{"message": "Create a dashboard showing monthly revenue"}
 ```
 
-Returns Server-Sent Events: `turn_start`, `message_delta`, `tool_start`, `tool_end`, `turn_end`, `agent_end`.
+Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `done`.
 
-### Key Endpoints
+### Harness Endpoints -- amos-harness :3000
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/agent/chat` | Chat with agent (SSE) |
 | `GET` | `/api/v1/canvases` | List canvases |
 | `GET` | `/api/v1/agents` | List registered agents |
+| `POST` | `/api/v1/agents/register` | Register an agent |
 | `GET` | `/api/v1/sessions` | List chat sessions |
+| `POST` | `/api/v1/tools/{name}/execute` | Execute a harness tool |
+| `GET` | `/api/v1/tasks/next` | Pull next pending task (agent polling) |
+| `POST` | `/api/v1/tasks/{id}/result` | Report task result |
 | `GET` | `/c/{slug}` | Public canvas |
 | `GET` | `/s/{slug}` | Public site |
+| `GET` | `/health` | Health check |
+
+### Agent Endpoints -- amos-agent :3100
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/chat` | Chat with agent (SSE) |
+| `GET` | `/.well-known/agent.json` | Agent Card (A2A discovery) |
 | `GET` | `/health` | Health check |
 
 ## Deployment Modes

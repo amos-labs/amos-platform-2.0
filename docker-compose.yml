@@ -6,6 +6,7 @@
 # Architecture:
 # - amos-harness: Per-customer AI business OS (port 3000)
 # - amos-platform: Central token economics/governance/billing (HTTP: 4000, gRPC: 4001)
+# - amos-agent: Autonomous AI agent that registers with harness (port 3100)
 # - postgres: Shared PostgreSQL 16 with pgvector (port 5432)
 # - redis: Shared Redis 7 (port 6379)
 # - localstack: AWS S3 emulation for dev (port 4566)
@@ -203,6 +204,56 @@ services:
       retries: 5
       start_period: 15s
 
+  # AMOS Agent - Autonomous AI agent that registers with harness
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agent/Dockerfile
+    container_name: amos_dev_agent
+    ports:
+      - "3100:3100"
+    environment:
+      # Server configuration
+      AMOS_SERVE: "true"
+      AMOS__SERVER__HOST: 0.0.0.0
+      AMOS__SERVER__PORT: 3100
+
+      # Harness connection
+      AMOS__HARNESS__URL: http://harness:3000
+      AMOS__HARNESS__API_KEY: ${HARNESS_API_KEY:-dev_api_key_change_in_prod}
+
+      # Agent identity
+      AMOS__AGENT__ID: ${AGENT_ID:-dev-agent-001}
+      AMOS__AGENT__NAME: ${AGENT_NAME:-Development Agent}
+
+      # AWS Bedrock (for AI models)
+      AMOS__BEDROCK__AWS_REGION: ${AWS_REGION:-us-west-2}
+      AMOS__BEDROCK__AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AMOS__BEDROCK__AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AMOS__BEDROCK__DEFAULT_MODEL: ${DEFAULT_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+
+      # Agent configuration
+      AMOS__AGENT__MAX_ITERATIONS: ${AGENT_MAX_ITERATIONS:-50}
+      AMOS__AGENT__MAX_CONTEXT_TOKENS: ${AGENT_MAX_CONTEXT_TOKENS:-100000}
+      AMOS__AGENT__TOKEN_BUDGET: ${AGENT_TOKEN_BUDGET:-200000}
+
+      # Observability
+      RUST_LOG: ${RUST_LOG:-info,amos_agent=debug}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+    volumes:
+      - agent_data:/app/data
+    depends_on:
+      harness:
+        condition: service_healthy
+    networks:
+      - amos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
 volumes:
   postgres_data:
     driver: local
@@ -213,6 +264,8 @@ volumes:
   platform_data:
     driver: local
   harness_data:
+    driver: local
+  agent_data:
     driver: local
 
 networks:
@@ -252,6 +305,7 @@ networks:
 # 5. Check services:
 #    - Platform: http://localhost:4000/health
 #    - Harness: http://localhost:3000/health
+#    - Agent: http://localhost:3100/health
 #    - Platform gRPC: localhost:4001
 # 6. View logs: docker compose logs -f
 # 7. Stop: docker compose down

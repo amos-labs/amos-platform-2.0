@@ -3,6 +3,12 @@
 //! Connects to the AMOS Harness using the same protocol as any external agent.
 //! Provides local tools (think, remember, plan, web_search, file I/O) and
 //! accesses harness tools via HTTP.
+//!
+//! ## Modes
+//!
+//! - **Interactive** (default): reads from stdin, prints to stderr.
+//! - **Service** (`--serve`): starts an HTTP API (SSE chat + health) and a
+//!   background task consumer that polls the harness for work.
 
 use amos_agent::{
     agent_card::{AgentCard, agent_card_router},
@@ -11,11 +17,14 @@ use amos_agent::{
     harness_client::HarnessClient,
     memory::MemoryStore,
     provider,
+    routes::{self, AgentState},
+    task_consumer::{self, TaskConsumerConfig},
     tools::ToolContext,
 };
 use clap::Parser;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 #[tokio::main]
@@ -33,23 +42,24 @@ async fn main() -> anyhow::Result<()> {
         name = %config.agent_name,
         harness = %config.harness_url,
         port = config.agent_port,
+        serve = config.serve,
         "Starting AMOS Agent"
     );
 
     // Initialize memory store
-    let memory = Arc::new(
-        MemoryStore::open(&config.memory_db)
-            .map_err(|e| anyhow::anyhow!("Failed to open memory database: {e}"))?
-    );
-    let mem_count = memory.count().unwrap_or(0);
+    let memory_store = MemoryStore::open(&config.memory_db)
+        .map_err(|e| anyhow::anyhow!("Failed to open memory database: {e}"))?;
+    let mem_count = memory_store.count().unwrap_or(0);
     info!(path = %config.memory_db, memories = mem_count, "Memory store initialized");
 
+    let memory = Arc::new(tokio::sync::Mutex::new(memory_store));
+
     // Create tool context
-    let tool_ctx = ToolContext {
+    let tool_ctx = Arc::new(ToolContext {
         memory: memory.clone(),
         brave_api_key: config.brave_api_key.clone(),
         work_dir: config.work_dir.clone(),
-    };
+    });
 
     // Initialize harness client
     let mut harness = HarnessClient::new(&config.harness_url, config.agent_token.clone());
@@ -69,129 +79,175 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Create the model provider
+    let model_provider: Arc<dyn provider::ModelProvider> = Arc::from(
+        provider::create_provider(
+            &config.model_provider,
+            &config.model_id,
+            config.api_base.as_deref(),
+            config.api_key.as_deref(),
+        )?
+    );
+
+    let loop_config = LoopConfig {
+        max_iterations: config.max_iterations,
+        model_id: config.model_id.clone(),
+        ..Default::default()
+    };
+
+    // Wrap harness in RwLock for shared access
+    let harness = Arc::new(RwLock::new(harness));
+
     // Start the Agent Card server in the background
     let agent_card = AgentCard {
         url: format!("http://localhost:{}", config.agent_port),
         ..AgentCard::default()
     };
     let card_router = agent_card_router(agent_card);
-    let card_port = config.agent_port;
 
-    tokio::spawn(async move {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", card_port))
-            .await
-            .expect("Failed to bind Agent Card server");
-        info!(port = card_port, "Agent Card server listening");
-        axum::serve(listener, card_router).await.ok();
-    });
+    if config.serve {
+        // ─── Service mode ───────────────────────────────────────────────
+        // Merge the agent card routes with the API routes on a single port.
+        info!(port = config.agent_port, "Service mode: starting HTTP API + task consumer");
 
-    // Start heartbeat loop in background
-    let heartbeat_harness_url = config.harness_url.clone();
-    let heartbeat_token = config.agent_token.clone();
-    tokio::spawn(async move {
-        let client = HarnessClient::new(&heartbeat_harness_url, heartbeat_token);
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            if let Err(e) = client.heartbeat().await {
-                debug!("Heartbeat failed: {e}");
+        let agent_state = AgentState {
+            provider: model_provider.clone(),
+            tool_ctx: tool_ctx.clone(),
+            harness: harness.clone(),
+            loop_config: loop_config.clone(),
+        };
+
+        let app = routes::agent_router(agent_state)
+            .merge(card_router);
+
+        // Start heartbeat loop
+        let heartbeat_harness = harness.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                let h = heartbeat_harness.read().await;
+                if let Err(e) = h.heartbeat().await {
+                    debug!("Heartbeat failed: {e}");
+                }
             }
-        }
-    });
+        });
 
-    // Interactive mode: read from stdin
-    info!("AMOS Agent ready. Type a message to begin (Ctrl+C to quit).");
+        // Start task consumer
+        let tc_config = TaskConsumerConfig {
+            max_iterations: config.max_iterations,
+            ..Default::default()
+        };
+        tokio::spawn(task_consumer::run_task_consumer(
+            tc_config,
+            harness.clone(),
+            model_provider.clone(),
+            tool_ctx.clone(),
+            loop_config,
+        ));
 
-    let stdin = tokio::io::stdin();
-    let reader = tokio::io::BufReader::new(stdin);
+        // Bind and serve
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", config.agent_port)).await?;
+        info!(port = config.agent_port, "Agent HTTP server listening");
+        axum::serve(listener, app).await?;
+    } else {
+        // ─── Interactive mode ───────────────────────────────────────────
+        let card_port = config.agent_port;
+        tokio::spawn(async move {
+            let listener = TcpListener::bind(format!("0.0.0.0:{}", card_port))
+                .await
+                .expect("Failed to bind Agent Card server");
+            info!(port = card_port, "Agent Card server listening");
+            axum::serve(listener, card_router).await.ok();
+        });
 
-    use tokio::io::AsyncBufReadExt;
-    let mut lines = reader.lines();
-
-    loop {
-        eprint!("\n> ");
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                let line = line.trim().to_string();
-                if line.is_empty() {
-                    continue;
+        // Heartbeat
+        let heartbeat_harness = harness.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                let h = heartbeat_harness.read().await;
+                if let Err(e) = h.heartbeat().await {
+                    debug!("Heartbeat failed: {e}");
                 }
-                if line == "/quit" || line == "/exit" {
-                    info!("Goodbye!");
-                    break;
-                }
+            }
+        });
 
-                // Create a provider for this request
-                let model_provider = match provider::create_provider(
-                    &config.model_provider,
-                    &config.model_id,
-                    config.api_base.as_deref(),
-                    config.api_key.as_deref(),
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("Error creating model provider: {e}");
+        info!("AMOS Agent ready. Type a message to begin (Ctrl+C to quit).");
+
+        let stdin = tokio::io::stdin();
+        let reader = tokio::io::BufReader::new(stdin);
+
+        use tokio::io::AsyncBufReadExt;
+        let mut lines = reader.lines();
+
+        loop {
+            eprint!("\n> ");
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    let line = line.trim().to_string();
+                    if line.is_empty() {
                         continue;
                     }
-                };
+                    if line == "/quit" || line == "/exit" {
+                        info!("Goodbye!");
+                        break;
+                    }
 
-                let loop_config = LoopConfig {
-                    max_iterations: config.max_iterations,
-                    model_id: config.model_id.clone(),
-                    ..Default::default()
-                };
+                    // Set up event channel for streaming output
+                    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(100);
 
-                // Set up event channel for streaming output
-                let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(100);
-
-                // Print streaming output
-                let print_handle = tokio::spawn(async move {
-                    while let Some(event) = event_rx.recv().await {
-                        match event {
-                            agent_loop::AgentEvent::TextDelta { content } => {
-                                eprint!("{}", content);
-                            }
-                            agent_loop::AgentEvent::ToolStart { tool_name, is_local } => {
-                                let loc = if is_local { "local" } else { "harness" };
-                                eprintln!("\n[{loc}] {tool_name}...");
-                            }
-                            agent_loop::AgentEvent::ToolEnd { tool_name, duration_ms, is_error } => {
-                                if is_error {
-                                    eprintln!("[error] {tool_name} failed ({duration_ms}ms)");
+                    // Print streaming output
+                    let print_handle = tokio::spawn(async move {
+                        while let Some(event) = event_rx.recv().await {
+                            match event {
+                                agent_loop::AgentEvent::TextDelta { content } => {
+                                    eprint!("{}", content);
                                 }
+                                agent_loop::AgentEvent::ToolStart { tool_name, is_local } => {
+                                    let loc = if is_local { "local" } else { "harness" };
+                                    eprintln!("\n[{loc}] {tool_name}...");
+                                }
+                                agent_loop::AgentEvent::ToolEnd { tool_name, duration_ms, is_error } => {
+                                    if is_error {
+                                        eprintln!("[error] {tool_name} failed ({duration_ms}ms)");
+                                    }
+                                }
+                                agent_loop::AgentEvent::Error { message } => {
+                                    eprintln!("\n[ERROR] {message}");
+                                }
+                                _ => {}
                             }
-                            agent_loop::AgentEvent::Error { message } => {
-                                eprintln!("\n[ERROR] {message}");
-                            }
-                            _ => {}
+                        }
+                    });
+
+                    // Run the agent loop
+                    let h = harness.read().await;
+                    match agent_loop::run_agent_loop(
+                        &loop_config,
+                        model_provider.as_ref(),
+                        &tool_ctx,
+                        Some(&h),
+                        &line,
+                        Some(event_tx),
+                    )
+                    .await
+                    {
+                        Ok(_final_text) => {
+                            eprintln!(); // newline after streaming
+                        }
+                        Err(e) => {
+                            eprintln!("\nAgent error: {e}");
                         }
                     }
-                });
+                    drop(h);
 
-                // Run the agent loop
-                match agent_loop::run_agent_loop(
-                    &loop_config,
-                    model_provider.as_ref(),
-                    &tool_ctx,
-                    Some(&harness),
-                    &line,
-                    Some(event_tx),
-                )
-                .await
-                {
-                    Ok(_final_text) => {
-                        eprintln!(); // newline after streaming
-                    }
-                    Err(e) => {
-                        eprintln!("\nAgent error: {e}");
-                    }
+                    let _ = print_handle.await;
                 }
-
-                let _ = print_handle.await;
-            }
-            Ok(None) => break, // EOF
-            Err(e) => {
-                error!("Input error: {e}");
-                break;
+                Ok(None) => break, // EOF
+                Err(e) => {
+                    error!("Input error: {e}");
+                    break;
+                }
             }
         }
     }

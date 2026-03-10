@@ -1,7 +1,7 @@
 //! Canvas manipulation tools
 
 use super::{Tool, ToolCategory, ToolResult};
-use crate::agent::BedrockClient;
+use crate::bedrock::BedrockClient;
 use crate::canvas::{generator, CanvasEngine, CanvasType};
 use amos_core::{AmosError, AppConfig, Result};
 use async_trait::async_trait;

@@ -31,8 +31,12 @@
 
 pub mod agent_card;
 pub mod agent_loop;
+pub mod bedrock;
 pub mod config;
 pub mod harness_client;
 pub mod memory;
+pub mod model_registry;
 pub mod provider;
+pub mod routes;
+pub mod task_consumer;
 pub mod tools;

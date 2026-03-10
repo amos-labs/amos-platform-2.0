@@ -3,7 +3,7 @@
 //! Uses LLMs to generate custom canvases based on user requirements
 
 use super::{templates, types::CanvasType};
-use crate::agent::BedrockClient;
+use crate::bedrock::BedrockClient;
 use amos_core::{
     types::{ContentBlock, Message, Role},
     AmosError, Result,

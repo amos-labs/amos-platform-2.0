@@ -68,6 +68,9 @@ secrecy = { workspace = true }
 # WebSocket (for harness streaming)
 tokio-tungstenite = { workspace = true }
 
+# SSE streaming for chat endpoint
+async-stream = "0.3"
+
 [dev-dependencies]
 pretty_assertions = "1.4"
 tempfile = "3.14"

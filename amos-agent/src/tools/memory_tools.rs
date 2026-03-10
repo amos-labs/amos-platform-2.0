@@ -3,6 +3,8 @@
 use crate::memory::MemoryStore;
 use amos_core::types::ToolDefinition;
 use serde_json::json;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub fn remember_definition() -> ToolDefinition {
     ToolDefinition {
@@ -65,7 +67,7 @@ pub fn recall_definition() -> ToolDefinition {
 }
 
 /// Store a memory.
-pub fn remember(input: &serde_json::Value, store: &MemoryStore) -> Result<String, String> {
+pub async fn remember(input: &serde_json::Value, store: &Arc<Mutex<MemoryStore>>) -> Result<String, String> {
     let key = input["key"]
         .as_str()
         .ok_or("Missing required field: key")?;
@@ -77,6 +79,7 @@ pub fn remember(input: &serde_json::Value, store: &MemoryStore) -> Result<String
         .and_then(|t| serde_json::from_value(t.clone()).ok())
         .unwrap_or_default();
 
+    let store = store.lock().await;
     let mem = store.remember(key, content, &tags).map_err(|e| e.to_string())?;
     Ok(format!(
         "Stored memory '{}': {} ({} chars)",
@@ -87,7 +90,9 @@ pub fn remember(input: &serde_json::Value, store: &MemoryStore) -> Result<String
 }
 
 /// Search/retrieve memories.
-pub fn recall(input: &serde_json::Value, store: &MemoryStore) -> Result<String, String> {
+pub async fn recall(input: &serde_json::Value, store: &Arc<Mutex<MemoryStore>>) -> Result<String, String> {
+    let store = store.lock().await;
+
     // If an exact key is provided, try direct lookup first
     if let Some(key) = input.get("key").and_then(|k| k.as_str()) {
         match store.get(key) {
@@ -152,50 +157,55 @@ pub fn recall(input: &serde_json::Value, store: &MemoryStore) -> Result<String, 
 mod tests {
     use super::*;
 
-    fn test_store() -> MemoryStore {
-        MemoryStore::in_memory().unwrap()
+    fn test_store() -> Arc<Mutex<MemoryStore>> {
+        Arc::new(Mutex::new(MemoryStore::in_memory().unwrap()))
     }
 
-    #[test]
-    fn test_remember_tool() {
+    #[tokio::test]
+    async fn test_remember_tool() {
         let store = test_store();
         let input = json!({
             "key": "test_fact",
             "content": "The sky is blue",
             "tags": ["fact", "nature"]
         });
-        let result = remember(&input, &store).unwrap();
+        let result = remember(&input, &store).await.unwrap();
         assert!(result.contains("test_fact"));
         assert!(result.contains("The sky is blue"));
     }
 
-    #[test]
-    fn test_recall_by_key() {
+    #[tokio::test]
+    async fn test_recall_by_key() {
         let store = test_store();
-        store.remember("user_name", "Alice", &[]).unwrap();
+        {
+            let s = store.lock().await;
+            s.remember("user_name", "Alice", &[]).unwrap();
+        }
 
         let input = json!({"query": "name", "key": "user_name"});
-        let result = recall(&input, &store).unwrap();
+        let result = recall(&input, &store).await.unwrap();
         assert!(result.contains("Alice"));
     }
 
-    #[test]
-    fn test_recall_by_search() {
+    #[tokio::test]
+    async fn test_recall_by_search() {
         let store = test_store();
-        store
-            .remember("project_lang", "Rust is the primary language", &["tech".to_string()])
-            .unwrap();
+        {
+            let s = store.lock().await;
+            s.remember("project_lang", "Rust is the primary language", &["tech".to_string()])
+                .unwrap();
+        }
 
         let input = json!({"query": "language"});
-        let result = recall(&input, &store).unwrap();
+        let result = recall(&input, &store).await.unwrap();
         assert!(result.contains("Rust"));
     }
 
-    #[test]
-    fn test_recall_empty() {
+    #[tokio::test]
+    async fn test_recall_empty() {
         let store = test_store();
         let input = json!({"query": "anything"});
-        let result = recall(&input, &store).unwrap();
+        let result = recall(&input, &store).await.unwrap();
         assert!(result.contains("No memories"));
     }
 }

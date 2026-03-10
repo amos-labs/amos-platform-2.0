@@ -1,7 +1,6 @@
 //! Application state shared across all request handlers
 
 use crate::{
-    agent::ModelRegistry,
     canvas::CanvasEngine,
     documents::DocumentProcessor,
     geo::GeoLocator,
@@ -16,12 +15,8 @@ use crate::{
     tools::ToolRegistry,
 };
 use amos_core::{AppConfig, CredentialVault};
-use dashmap::DashMap;
 use sqlx::PgPool;
-use std::sync::{
-    atomic::AtomicBool,
-    Arc,
-};
+use std::sync::Arc;
 
 /// Shared application state
 ///
@@ -60,10 +55,6 @@ pub struct AppState {
     /// `None` if credentials are not configured.
     pub image_gen: Option<Arc<ImageGenClient>>,
 
-    /// Active chat cancellation flags, keyed by chat_id.
-    /// Set the `AtomicBool` to `true` to cancel a running agent loop.
-    pub active_chats: Arc<DashMap<String, Arc<AtomicBool>>>,
-
     /// Universal API executor for making authenticated calls to external APIs
     pub api_executor: Arc<ApiExecutor>,
 
@@ -75,9 +66,6 @@ pub struct AppState {
 
     /// IP geolocation service (cached lookups)
     pub geo_locator: Arc<GeoLocator>,
-
-    /// Model registry (built-in Bedrock models + custom BYOK providers)
-    pub model_registry: Arc<ModelRegistry>,
 }
 
 impl AppState {

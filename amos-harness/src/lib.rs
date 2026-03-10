@@ -1,13 +1,13 @@
 //! # AMOS Harness
 //!
-//! The per-customer AI harness that serves as their single business interface.
+//! The per-customer business operating system and agent marketplace.
 //!
 //! AMOS Harness is an AI-native business operating system deployed per-customer.
 //! It provides:
 //! - Conversational + canvas interface (the customer's ONLY UI)
-//! - AI agent that builds workflows, automations, integrations, and apps
+//! - Platform for building workflows, automations, integrations, and apps
 //! - Control plane for OpenClaw agents (autonomous AI employees)
-//! - Task queue with internal sub-agents and external bounties
+//! - Task queue with external agent bounties
 //!
 //! ## Architecture
 //!
@@ -21,7 +21,7 @@
 //! - **Integrations**: Connector framework for third-party services
 //! - **Memory**: Working memory with salience-based attention
 
-pub mod agent;
+pub mod bedrock;
 pub mod canvas;
 pub mod documents;
 pub mod geo;
@@ -45,12 +45,6 @@ pub mod tools;
 // Re-export commonly used types
 pub use server::create_server;
 pub use state::AppState;
-
-// Re-export agent types
-pub use agent::{
-    loop_runner::{AgentEvent, AgentLoop, LoopConfig},
-    model_registry::{ModelInfo, ModelRegistry},
-};
 
 // Re-export canvas types
 pub use canvas::{

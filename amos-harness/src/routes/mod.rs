@@ -1,6 +1,5 @@
 //! HTTP routes and WebSocket handlers
 
-pub mod agent;
 pub mod bots;
 pub mod canvas;
 pub mod credentials;
@@ -24,8 +23,6 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .route("/login", get(canvas::serve_login))
         .route("/register", get(canvas::serve_register))
         .route("/forgot-password", get(canvas::serve_forgot_password))
-        // Agent/chat routes
-        .nest("/api/v1/agent", agent::routes(state.clone()))
         // Canvas routes
         .nest("/api/v1/canvases", canvas::routes(state.clone()))
         // Public canvas route

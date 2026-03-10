@@ -58,6 +58,10 @@ pub struct Cli {
     /// Log level
     #[arg(long, env = "RUST_LOG", default_value = "info")]
     pub log_level: String,
+
+    /// Run in service mode (HTTP API + task consumer) instead of interactive
+    #[arg(long, env = "AMOS_SERVE")]
+    pub serve: bool,
 }
 
 /// Runtime agent configuration (built from CLI + defaults).
@@ -76,6 +80,7 @@ pub struct AgentConfig {
     pub agent_token: Option<String>,
     pub work_dir: String,
     pub log_level: String,
+    pub serve: bool,
 }
 
 impl From<Cli> for AgentConfig {
@@ -94,6 +99,7 @@ impl From<Cli> for AgentConfig {
             agent_token: cli.agent_token,
             work_dir: cli.work_dir,
             log_level: cli.log_level,
+            serve: cli.serve,
         }
     }
 }

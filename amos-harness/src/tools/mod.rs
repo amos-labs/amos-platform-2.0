@@ -218,7 +218,7 @@ impl ToolRegistry {
         db_pool: PgPool,
         config: Arc<AppConfig>,
         task_queue: Arc<TaskQueue>,
-        bedrock: Option<Arc<crate::agent::BedrockClient>>,
+        bedrock: Option<Arc<crate::bedrock::BedrockClient>>,
         api_executor: Arc<ApiExecutor>,
         etl_pipeline: Arc<EtlPipeline>,
     ) -> Self {
