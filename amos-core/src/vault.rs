@@ -9,7 +9,7 @@
 
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
-    Aes256Gcm, AeadCore, Key, Nonce,
+    AeadCore, Aes256Gcm, Key, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
@@ -62,9 +62,10 @@ impl CredentialVault {
     /// Encrypt plaintext and return a base64-encoded blob (nonce || ciphertext).
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<String> {
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-        let ciphertext = self.cipher.encrypt(&nonce, plaintext).map_err(|e| {
-            AmosError::Internal(format!("Encryption failed: {}", e))
-        })?;
+        let ciphertext = self
+            .cipher
+            .encrypt(&nonce, plaintext)
+            .map_err(|e| AmosError::Internal(format!("Encryption failed: {}", e)))?;
 
         // Concatenate nonce + ciphertext
         let mut blob = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
@@ -106,9 +107,8 @@ impl CredentialVault {
     /// Convenience: decrypt base64 blob and return a String.
     pub fn decrypt_string(&self, blob_b64: &str) -> Result<String> {
         let bytes = self.decrypt(blob_b64)?;
-        String::from_utf8(bytes).map_err(|e| {
-            AmosError::Internal(format!("Decrypted data is not valid UTF-8: {}", e))
-        })
+        String::from_utf8(bytes)
+            .map_err(|e| AmosError::Internal(format!("Decrypted data is not valid UTF-8: {}", e)))
     }
 
     /// Generate a new random 32-byte master key and return it as base64.
@@ -166,14 +166,10 @@ mod tests {
 
     #[test]
     fn wrong_key_fails_decryption() {
-        let vault1 = CredentialVault::from_base64_key(
-            &CredentialVault::generate_master_key(),
-        )
-        .unwrap();
-        let vault2 = CredentialVault::from_base64_key(
-            &CredentialVault::generate_master_key(),
-        )
-        .unwrap();
+        let vault1 =
+            CredentialVault::from_base64_key(&CredentialVault::generate_master_key()).unwrap();
+        let vault2 =
+            CredentialVault::from_base64_key(&CredentialVault::generate_master_key()).unwrap();
 
         let encrypted = vault1.encrypt_string("secret").unwrap();
         assert!(vault2.decrypt_string(&encrypted).is_err());

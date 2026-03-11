@@ -45,13 +45,33 @@ impl Default for LoopConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
-    TurnStart { iteration: usize },
-    TextDelta { content: String },
-    ToolStart { tool_name: String, is_local: bool },
-    ToolEnd { tool_name: String, duration_ms: u64, is_error: bool },
-    TurnEnd { iteration: usize, tokens_used: u64 },
-    Done { total_iterations: usize, total_tokens: u64, final_text: String },
-    Error { message: String },
+    TurnStart {
+        iteration: usize,
+    },
+    TextDelta {
+        content: String,
+    },
+    ToolStart {
+        tool_name: String,
+        is_local: bool,
+    },
+    ToolEnd {
+        tool_name: String,
+        duration_ms: u64,
+        is_error: bool,
+    },
+    TurnEnd {
+        iteration: usize,
+        tokens_used: u64,
+    },
+    Done {
+        total_iterations: usize,
+        total_tokens: u64,
+        final_text: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// Run the agent loop to completion.
@@ -112,7 +132,13 @@ pub async fn run_agent_loop(
             match block {
                 ContentBlock::Text { text } => {
                     response_text.push_str(text);
-                    emit(&event_tx, AgentEvent::TextDelta { content: text.clone() }).await;
+                    emit(
+                        &event_tx,
+                        AgentEvent::TextDelta {
+                            content: text.clone(),
+                        },
+                    )
+                    .await;
                 }
                 ContentBlock::ToolUse { id, name, input } => {
                     has_tool_calls = true;
@@ -129,10 +155,14 @@ pub async fn run_agent_loop(
         // Add assistant message to conversation
         messages.push(response);
 
-        emit(&event_tx, AgentEvent::TurnEnd {
-            iteration,
-            tokens_used: usage.total_tokens,
-        }).await;
+        emit(
+            &event_tx,
+            AgentEvent::TurnEnd {
+                iteration,
+                tokens_used: usage.total_tokens,
+            },
+        )
+        .await;
 
         // If no tool calls, the agent is done
         if !has_tool_calls {
@@ -145,10 +175,14 @@ pub async fn run_agent_loop(
 
         for (tool_id, tool_name, input) in &tool_calls {
             let is_local = local_tool_names.contains(tool_name);
-            emit(&event_tx, AgentEvent::ToolStart {
-                tool_name: tool_name.clone(),
-                is_local,
-            }).await;
+            emit(
+                &event_tx,
+                AgentEvent::ToolStart {
+                    tool_name: tool_name.clone(),
+                    is_local,
+                },
+            )
+            .await;
 
             let start = std::time::Instant::now();
 
@@ -166,7 +200,10 @@ pub async fn run_agent_loop(
                         Err(e) => (format!("Harness tool error: {e}"), true),
                     }
                 } else {
-                    (format!("Harness not connected - cannot execute {tool_name}"), true)
+                    (
+                        format!("Harness not connected - cannot execute {tool_name}"),
+                        true,
+                    )
                 }
             } else {
                 (format!("Unknown tool: {tool_name}"), true)
@@ -174,11 +211,15 @@ pub async fn run_agent_loop(
 
             let duration_ms = start.elapsed().as_millis() as u64;
 
-            emit(&event_tx, AgentEvent::ToolEnd {
-                tool_name: tool_name.clone(),
-                duration_ms,
-                is_error,
-            }).await;
+            emit(
+                &event_tx,
+                AgentEvent::ToolEnd {
+                    tool_name: tool_name.clone(),
+                    duration_ms,
+                    is_error,
+                },
+            )
+            .await;
 
             tool_results.push(ContentBlock::ToolResult {
                 tool_use_id: tool_id.clone(),
@@ -196,11 +237,15 @@ pub async fn run_agent_loop(
         });
     }
 
-    emit(&event_tx, AgentEvent::Done {
-        total_iterations: messages.len() / 2,
-        total_tokens,
-        final_text: final_text.clone(),
-    }).await;
+    emit(
+        &event_tx,
+        AgentEvent::Done {
+            total_iterations: messages.len() / 2,
+            total_tokens,
+            final_text: final_text.clone(),
+        },
+    )
+    .await;
 
     Ok(final_text)
 }

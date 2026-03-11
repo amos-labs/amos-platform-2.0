@@ -72,13 +72,18 @@ impl MemoryStore {
             CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
                 INSERT INTO memories_fts(memories_fts, rowid, key, content, tags)
                 VALUES ('delete', old.id, old.key, old.content, old.tags);
-            END;"
+            END;",
         )?;
         Ok(())
     }
 
     /// Store a memory (upsert by key).
-    pub fn remember(&self, key: &str, content: &str, tags: &[String]) -> Result<Memory, rusqlite::Error> {
+    pub fn remember(
+        &self,
+        key: &str,
+        content: &str,
+        tags: &[String],
+    ) -> Result<Memory, rusqlite::Error> {
         let tags_json = serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string());
 
         self.conn.execute(
@@ -122,7 +127,7 @@ impl MemoryStore {
              JOIN memories m ON f.rowid = m.id
              WHERE memories_fts MATCH ?1
              ORDER BY rank
-             LIMIT ?2"
+             LIMIT ?2",
         )?;
 
         let memories = stmt.query_map(params![query, limit as i64], |row| {
@@ -145,7 +150,7 @@ impl MemoryStore {
     pub fn list_recent(&self, limit: usize) -> Result<Vec<Memory>, rusqlite::Error> {
         let mut stmt = self.conn.prepare(
             "SELECT id, key, content, tags, created_at, updated_at
-             FROM memories ORDER BY updated_at DESC LIMIT ?1"
+             FROM memories ORDER BY updated_at DESC LIMIT ?1",
         )?;
 
         let memories = stmt.query_map(params![limit as i64], |row| {
@@ -166,20 +171,16 @@ impl MemoryStore {
 
     /// Delete a memory by key.
     pub fn forget(&self, key: &str) -> Result<bool, rusqlite::Error> {
-        let count = self.conn.execute(
-            "DELETE FROM memories WHERE key = ?1",
-            params![key],
-        )?;
+        let count = self
+            .conn
+            .execute("DELETE FROM memories WHERE key = ?1", params![key])?;
         Ok(count > 0)
     }
 
     /// Count total memories.
     pub fn count(&self) -> Result<usize, rusqlite::Error> {
-        self.conn.query_row(
-            "SELECT COUNT(*) FROM memories",
-            [],
-            |row| row.get(0),
-        )
+        self.conn
+            .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
     }
 }
 
@@ -190,7 +191,9 @@ mod tests {
     #[test]
     fn test_remember_and_recall() {
         let store = MemoryStore::in_memory().unwrap();
-        let mem = store.remember("user_name", "Rick", &["profile".to_string()]).unwrap();
+        let mem = store
+            .remember("user_name", "Rick", &["profile".to_string()])
+            .unwrap();
         assert_eq!(mem.key, "user_name");
         assert_eq!(mem.content, "Rick");
         assert_eq!(mem.tags, vec!["profile"]);
@@ -209,9 +212,23 @@ mod tests {
     #[test]
     fn test_search() {
         let store = MemoryStore::in_memory().unwrap();
-        store.remember("project_goal", "Build an autonomous agent platform", &["project".to_string()]).unwrap();
-        store.remember("user_preference", "Prefers dark mode", &["ui".to_string()]).unwrap();
-        store.remember("tech_stack", "Rust, TypeScript, PostgreSQL", &["tech".to_string()]).unwrap();
+        store
+            .remember(
+                "project_goal",
+                "Build an autonomous agent platform",
+                &["project".to_string()],
+            )
+            .unwrap();
+        store
+            .remember("user_preference", "Prefers dark mode", &["ui".to_string()])
+            .unwrap();
+        store
+            .remember(
+                "tech_stack",
+                "Rust, TypeScript, PostgreSQL",
+                &["tech".to_string()],
+            )
+            .unwrap();
 
         let results = store.search("autonomous agent", 10).unwrap();
         assert!(!results.is_empty());

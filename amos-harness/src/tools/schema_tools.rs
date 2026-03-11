@@ -98,9 +98,9 @@ impl Tool for DefineCollectionTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let name = params["name"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("name is required".to_string())
-        })?;
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("name is required".to_string()))?;
 
         let display_name = params["display_name"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("display_name is required".to_string())
@@ -108,12 +108,12 @@ impl Tool for DefineCollectionTool {
 
         let description = params.get("description").and_then(|v| v.as_str());
 
-        let fields_val = params.get("fields").ok_or_else(|| {
-            amos_core::AmosError::Validation("fields is required".to_string())
-        })?;
+        let fields_val = params
+            .get("fields")
+            .ok_or_else(|| amos_core::AmosError::Validation("fields is required".to_string()))?;
 
-        let fields: Vec<FieldDefinition> = serde_json::from_value(fields_val.clone())
-            .map_err(|e| {
+        let fields: Vec<FieldDefinition> =
+            serde_json::from_value(fields_val.clone()).map_err(|e| {
                 amos_core::AmosError::Validation(format!("Invalid field definitions: {}", e))
             })?;
 
@@ -241,9 +241,9 @@ impl Tool for GetCollectionTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let name = params["name"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("name is required".to_string())
-        })?;
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("name is required".to_string()))?;
 
         let engine = SchemaEngine::new(self.db_pool.clone());
         let collection = engine.get_collection(name).await?;
@@ -397,10 +397,7 @@ impl Tool for QueryRecordsTool {
             .and_then(|v| v.as_i64())
             .unwrap_or(50)
             .min(200);
-        let offset = params
-            .get("offset")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let offset = params.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
 
         let engine = SchemaEngine::new(self.db_pool.clone());
         let (records, total) = engine
@@ -475,9 +472,9 @@ impl Tool for UpdateRecordTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let record_id_str = params["record_id"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("record_id is required".to_string())
-        })?;
+        let record_id_str = params["record_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("record_id is required".to_string()))?;
 
         let record_id = Uuid::parse_str(record_id_str).map_err(|_| {
             amos_core::AmosError::Validation(format!("Invalid UUID: {}", record_id_str))
@@ -542,9 +539,9 @@ impl Tool for DeleteRecordTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let record_id_str = params["record_id"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("record_id is required".to_string())
-        })?;
+        let record_id_str = params["record_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("record_id is required".to_string()))?;
 
         let record_id = Uuid::parse_str(record_id_str).map_err(|_| {
             amos_core::AmosError::Validation(format!("Invalid UUID: {}", record_id_str))

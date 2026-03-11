@@ -59,19 +59,21 @@ impl Tool for CreateSiteTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let name = params["name"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("name is required".to_string())
-        })?;
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("name is required".to_string()))?;
 
-        let slug = params["slug"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("slug is required".to_string())
-        })?;
+        let slug = params["slug"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("slug is required".to_string()))?;
 
         let description = params.get("description").and_then(|v| v.as_str());
         let settings = params.get("settings").cloned();
 
         let engine = SiteEngine::new(self.db_pool.clone());
-        let site = engine.create_site(name, slug, description, settings).await?;
+        let site = engine
+            .create_site(name, slug, description, settings)
+            .await?;
 
         Ok(ToolResult::success(json!({
             "site_id": site.id.to_string(),
@@ -159,17 +161,17 @@ impl Tool for CreatePageTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let site_slug = params["site_slug"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("site_slug is required".to_string())
-        })?;
+        let site_slug = params["site_slug"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("site_slug is required".to_string()))?;
 
-        let path = params["path"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("path is required".to_string())
-        })?;
+        let path = params["path"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("path is required".to_string()))?;
 
-        let title = params["title"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("title is required".to_string())
-        })?;
+        let title = params["title"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("title is required".to_string()))?;
 
         let html_content = params["html_content"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("html_content is required".to_string())
@@ -271,17 +273,17 @@ impl Tool for UpdatePageTool {
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
         // Delegate to upsert_page (same behavior as create_page)
-        let site_slug = params["site_slug"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("site_slug is required".to_string())
-        })?;
+        let site_slug = params["site_slug"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("site_slug is required".to_string()))?;
 
-        let path = params["path"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("path is required".to_string())
-        })?;
+        let path = params["path"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("path is required".to_string()))?;
 
-        let title = params["title"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("title is required".to_string())
-        })?;
+        let title = params["title"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("title is required".to_string()))?;
 
         let html_content = params["html_content"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("html_content is required".to_string())
@@ -356,9 +358,9 @@ impl Tool for PublishSiteTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let site_slug = params["site_slug"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("site_slug is required".to_string())
-        })?;
+        let site_slug = params["site_slug"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("site_slug is required".to_string()))?;
 
         let engine = SiteEngine::new(self.db_pool.clone());
         let site = engine.publish_site(site_slug, true).await?;

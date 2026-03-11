@@ -204,8 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .compact()
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     // Load configuration
     let config = amos_core::AppConfig::load()?;
@@ -349,7 +348,10 @@ async fn handle_platform_command(
     cmd: PlatformCommands,
 ) -> Result<(), Box<dyn Error>> {
     match cmd {
-        PlatformCommands::Start { http_port, grpc_port } => {
+        PlatformCommands::Start {
+            http_port,
+            grpc_port,
+        } => {
             info!("Starting AMOS Platform");
             println!("Starting platform server...");
             println!("HTTP Port: {}", http_port);
@@ -453,7 +455,10 @@ async fn handle_token_command(
             println!("Total Supply: {} AMOS", TOTAL_SUPPLY);
             println!("Grace Period: {} days", GRACE_PERIOD_DAYS);
             println!("Halving Interval: {} days", HALVING_INTERVAL_DAYS);
-            println!("Initial Daily Emission: {} AMOS/day", INITIAL_DAILY_EMISSION);
+            println!(
+                "Initial Daily Emission: {} AMOS/day",
+                INITIAL_DAILY_EMISSION
+            );
 
             if history {
                 println!("\nHistorical data will be fetched from database...");
@@ -474,8 +479,8 @@ async fn handle_token_command(
 
             // Placeholder economics for display
             let econ = PlatformEconomics {
-                monthly_revenue_cents: 50_000_00,
-                monthly_costs_cents: 50_000_00,
+                monthly_revenue_cents: 5_000_000,
+                monthly_costs_cents: 5_000_000,
             };
             let rate_bps = calculate_dynamic_decay_rate(&econ);
             println!(
@@ -491,8 +496,15 @@ async fn handle_token_command(
             println!("\nExplanation: The decay rate adjusts based on platform profitability,");
             println!("ranging from 2% (highly profitable) to 25% (sustained losses).");
         }
-        TokenCommands::Simulate { stake, days, format } => {
-            println!("Simulating decay for {:.2} AMOS over {} days\n", stake, days);
+        TokenCommands::Simulate {
+            stake,
+            days,
+            format,
+        } => {
+            println!(
+                "Simulating decay for {:.2} AMOS over {} days\n",
+                stake, days
+            );
 
             use amos_core::token::decay::{
                 apply_daily_decay, calculate_dynamic_decay_rate, PlatformEconomics, StakeContext,
@@ -505,8 +517,8 @@ async fn handle_token_command(
 
             // Placeholder economics (breakeven scenario)
             let econ = PlatformEconomics {
-                monthly_revenue_cents: 50_000_00,
-                monthly_costs_cents: 50_000_00,
+                monthly_revenue_cents: 5_000_000,
+                monthly_costs_cents: 5_000_000,
             };
             let base_rate_bps = calculate_dynamic_decay_rate(&econ);
 
@@ -571,7 +583,10 @@ async fn handle_token_command(
                 println!("  ]");
                 println!("}}");
             } else if format == "table" {
-                println!("\nFinal stake after {} days: {} AMOS", days, current_balance);
+                println!(
+                    "\nFinal stake after {} days: {} AMOS",
+                    days, current_balance
+                );
                 let total_decay = original_balance - current_balance;
                 println!(
                     "Total decay: {} AMOS ({:.2}%)",
@@ -598,11 +613,7 @@ async fn handle_health_command(config: amos_core::AppConfig) -> Result<(), Box<d
 
     // Check Harness
     println!("Harness (port 3000): Checking...");
-    match client
-        .get("http://localhost:3000/health")
-        .send()
-        .await
-    {
+    match client.get("http://localhost:3000/health").send().await {
         Ok(response) => {
             if response.status().is_success() {
                 println!("  Status: Healthy");
@@ -617,11 +628,7 @@ async fn handle_health_command(config: amos_core::AppConfig) -> Result<(), Box<d
 
     // Check Platform
     println!("\nPlatform (port 4000): Checking...");
-    match client
-        .get("http://localhost:4000/health")
-        .send()
-        .await
-    {
+    match client.get("http://localhost:4000/health").send().await {
         Ok(response) => {
             if response.status().is_success() {
                 println!("  Status: Healthy");

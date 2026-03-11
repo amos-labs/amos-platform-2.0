@@ -13,7 +13,6 @@ use anyhow::{bail, Context, Result};
 use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -46,8 +45,8 @@ impl ImageGenConfig {
         let region = std::env::var("GOOGLE_CLOUD_REGION").unwrap_or_else(|_| "us-central1".into());
         let api_key = std::env::var("GOOGLE_API_KEY").ok();
         let access_token = std::env::var("GOOGLE_ACCESS_TOKEN").ok();
-        let model = std::env::var("IMAGEN_MODEL")
-            .unwrap_or_else(|_| "imagen-3.0-generate-002".into());
+        let model =
+            std::env::var("IMAGEN_MODEL").unwrap_or_else(|_| "imagen-3.0-generate-002".into());
 
         // Need at least one auth method
         if api_key.is_none() && access_token.is_none() {
@@ -84,8 +83,12 @@ pub struct ImageGenRequest {
     pub style: Option<String>,
 }
 
-fn default_count() -> u8 { 1 }
-fn default_aspect_ratio() -> String { "1:1".into() }
+fn default_count() -> u8 {
+    1
+}
+fn default_aspect_ratio() -> String {
+    "1:1".into()
+}
 
 /// A single generated image.
 #[derive(Debug, Clone)]

@@ -82,7 +82,10 @@ pub async fn run_task_consumer(
             let permit = match semaphore.clone().try_acquire_owned() {
                 Ok(p) => p,
                 Err(_) => {
-                    warn!("Max concurrent tasks reached, skipping task {}", task.task_id);
+                    warn!(
+                        "Max concurrent tasks reached, skipping task {}",
+                        task.task_id
+                    );
                     continue;
                 }
             };

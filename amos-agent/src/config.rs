@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 #[command(name = "amos-agent", about = "AMOS autonomous agent")]
 pub struct Cli {
     /// Harness URL to connect to
-    #[arg(long, env = "AMOS_HARNESS_URL", default_value = "http://localhost:3000")]
+    #[arg(
+        long,
+        env = "AMOS_HARNESS_URL",
+        default_value = "http://localhost:3000"
+    )]
     pub harness_url: String,
 
     /// Agent name for registration
@@ -24,7 +28,11 @@ pub struct Cli {
     pub model_provider: String,
 
     /// Model ID to use (e.g. "anthropic.claude-sonnet-4-20250514-v1:0" or "gpt-4")
-    #[arg(long, env = "AMOS_MODEL_ID", default_value = "anthropic.claude-sonnet-4-20250514-v1:0")]
+    #[arg(
+        long,
+        env = "AMOS_MODEL_ID",
+        default_value = "anthropic.claude-sonnet-4-20250514-v1:0"
+    )]
     pub model_id: String,
 
     /// OpenAI-compatible API base URL (for non-Bedrock providers)

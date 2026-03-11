@@ -8,7 +8,7 @@ use crate::state::AppState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::get,
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -81,10 +81,13 @@ async fn store_credential(
     Json(body): Json<StoreCredentialRequest>,
 ) -> Result<(StatusCode, Json<StoreCredentialResponse>), StatusCode> {
     // Encrypt the secret value
-    let encrypted_value = state.vault.encrypt_string(&body.secret_value).map_err(|e| {
-        tracing::error!("Failed to encrypt credential: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let encrypted_value = state
+        .vault
+        .encrypt_string(&body.secret_value)
+        .map_err(|e| {
+            tracing::error!("Failed to encrypt credential: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     // Encrypt extra fields if provided
     let encrypted_metadata = match &body.extra_fields {
@@ -209,14 +212,13 @@ pub async fn decrypt_credential(
     vault: &amos_core::CredentialVault,
     credential_id: Uuid,
 ) -> Result<String, StatusCode> {
-    let row: (String, String) = sqlx::query_as(
-        "SELECT encrypted_value, status FROM credential_vault WHERE id = $1",
-    )
-    .bind(credential_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let row: (String, String) =
+        sqlx::query_as("SELECT encrypted_value, status FROM credential_vault WHERE id = $1")
+            .bind(credential_id)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     let (encrypted_value, status) = row;
     if status != "active" {

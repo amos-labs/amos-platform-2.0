@@ -16,6 +16,12 @@ use serde_json::{json, Value as JsonValue};
 /// embedded in documents, landing pages, etc.
 pub struct GenerateImageTool;
 
+impl Default for GenerateImageTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GenerateImageTool {
     pub fn new() -> Self {
         Self
@@ -79,10 +85,7 @@ impl Tool for GenerateImageTool {
         };
 
         // Parse optional parameters
-        let count = params
-            .get("count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1) as u8;
+        let count = params.get("count").and_then(|v| v.as_u64()).unwrap_or(1) as u8;
         let aspect_ratio = params
             .get("aspect_ratio")
             .and_then(|v| v.as_str())
@@ -151,10 +154,7 @@ impl Tool for GenerateImageTool {
                     }),
                 ))
             }
-            Err(e) => Ok(ToolResult::error(format!(
-                "Image generation failed: {}",
-                e
-            ))),
+            Err(e) => Ok(ToolResult::error(format!("Image generation failed: {}", e))),
         }
     }
 }

@@ -109,7 +109,7 @@ impl DocumentProcessor {
 
         // Find the first extractor that can handle this content type
         for ext in &self.extractors {
-            if ext.can_handle(&effective_ct, effective_filename) {
+            if ext.can_handle(effective_ct, effective_filename) {
                 let name = ext.name().to_string();
                 // Clone data for the blocking task
                 let data = data.to_vec();
@@ -123,29 +123,15 @@ impl DocumentProcessor {
 
                 match tokio::task::spawn_blocking(move || ext_ref.extract(&data, &fname)).await {
                     Ok(Ok(result)) => {
-                        tracing::info!(
-                            "Extractor '{}' succeeded for '{}'",
-                            name,
-                            filename
-                        );
+                        tracing::info!("Extractor '{}' succeeded for '{}'", name, filename);
                         return result;
                     }
                     Ok(Err(e)) => {
-                        tracing::warn!(
-                            "Extractor '{}' failed for '{}': {}",
-                            name,
-                            filename,
-                            e
-                        );
+                        tracing::warn!("Extractor '{}' failed for '{}': {}", name, filename, e);
                         // Fall through to try next extractor or return Unsupported
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "Extractor '{}' panicked for '{}': {}",
-                            name,
-                            filename,
-                            e
-                        );
+                        tracing::error!("Extractor '{}' panicked for '{}': {}", name, filename, e);
                     }
                 }
             }
@@ -176,8 +162,7 @@ impl DocumentExtractor for PdfExtractor {
     }
 
     fn can_handle(&self, content_type: &str, filename: &str) -> bool {
-        content_type == "application/pdf"
-            || filename.to_lowercase().ends_with(".pdf")
+        content_type == "application/pdf" || filename.to_lowercase().ends_with(".pdf")
     }
 
     fn extract(&self, data: &[u8], filename: &str) -> Result<ExtractionResult> {
@@ -198,7 +183,10 @@ impl DocumentExtractor for PdfExtractor {
         if trimmed.is_empty() {
             // Likely a scanned/image-only PDF — text extraction yielded nothing.
             // Send as raw document so Claude can use native PDF vision.
-            tracing::info!("PDF '{}' yielded no text (likely scanned), using raw document passthrough", filename);
+            tracing::info!(
+                "PDF '{}' yielded no text (likely scanned), using raw document passthrough",
+                filename
+            );
             return Ok(ExtractionResult::RawDocument(
                 "pdf".to_string(),
                 filename.to_string(),
@@ -270,9 +258,7 @@ fn extract_text_with_lopdf(data: &[u8], filename: &str) -> Result<String> {
     for (i, &page_num) in page_nums.iter().enumerate() {
         if pages.get(&page_num).is_some() {
             // Try to extract text from the page's content streams
-            let page_text = doc
-                .extract_text(&[page_num])
-                .unwrap_or_default();
+            let page_text = doc.extract_text(&[page_num]).unwrap_or_default();
 
             let trimmed = page_text.trim();
             if !trimmed.is_empty() {
@@ -492,10 +478,17 @@ fn strip_html_to_text(html: &str) -> String {
                     .trim_start_matches('/');
 
                 // Track skip elements (script, style, noscript)
-                if tag_lower.starts_with("script") || tag_lower.starts_with("style") || tag_lower.starts_with("noscript") {
+                if tag_lower.starts_with("script")
+                    || tag_lower.starts_with("style")
+                    || tag_lower.starts_with("noscript")
+                {
                     in_skip_element = true;
                     skip_depth += 1;
-                } else if (tag_lower.starts_with("/script") || tag_lower.starts_with("/style") || tag_lower.starts_with("/noscript")) && in_skip_element {
+                } else if (tag_lower.starts_with("/script")
+                    || tag_lower.starts_with("/style")
+                    || tag_lower.starts_with("/noscript"))
+                    && in_skip_element
+                {
                     skip_depth -= 1;
                     if skip_depth <= 0 {
                         in_skip_element = false;
@@ -506,10 +499,10 @@ fn strip_html_to_text(html: &str) -> String {
                 // Insert whitespace at block boundaries
                 if !in_skip_element {
                     match tag_name {
-                        "p" | "div" | "br" | "hr" | "li" | "tr" | "h1" | "h2" | "h3"
-                        | "h4" | "h5" | "h6" | "blockquote" | "section" | "article"
-                        | "header" | "footer" | "main" | "nav" | "aside" | "dt" | "dd"
-                        | "figcaption" | "details" | "summary" => {
+                        "p" | "div" | "br" | "hr" | "li" | "tr" | "h1" | "h2" | "h3" | "h4"
+                        | "h5" | "h6" | "blockquote" | "section" | "article" | "header"
+                        | "footer" | "main" | "nav" | "aside" | "dt" | "dd" | "figcaption"
+                        | "details" | "summary" => {
                             if !result.ends_with('\n') {
                                 result.push('\n');
                             }
@@ -691,7 +684,11 @@ mod tests {
     #[test]
     fn test_processor_has_extractors() {
         let p = DocumentProcessor::new();
-        assert_eq!(p.extractors.len(), 3, "should have PDF, DOCX, and HTML extractors");
+        assert_eq!(
+            p.extractors.len(),
+            3,
+            "should have PDF, DOCX, and HTML extractors"
+        );
     }
 
     #[test]
@@ -737,12 +734,18 @@ mod tests {
     #[test]
     fn test_sniff_real_pdf() {
         let data = b"%PDF-1.4 fake pdf content";
-        assert_eq!(sniff_content_type(data, "application/pdf"), "application/pdf");
+        assert_eq!(
+            sniff_content_type(data, "application/pdf"),
+            "application/pdf"
+        );
     }
 
     #[test]
     fn test_sniff_unknown_preserves_declared() {
         let data = b"\x00\x01\x02\x03 random binary";
-        assert_eq!(sniff_content_type(data, "application/octet-stream"), "application/octet-stream");
+        assert_eq!(
+            sniff_content_type(data, "application/octet-stream"),
+            "application/octet-stream"
+        );
     }
 }

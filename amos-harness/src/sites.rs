@@ -124,7 +124,7 @@ impl SiteEngine {
         .await
         .map_err(|e| AmosError::Internal(format!("Failed to list sites: {}", e)))?;
 
-        rows.iter().map(|row| site_from_row(row)).collect()
+        rows.iter().map(site_from_row).collect()
     }
 
     /// Update site settings/metadata.
@@ -297,7 +297,7 @@ impl SiteEngine {
         .await
         .map_err(|e| AmosError::Internal(format!("Failed to list pages: {}", e)))?;
 
-        rows.iter().map(|row| page_from_row(row)).collect()
+        rows.iter().map(page_from_row).collect()
     }
 
     /// Delete a page.
@@ -333,13 +333,17 @@ impl SiteEngine {
     pub fn render_page(&self, site: &Site, page: &Page) -> String {
         let title = html_escape(page.meta_title.as_deref().unwrap_or(&page.title));
         let description = html_escape(
-            page.meta_description.as_deref()
+            page.meta_description
+                .as_deref()
                 .or(page.description.as_deref())
                 .unwrap_or(""),
         );
         let analytics_id = site.settings.get("analytics_id").and_then(|v| v.as_str());
         let theme_color = html_escape(
-            site.settings.get("theme_color").and_then(|v| v.as_str()).unwrap_or("#000000"),
+            site.settings
+                .get("theme_color")
+                .and_then(|v| v.as_str())
+                .unwrap_or("#000000"),
         );
 
         let css_block = sanitize_css_content(page.css_content.as_deref().unwrap_or(""));
@@ -690,11 +694,17 @@ mod tests {
 
     fn render_page_standalone(site: &Site, page: &Page) -> String {
         let title = page.meta_title.as_deref().unwrap_or(&page.title);
-        let description = page.meta_description.as_deref()
+        let description = page
+            .meta_description
+            .as_deref()
             .or(page.description.as_deref())
             .unwrap_or("");
         let analytics_id = site.settings.get("analytics_id").and_then(|v| v.as_str());
-        let theme_color = site.settings.get("theme_color").and_then(|v| v.as_str()).unwrap_or("#000000");
+        let theme_color = site
+            .settings
+            .get("theme_color")
+            .and_then(|v| v.as_str())
+            .unwrap_or("#000000");
 
         let css_block = page.css_content.as_deref().unwrap_or("");
         let js_block = page.js_content.as_deref().unwrap_or("");

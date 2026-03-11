@@ -67,10 +67,11 @@ pub fn recall_definition() -> ToolDefinition {
 }
 
 /// Store a memory.
-pub async fn remember(input: &serde_json::Value, store: &Arc<Mutex<MemoryStore>>) -> Result<String, String> {
-    let key = input["key"]
-        .as_str()
-        .ok_or("Missing required field: key")?;
+pub async fn remember(
+    input: &serde_json::Value,
+    store: &Arc<Mutex<MemoryStore>>,
+) -> Result<String, String> {
+    let key = input["key"].as_str().ok_or("Missing required field: key")?;
     let content = input["content"]
         .as_str()
         .ok_or("Missing required field: content")?;
@@ -80,7 +81,9 @@ pub async fn remember(input: &serde_json::Value, store: &Arc<Mutex<MemoryStore>>
         .unwrap_or_default();
 
     let store = store.lock().await;
-    let mem = store.remember(key, content, &tags).map_err(|e| e.to_string())?;
+    let mem = store
+        .remember(key, content, &tags)
+        .map_err(|e| e.to_string())?;
     Ok(format!(
         "Stored memory '{}': {} ({} chars)",
         mem.key,
@@ -90,35 +93,33 @@ pub async fn remember(input: &serde_json::Value, store: &Arc<Mutex<MemoryStore>>
 }
 
 /// Search/retrieve memories.
-pub async fn recall(input: &serde_json::Value, store: &Arc<Mutex<MemoryStore>>) -> Result<String, String> {
+pub async fn recall(
+    input: &serde_json::Value,
+    store: &Arc<Mutex<MemoryStore>>,
+) -> Result<String, String> {
     let store = store.lock().await;
 
     // If an exact key is provided, try direct lookup first
     if let Some(key) = input.get("key").and_then(|k| k.as_str()) {
-        match store.get(key) {
-            Ok(mem) => {
-                return Ok(json!({
-                    "found": true,
-                    "memory": {
-                        "key": mem.key,
-                        "content": mem.content,
-                        "tags": mem.tags,
-                        "updated_at": mem.updated_at,
-                    }
-                })
-                .to_string());
-            }
-            Err(_) => {} // Fall through to search
+        // Fall through to search if not found
+        if let Ok(mem) = store.get(key) {
+            return Ok(json!({
+                "found": true,
+                "memory": {
+                    "key": mem.key,
+                    "content": mem.content,
+                    "tags": mem.tags,
+                    "updated_at": mem.updated_at,
+                }
+            })
+            .to_string());
         }
     }
 
     let query = input["query"]
         .as_str()
         .ok_or("Missing required field: query")?;
-    let limit = input
-        .get("limit")
-        .and_then(|l| l.as_u64())
-        .unwrap_or(5) as usize;
+    let limit = input.get("limit").and_then(|l| l.as_u64()).unwrap_or(5) as usize;
 
     let results = store.search(query, limit).map_err(|e| e.to_string())?;
 
@@ -192,8 +193,12 @@ mod tests {
         let store = test_store();
         {
             let s = store.lock().await;
-            s.remember("project_lang", "Rust is the primary language", &["tech".to_string()])
-                .unwrap();
+            s.remember(
+                "project_lang",
+                "Rust is the primary language",
+                &["tech".to_string()],
+            )
+            .unwrap();
         }
 
         let input = json!({"query": "language"});

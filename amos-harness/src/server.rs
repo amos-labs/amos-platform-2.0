@@ -1,11 +1,17 @@
 //! Axum server setup and configuration
 
 use crate::{
-    bedrock::BedrockClient, canvas::CanvasEngine, documents::DocumentProcessor,
-    geo::GeoLocator, image_gen::ImageGenClient,
+    bedrock::BedrockClient,
+    canvas::CanvasEngine,
+    documents::DocumentProcessor,
+    geo::GeoLocator,
+    image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
-    openclaw::AgentManager, routes,
-    state::AppState, storage::{StorageClient, StorageConfig}, task_queue::TaskQueue,
+    openclaw::AgentManager,
+    routes,
+    state::AppState,
+    storage::{StorageClient, StorageConfig},
+    task_queue::TaskQueue,
     tools::ToolRegistry,
 };
 use amos_core::{AppConfig, Result};
@@ -46,7 +52,10 @@ pub async fn create_server(
             Some(Arc::new(client))
         }
         Err(e) => {
-            tracing::warn!("Bedrock client unavailable (canvas generation will use static templates): {}", e);
+            tracing::warn!(
+                "Bedrock client unavailable (canvas generation will use static templates): {}",
+                e
+            );
             None
         }
     };
@@ -136,6 +145,7 @@ pub async fn create_server(
         );
 
     // Build middleware stack
+    #[allow(deprecated)]
     let middleware_stack = ServiceBuilder::new()
         .layer(trace_layer)
         .layer(cors)
@@ -150,14 +160,15 @@ pub async fn create_server(
         .filter(|p| p.exists())
         .or_else(|| {
             let cwd = std::path::PathBuf::from("./static");
-            if cwd.exists() { Some(cwd) } else { None }
+            if cwd.exists() {
+                Some(cwd)
+            } else {
+                None
+            }
         })
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static")
-        });
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static"));
     tracing::info!(path = %static_dir.display(), "Serving static files from");
-    let serve_dir = ServeDir::new(&static_dir)
-        .append_index_html_on_directories(true);
+    let serve_dir = ServeDir::new(&static_dir).append_index_html_on_directories(true);
 
     // Build the application router
     // API routes take precedence over static files

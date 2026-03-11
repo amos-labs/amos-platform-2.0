@@ -2,23 +2,19 @@
 //!
 //! Uses the [`config`] crate to layer: defaults < config file < env vars.
 
-use serde::{Deserialize, Serialize};
 use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
 
 /// Deployment mode: managed (AMOS cloud) or self-hosted (customer hardware).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum DeploymentMode {
     /// AMOS manages the harness via Docker API (default).
+    #[default]
     Managed,
     /// Customer runs harness on their own infrastructure.
     SelfHosted,
-}
-
-impl Default for DeploymentMode {
-    fn default() -> Self {
-        Self::Managed
-    }
 }
 
 /// Root configuration for the AMOS Rust core.
@@ -91,7 +87,9 @@ pub struct RedisConfig {
 
 impl Default for RedisConfig {
     fn default() -> Self {
-        Self { url: default_redis_url() }
+        Self {
+            url: default_redis_url(),
+        }
     }
 }
 
@@ -234,7 +232,7 @@ impl Default for PlatformConfig {
 }
 
 /// Configuration for customer-provisioned AI models (sovereign AI).
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct CustomModelsConfig {
     /// Whether custom model support is enabled.
     #[serde(default)]
@@ -242,15 +240,6 @@ pub struct CustomModelsConfig {
     /// List of custom model providers.
     #[serde(default)]
     pub providers: Vec<CustomModelProvider>,
-}
-
-impl Default for CustomModelsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            providers: Vec::new(),
-        }
-    }
 }
 
 /// A custom model provider (OpenAI-compatible API endpoint).
@@ -352,42 +341,114 @@ impl Default for RelayConfig {
 
 // ── Defaults ─────────────────────────────────────────────────────────────
 
-fn default_host() -> String { "0.0.0.0".into() }
-fn default_port() -> u16 { 3000 }
-fn default_grpc_port() -> u16 { 4001 }
-fn default_rails_url() -> String { "http://localhost:5001".into() }
-fn default_pool_size() -> u32 { 20 }
-fn default_redis_url() -> String { "redis://127.0.0.1:6379".into() }
-fn default_solana_rpc() -> String { "https://api.devnet.solana.com".into() }
-fn default_solana_ws() -> String { "wss://api.devnet.solana.com".into() }
-fn default_treasury_program() -> String { "3p2MqHiQVLWfvvfU7psLyEsLLVzbGwqa3bSG7avKqiYP".into() }
-fn default_governance_program() -> String { "AQEf6P1qhKC2dCTMhqRh2rmKNpcQsR4ahwT1MvSoSehu".into() }
-fn default_bounty_program() -> String { "AmosBnty111111111111111111111111111111111111".into() }
-fn default_aws_region() -> String { "us-west-2".into() }
-fn default_model() -> String { "us.anthropic.claude-sonnet-4-20250514-v1:0".into() }
-fn default_chat_model() -> String { "us.anthropic.claude-sonnet-4-20250514-v1:0".into() }
-fn default_voice_model() -> String { "us.anthropic.claude-3-5-haiku-20241022-v1:0".into() }
-fn default_max_iterations() -> usize { 25 }
-fn default_max_context_tokens() -> usize { 200_000 }
-fn default_token_budget() -> usize { 30_000 }
-fn default_harness_version() -> String { env!("CARGO_PKG_VERSION").into() }
-fn default_auto_update() -> bool { true }
-fn default_platform_url() -> String { "http://localhost:4000".into() }
-fn default_heartbeat_interval() -> u64 { 30 }
-fn default_sync_interval() -> u64 { 300 }
-fn default_activity_interval() -> u64 { 60 }
-fn default_telemetry_enabled() -> bool { true }
-fn default_custom_context_window() -> usize { 131_072 }
-fn default_custom_tier() -> u8 { 2 }
-fn default_jwt_secret() -> SecretString { SecretString::from("CHANGE-ME-in-production-amos-jwt-secret-2025".to_string()) }
-fn default_access_token_expiry() -> u64 { 3600 }       // 1 hour
-fn default_refresh_token_expiry() -> u64 { 604_800 }   // 7 days
-fn default_base_domain() -> String { "localhost".into() }
-fn default_relay_url() -> String { "http://localhost:4100".into() }
-fn default_relay_enabled() -> bool { false }
-fn default_relay_heartbeat_interval() -> u64 { 30 }
-fn default_relay_bounty_sync_interval() -> u64 { 60 }
-fn default_relay_reputation_interval() -> u64 { 300 }
+fn default_host() -> String {
+    "0.0.0.0".into()
+}
+fn default_port() -> u16 {
+    3000
+}
+fn default_grpc_port() -> u16 {
+    4001
+}
+fn default_rails_url() -> String {
+    "http://localhost:5001".into()
+}
+fn default_pool_size() -> u32 {
+    20
+}
+fn default_redis_url() -> String {
+    "redis://127.0.0.1:6379".into()
+}
+fn default_solana_rpc() -> String {
+    "https://api.devnet.solana.com".into()
+}
+fn default_solana_ws() -> String {
+    "wss://api.devnet.solana.com".into()
+}
+fn default_treasury_program() -> String {
+    "3p2MqHiQVLWfvvfU7psLyEsLLVzbGwqa3bSG7avKqiYP".into()
+}
+fn default_governance_program() -> String {
+    "AQEf6P1qhKC2dCTMhqRh2rmKNpcQsR4ahwT1MvSoSehu".into()
+}
+fn default_bounty_program() -> String {
+    "AmosBnty111111111111111111111111111111111111".into()
+}
+fn default_aws_region() -> String {
+    "us-west-2".into()
+}
+fn default_model() -> String {
+    "us.anthropic.claude-sonnet-4-20250514-v1:0".into()
+}
+fn default_chat_model() -> String {
+    "us.anthropic.claude-sonnet-4-20250514-v1:0".into()
+}
+fn default_voice_model() -> String {
+    "us.anthropic.claude-3-5-haiku-20241022-v1:0".into()
+}
+fn default_max_iterations() -> usize {
+    25
+}
+fn default_max_context_tokens() -> usize {
+    200_000
+}
+fn default_token_budget() -> usize {
+    30_000
+}
+fn default_harness_version() -> String {
+    env!("CARGO_PKG_VERSION").into()
+}
+fn default_auto_update() -> bool {
+    true
+}
+fn default_platform_url() -> String {
+    "http://localhost:4000".into()
+}
+fn default_heartbeat_interval() -> u64 {
+    30
+}
+fn default_sync_interval() -> u64 {
+    300
+}
+fn default_activity_interval() -> u64 {
+    60
+}
+fn default_telemetry_enabled() -> bool {
+    true
+}
+fn default_custom_context_window() -> usize {
+    131_072
+}
+fn default_custom_tier() -> u8 {
+    2
+}
+fn default_jwt_secret() -> SecretString {
+    SecretString::from("CHANGE-ME-in-production-amos-jwt-secret-2025".to_string())
+}
+fn default_access_token_expiry() -> u64 {
+    3600
+} // 1 hour
+fn default_refresh_token_expiry() -> u64 {
+    604_800
+} // 7 days
+fn default_base_domain() -> String {
+    "localhost".into()
+}
+fn default_relay_url() -> String {
+    "http://localhost:4100".into()
+}
+fn default_relay_enabled() -> bool {
+    false
+}
+fn default_relay_heartbeat_interval() -> u64 {
+    30
+}
+fn default_relay_bounty_sync_interval() -> u64 {
+    60
+}
+fn default_relay_reputation_interval() -> u64 {
+    300
+}
 
 impl AppConfig {
     /// Load configuration from environment variables and optional config files.

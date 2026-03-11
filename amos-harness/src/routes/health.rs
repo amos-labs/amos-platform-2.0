@@ -1,9 +1,9 @@
 //! Health check and API discovery endpoints
 
+use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, Json};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use crate::state::AppState;
 
 /// Root API catalog
 pub async fn api_catalog() -> Json<Value> {
@@ -38,9 +38,7 @@ pub async fn health_check() -> (StatusCode, Json<Value>) {
 }
 
 /// Readiness check (verifies DB and Redis connectivity)
-pub async fn readiness_check(
-    State(state): State<Arc<AppState>>,
-) -> (StatusCode, Json<Value>) {
+pub async fn readiness_check(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Value>) {
     let mut db_status = "ok".to_string();
     let mut redis_status = "ok".to_string();
     let mut overall = "ready";

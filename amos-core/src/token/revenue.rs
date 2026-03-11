@@ -95,11 +95,11 @@ pub fn split_amos_payment(amount: u64) -> Result<AmosPaymentDistribution> {
     }
 
     let burn_amount = checked_bps_mul(amount, AMOS_BURN_BPS)?;
-    let holder_amount = amount.checked_sub(burn_amount).ok_or(
-        AmosError::ArithmeticOverflow {
+    let holder_amount = amount
+        .checked_sub(burn_amount)
+        .ok_or(AmosError::ArithmeticOverflow {
             context: "AMOS payment split remainder".into(),
-        },
-    )?;
+        })?;
 
     Ok(AmosPaymentDistribution {
         total_amount: amount,

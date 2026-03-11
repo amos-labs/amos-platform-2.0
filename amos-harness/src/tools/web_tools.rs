@@ -11,10 +11,7 @@ use std::sync::Arc;
 fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
-            v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()
-                || v4.is_unspecified()
+            v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()
@@ -27,8 +24,7 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 
 /// Validate a URL is safe to fetch (prevents SSRF)
 async fn validate_url_safe(raw_url: &str) -> std::result::Result<(), String> {
-    let parsed = url::Url::parse(raw_url)
-        .map_err(|e| format!("Invalid URL: {}", e))?;
+    let parsed = url::Url::parse(raw_url).map_err(|e| format!("Invalid URL: {}", e))?;
 
     match parsed.scheme() {
         "http" | "https" => {}
@@ -98,11 +94,11 @@ impl Tool for WebSearchTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let query = params["query"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("query is required".to_string())
-        })?;
+        let query = params["query"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("query is required".to_string()))?;
 
-        let num_results = params
+        let _num_results = params
             .get("num_results")
             .and_then(|v| v.as_i64())
             .unwrap_or(5);
@@ -110,13 +106,11 @@ impl Tool for WebSearchTool {
         // TODO: Integrate with actual search API (Brave, Google, etc.)
         // For now, return stub results
 
-        let results = vec![
-            json!({
-                "title": format!("Search result for: {}", query),
-                "url": "https://example.com/result1",
-                "snippet": "This is a stub search result. Real implementation pending."
-            }),
-        ];
+        let results = vec![json!({
+            "title": format!("Search result for: {}", query),
+            "url": "https://example.com/result1",
+            "snippet": "This is a stub search result. Real implementation pending."
+        })];
 
         Ok(ToolResult::success(json!({
             "query": query,
@@ -132,6 +126,12 @@ impl Tool for WebSearchTool {
 
 /// Fetch and parse a web page
 pub struct ViewWebPageTool;
+
+impl Default for ViewWebPageTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ViewWebPageTool {
     pub fn new() -> Self {
@@ -169,9 +169,9 @@ impl Tool for ViewWebPageTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let url = params["url"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("url is required".to_string())
-        })?;
+        let url = params["url"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("url is required".to_string()))?;
 
         let extract_format = params
             .get("extract_format")
@@ -179,25 +179,24 @@ impl Tool for ViewWebPageTool {
             .unwrap_or("text");
 
         // Validate URL to prevent SSRF
-        validate_url_safe(url).await.map_err(|e| {
-            amos_core::AmosError::Validation(format!("URL blocked: {}", e))
-        })?;
+        validate_url_safe(url)
+            .await
+            .map_err(|e| amos_core::AmosError::Validation(format!("URL blocked: {}", e)))?;
 
         // Fetch the web page (no redirects to prevent redirect-based SSRF bypass)
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .map_err(|e| amos_core::AmosError::Internal(format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| {
+                amos_core::AmosError::Internal(format!("Failed to build HTTP client: {}", e))
+            })?;
 
         let response: reqwest::Response = client.get(url).send().await.map_err(|e| {
             amos_core::AmosError::Internal(format!("External: Failed to fetch URL: {}", e))
         })?;
 
         let html = response.text().await.map_err(|e| {
-            amos_core::AmosError::Internal(format!(
-                "External: Failed to read response body: {}",
-                e
-            ))
+            amos_core::AmosError::Internal(format!("External: Failed to read response body: {}", e))
         })?;
 
         // Extract content based on format

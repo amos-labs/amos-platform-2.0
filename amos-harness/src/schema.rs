@@ -169,7 +169,7 @@ impl SchemaEngine {
         .await
         .map_err(|e| AmosError::Internal(format!("Failed to list collections: {}", e)))?;
 
-        rows.iter().map(|row| collection_from_row(row)).collect()
+        rows.iter().map(collection_from_row).collect()
     }
 
     /// Delete a collection and all its records.
@@ -262,10 +262,7 @@ impl SchemaEngine {
             Some("created_at") | None => "r.created_at".to_string(),
             Some(field_name) => {
                 // Sanitize: only allow alphanumeric + underscore
-                if field_name
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '_')
-                {
+                if field_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                     format!("r.data->>'{}'", field_name)
                 } else {
                     "r.created_at".to_string()
@@ -325,11 +322,7 @@ impl SchemaEngine {
     }
 
     /// Update a record by merging new data (new keys win on conflict).
-    pub async fn update_record(
-        &self,
-        record_id: Uuid,
-        data: JsonValue,
-    ) -> Result<Record> {
+    pub async fn update_record(&self, record_id: Uuid, data: JsonValue) -> Result<Record> {
         // Look up the record + collection name in one query
         let existing = sqlx::query(
             r#"SELECT r.id, c.name as collection_name
@@ -385,15 +378,15 @@ impl SchemaEngine {
 
 /// Validate record data against a collection's field definitions.
 fn validate_record_data(fields: &[FieldDefinition], data: &JsonValue) -> Result<()> {
-    let obj = data.as_object().ok_or_else(|| {
-        AmosError::Validation("Record data must be a JSON object".to_string())
-    })?;
+    let obj = data
+        .as_object()
+        .ok_or_else(|| AmosError::Validation("Record data must be a JSON object".to_string()))?;
 
     for field in fields {
         let value = obj.get(&field.name);
 
         // Required check
-        if field.required && (value.is_none() || value.map_or(false, |v| v.is_null())) {
+        if field.required && (value.is_none() || value.is_some_and(|v| v.is_null())) {
             return Err(AmosError::Validation(format!(
                 "Field '{}' is required",
                 field.display_name
@@ -403,7 +396,13 @@ fn validate_record_data(fields: &[FieldDefinition], data: &JsonValue) -> Result<
         // Type check (skip nulls and missing optional fields)
         if let Some(val) = value {
             if !val.is_null() {
-                validate_field_value(&field.name, &field.display_name, &field.field_type, val, &field.options)?;
+                validate_field_value(
+                    &field.name,
+                    &field.display_name,
+                    &field.field_type,
+                    val,
+                    &field.options,
+                )?;
             }
         }
     }
@@ -420,7 +419,11 @@ fn validate_field_value(
     options: &JsonValue,
 ) -> Result<()> {
     match field_type {
-        FieldType::Text | FieldType::RichText | FieldType::Email | FieldType::Url | FieldType::Phone => {
+        FieldType::Text
+        | FieldType::RichText
+        | FieldType::Email
+        | FieldType::Url
+        | FieldType::Phone => {
             if !value.is_string() {
                 return Err(AmosError::Validation(format!(
                     "'{}' must be a string",
@@ -563,10 +566,7 @@ mod tests {
 
     #[test]
     fn valid_record_passes_validation() {
-        let fields = vec![
-            text_field("name", true),
-            text_field("email", false),
-        ];
+        let fields = vec![text_field("name", true), text_field("email", false)];
         let data = json!({"name": "Alice", "email": "alice@example.com"});
         assert!(validate_record_data(&fields, &data).is_ok());
     }
@@ -589,10 +589,7 @@ mod tests {
 
     #[test]
     fn missing_optional_field_passes() {
-        let fields = vec![
-            text_field("name", true),
-            text_field("bio", false),
-        ];
+        let fields = vec![text_field("name", true), text_field("bio", false)];
         let data = json!({"name": "Alice"});
         assert!(validate_record_data(&fields, &data).is_ok());
     }
@@ -615,7 +612,10 @@ mod tests {
 
     #[test]
     fn text_field_accepts_string() {
-        assert!(validate_field_value("f", "Field", &FieldType::Text, &json!("hello"), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Text, &json!("hello"), &json!({}))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -626,28 +626,44 @@ mod tests {
 
     #[test]
     fn number_field_accepts_integer() {
-        assert!(validate_field_value("f", "Field", &FieldType::Number, &json!(42), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Number, &json!(42), &json!({})).is_ok()
+        );
     }
 
     #[test]
     fn decimal_field_accepts_float() {
-        assert!(validate_field_value("f", "Field", &FieldType::Decimal, &json!(3.14), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Decimal, &json!(3.14), &json!({}))
+                .is_ok()
+        );
     }
 
     #[test]
     fn decimal_field_accepts_integer() {
-        assert!(validate_field_value("f", "Field", &FieldType::Decimal, &json!(42), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Decimal, &json!(42), &json!({})).is_ok()
+        );
     }
 
     #[test]
     fn boolean_field_rejects_string() {
-        let err = validate_field_value("f", "Field", &FieldType::Boolean, &json!("true"), &json!({}));
+        let err = validate_field_value(
+            "f",
+            "Field",
+            &FieldType::Boolean,
+            &json!("true"),
+            &json!({}),
+        );
         assert!(err.is_err());
     }
 
     #[test]
     fn boolean_field_accepts_bool() {
-        assert!(validate_field_value("f", "Field", &FieldType::Boolean, &json!(true), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Boolean, &json!(true), &json!({}))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -658,9 +674,17 @@ mod tests {
 
     #[test]
     fn json_field_accepts_anything() {
-        assert!(validate_field_value("f", "Field", &FieldType::Json, &json!({"a": 1}), &json!({})).is_ok());
-        assert!(validate_field_value("f", "Field", &FieldType::Json, &json!([1, 2]), &json!({})).is_ok());
-        assert!(validate_field_value("f", "Field", &FieldType::Json, &json!("str"), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Json, &json!({"a": 1}), &json!({}))
+                .is_ok()
+        );
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Json, &json!([1, 2]), &json!({}))
+                .is_ok()
+        );
+        assert!(
+            validate_field_value("f", "Field", &FieldType::Json, &json!("str"), &json!({})).is_ok()
+        );
     }
 
     // ── Enum validation ──────────────────────────────────────────────
@@ -668,13 +692,17 @@ mod tests {
     #[test]
     fn enum_accepts_valid_choice() {
         let options = json!({"choices": ["active", "inactive", "pending"]});
-        assert!(validate_field_value("f", "Status", &FieldType::Enum, &json!("active"), &options).is_ok());
+        assert!(
+            validate_field_value("f", "Status", &FieldType::Enum, &json!("active"), &options)
+                .is_ok()
+        );
     }
 
     #[test]
     fn enum_rejects_invalid_choice() {
         let options = json!({"choices": ["active", "inactive"]});
-        let err = validate_field_value("f", "Status", &FieldType::Enum, &json!("deleted"), &options);
+        let err =
+            validate_field_value("f", "Status", &FieldType::Enum, &json!("deleted"), &options);
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("must be one of"));
     }
@@ -691,12 +719,21 @@ mod tests {
     #[test]
     fn reference_accepts_valid_uuid() {
         let uuid = Uuid::new_v4().to_string();
-        assert!(validate_field_value("f", "Ref", &FieldType::Reference, &json!(uuid), &json!({})).is_ok());
+        assert!(
+            validate_field_value("f", "Ref", &FieldType::Reference, &json!(uuid), &json!({}))
+                .is_ok()
+        );
     }
 
     #[test]
     fn reference_rejects_invalid_uuid() {
-        let err = validate_field_value("f", "Ref", &FieldType::Reference, &json!("not-a-uuid"), &json!({}));
+        let err = validate_field_value(
+            "f",
+            "Ref",
+            &FieldType::Reference,
+            &json!("not-a-uuid"),
+            &json!({}),
+        );
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("valid UUID"));
     }
@@ -745,10 +782,19 @@ mod tests {
     #[test]
     fn field_type_serde_roundtrip() {
         let types = vec![
-            FieldType::Text, FieldType::RichText, FieldType::Number,
-            FieldType::Decimal, FieldType::Boolean, FieldType::Date,
-            FieldType::DateTime, FieldType::Enum, FieldType::Reference,
-            FieldType::Email, FieldType::Url, FieldType::Phone, FieldType::Json,
+            FieldType::Text,
+            FieldType::RichText,
+            FieldType::Number,
+            FieldType::Decimal,
+            FieldType::Boolean,
+            FieldType::Date,
+            FieldType::DateTime,
+            FieldType::Enum,
+            FieldType::Reference,
+            FieldType::Email,
+            FieldType::Url,
+            FieldType::Phone,
+            FieldType::Json,
         ];
 
         for ft in types {

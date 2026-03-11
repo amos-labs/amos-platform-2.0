@@ -116,7 +116,10 @@ impl GeoLocator {
         };
 
         if api_resp.status != "success" {
-            tracing::debug!("Geo lookup returned non-success for {ip}: {}", api_resp.status);
+            tracing::debug!(
+                "Geo lookup returned non-success for {ip}: {}",
+                api_resp.status
+            );
             return None;
         }
 
@@ -186,7 +189,10 @@ mod tests {
             timezone: "America/Los_Angeles".to_string(),
             org: "Comcast".to_string(),
         };
-        assert_eq!(loc.display_location(), "San Francisco, California, United States");
+        assert_eq!(
+            loc.display_location(),
+            "San Francisco, California, United States"
+        );
 
         let loc2 = GeoLocation {
             city: String::new(),

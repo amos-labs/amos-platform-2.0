@@ -273,10 +273,7 @@ pub fn validate_canvas(generated: &GeneratedCanvas) -> Vec<String> {
 
     // Check for unwired buttons (buttons without event handlers)
     if let Some(js) = &generated.js_content {
-        let button_count = generated
-            .html_content
-            .matches("<button")
-            .count()
+        let button_count = generated.html_content.matches("<button").count()
             + generated.html_content.matches("data-action").count();
 
         let event_listener_count = js.matches("addEventListener").count()
@@ -322,8 +319,8 @@ pub fn parse_generated_content(llm_response: &str) -> Result<GeneratedCanvas> {
         .or_else(|| extract_section(llm_response, "JS"))
         .or_else(|| extract_section(llm_response, "js"));
 
-    let css_content = extract_section(llm_response, "CSS")
-        .or_else(|| extract_section(llm_response, "css"));
+    let css_content =
+        extract_section(llm_response, "CSS").or_else(|| extract_section(llm_response, "css"));
 
     let generated = GeneratedCanvas {
         html_content,
@@ -361,10 +358,7 @@ fn extract_section(text: &str, section_name: &str) -> Option<String> {
                 let after_code_start = &after_marker[code_start + 3..];
 
                 // Skip language identifier if present
-                let content_start = after_code_start
-                    .find('\n')
-                    .map(|pos| pos + 1)
-                    .unwrap_or(0);
+                let content_start = after_code_start.find('\n').map(|pos| pos + 1).unwrap_or(0);
 
                 let content = &after_code_start[content_start..];
 

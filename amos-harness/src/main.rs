@@ -1,12 +1,14 @@
 //! Binary entry point for AMOS Harness server
 
+#![allow(clippy::format_in_format_args)]
+
 use amos_core::{AppConfig, Result};
 use amos_harness::create_server;
+use secrecy::ExposeSecret;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use secrecy::ExposeSecret;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,7 +28,10 @@ async fn main() -> Result<()> {
         .connect(config.database.url.expose_secret())
         .await
         .map_err(|e| {
-            amos_core::AmosError::Internal(format!("Database: Failed to connect to database: {}", e))
+            amos_core::AmosError::Internal(format!(
+                "Database: Failed to connect to database: {}",
+                e
+            ))
         })?;
     info!("Database connection established");
 
@@ -34,9 +39,7 @@ async fn main() -> Result<()> {
     sqlx::migrate!("./migrations")
         .run(&db_pool)
         .await
-        .map_err(|e| {
-            amos_core::AmosError::Internal(format!("Migration failed: {}", e))
-        })?;
+        .map_err(|e| amos_core::AmosError::Internal(format!("Migration failed: {}", e)))?;
     info!("Migrations completed");
 
     // Connect to Redis
@@ -47,13 +50,14 @@ async fn main() -> Result<()> {
 
     // Verify Redis connection
     let mut conn = redis_client.get_connection().map_err(|e| {
-        amos_core::AmosError::Internal(format!("Cache: {}", format!("Failed to get Redis connection: {}", e)))
+        amos_core::AmosError::Internal(format!(
+            "Cache: {}",
+            format!("Failed to get Redis connection: {}", e)
+        ))
     })?;
-    redis::cmd("PING")
-        .query::<String>(&mut conn)
-        .map_err(|e| {
-            amos_core::AmosError::Internal(format!("Cache: {}", format!("Redis PING failed: {}", e)))
-        })?;
+    redis::cmd("PING").query::<String>(&mut conn).map_err(|e| {
+        amos_core::AmosError::Internal(format!("Cache: {}", format!("Redis PING failed: {}", e)))
+    })?;
     info!("Redis connection established");
 
     // Initialize harness
@@ -65,11 +69,9 @@ async fn main() -> Result<()> {
 
     let app = create_server(config, db_pool, redis_client).await?;
 
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .map_err(|e| {
-            amos_core::AmosError::Internal(format!("Failed to bind to {}: {}", addr, e))
-        })?;
+    let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
+        amos_core::AmosError::Internal(format!("Failed to bind to {}: {}", addr, e))
+    })?;
 
     info!("Server listening on {}", addr);
 

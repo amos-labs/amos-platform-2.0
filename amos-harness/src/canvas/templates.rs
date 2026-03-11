@@ -112,7 +112,8 @@ pub fn kanban_template() -> CanvasTemplate {
         key: "kanban".to_string(),
         name: "Kanban Board".to_string(),
         canvas_type: CanvasType::Kanban,
-        html_content: Some(r#"
+        html_content: Some(
+            r#"
 <div class="container-fluid p-4">
     <h2 class="mb-4">{{ title }}</h2>
 
@@ -142,8 +143,11 @@ pub fn kanban_template() -> CanvasTemplate {
         {% endfor %}
     </div>
 </div>
-"#.to_string()),
-        js_content: Some(r#"
+"#
+            .to_string(),
+        ),
+        js_content: Some(
+            r#"
 // Initialize Lucide icons
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
@@ -202,8 +206,11 @@ function getDragAfterElement(container, y) {
         }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
-"#.to_string()),
-        css_content: Some(r#"
+"#
+            .to_string(),
+        ),
+        css_content: Some(
+            r#"
 .kanban-board {
     display: flex;
     gap: 1rem;
@@ -254,7 +261,9 @@ function getDragAfterElement(container, y) {
     gap: 0.25rem;
     margin-top: 0.5rem;
 }
-"#.to_string()),
+"#
+            .to_string(),
+        ),
         metadata: None,
         version: 1,
         active: true,
@@ -362,7 +371,8 @@ pub fn detail_template() -> CanvasTemplate {
         key: "detail".to_string(),
         name: "Detail View".to_string(),
         canvas_type: CanvasType::Detail,
-        html_content: Some(r#"
+        html_content: Some(
+            r#"
 <div class="container p-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>{{ title }}</h2>
@@ -392,8 +402,11 @@ pub fn detail_template() -> CanvasTemplate {
         </div>
     </div>
 </div>
-"#.to_string()),
-        js_content: Some(r#"
+"#
+            .to_string(),
+        ),
+        js_content: Some(
+            r#"
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
 }
@@ -405,7 +418,9 @@ document.addEventListener('click', (e) => {
         window.parent.postMessage({ type: 'canvas-action', action }, '*');
     }
 });
-"#.to_string()),
+"#
+            .to_string(),
+        ),
         css_content: None,
         metadata: None,
         version: 1,
@@ -422,7 +437,8 @@ pub fn dashboard_template() -> CanvasTemplate {
         key: "dashboard".to_string(),
         name: "Dashboard".to_string(),
         canvas_type: CanvasType::Dashboard,
-        html_content: Some(r#"
+        html_content: Some(
+            r#"
 <div class="container-fluid p-4">
     <h2 class="mb-4">{{ title }}</h2>
 
@@ -464,13 +480,19 @@ pub fn dashboard_template() -> CanvasTemplate {
         {% endfor %}
     </div>
 </div>
-"#.to_string()),
-        js_content: Some(r#"
+"#
+            .to_string(),
+        ),
+        js_content: Some(
+            r#"
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
 }
-"#.to_string()),
-        css_content: Some(r#"
+"#
+            .to_string(),
+        ),
+        css_content: Some(
+            r#"
 .metric-icon {
     font-size: 2rem;
     opacity: 0.5;
@@ -480,7 +502,9 @@ if (typeof lucide !== 'undefined') {
     border: none;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-"#.to_string()),
+"#
+            .to_string(),
+        ),
         metadata: None,
         version: 1,
         active: true,
@@ -496,17 +520,23 @@ pub fn calendar_template() -> CanvasTemplate {
         key: "calendar".to_string(),
         name: "Calendar".to_string(),
         canvas_type: CanvasType::Calendar,
-        html_content: Some(r#"
+        html_content: Some(
+            r#"
 <div class="container-fluid p-4">
     <h2 class="mb-4">{{ title }}</h2>
     <div id="calendar"></div>
 </div>
-"#.to_string()),
-        js_content: Some(r#"
+"#
+            .to_string(),
+        ),
+        js_content: Some(
+            r#"
 // Placeholder for calendar initialization
 // In production, would use FullCalendar or similar library
 console.log('Calendar view initialized');
-"#.to_string()),
+"#
+            .to_string(),
+        ),
         css_content: None,
         metadata: None,
         version: 1,
@@ -523,12 +553,15 @@ pub fn freeform_template() -> CanvasTemplate {
         key: "freeform".to_string(),
         name: "Freeform Canvas".to_string(),
         canvas_type: CanvasType::Freeform,
-        html_content: Some(r#"
+        html_content: Some(
+            r#"
 <div class="container p-4">
     <h2>Custom Canvas</h2>
     <p>This is a blank freeform canvas. Add your custom HTML, CSS, and JavaScript here.</p>
 </div>
-"#.to_string()),
+"#
+            .to_string(),
+        ),
         js_content: Some("// Add your custom JavaScript here".to_string()),
         css_content: Some("/* Add your custom CSS here */".to_string()),
         metadata: None,

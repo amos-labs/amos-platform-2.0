@@ -64,9 +64,9 @@ impl Tool for PlatformQueryTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let module = params["module"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("module is required".to_string())
-        })?;
+        let module = params["module"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("module is required".to_string()))?;
 
         let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(50);
         let offset = params.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -82,7 +82,12 @@ impl Tool for PlatformQueryTool {
             .bind(offset)
             .fetch_all(&self.db_pool)
             .await
-            .map_err(|e| amos_core::AmosError::Internal(format!("Database: {}", format!("Query failed: {}", e))))?;
+            .map_err(|e| {
+                amos_core::AmosError::Internal(format!(
+                    "Database: {}",
+                    format!("Query failed: {}", e)
+                ))
+            })?;
 
         // Convert rows to JSON
         let mut records = Vec::new();
@@ -151,13 +156,13 @@ impl Tool for PlatformCreateTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let module = params["module"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("module is required".to_string())
-        })?;
+        let module = params["module"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("module is required".to_string()))?;
 
-        let data = params.get("data").ok_or_else(|| {
-            amos_core::AmosError::Validation("data is required".to_string())
-        })?;
+        let _data = params
+            .get("data")
+            .ok_or_else(|| amos_core::AmosError::Validation("data is required".to_string()))?;
 
         // In production, this would use the module system to validate and create records
         // For now, return a stub response
@@ -217,13 +222,13 @@ impl Tool for PlatformUpdateTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let module = params["module"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("module is required".to_string())
-        })?;
+        let module = params["module"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("module is required".to_string()))?;
 
-        let id = params["id"].as_i64().ok_or_else(|| {
-            amos_core::AmosError::Validation("id is required".to_string())
-        })?;
+        let id = params["id"]
+            .as_i64()
+            .ok_or_else(|| amos_core::AmosError::Validation("id is required".to_string()))?;
 
         Ok(ToolResult::success(json!({
             "id": id,
@@ -285,13 +290,13 @@ impl Tool for PlatformExecuteTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let module = params["module"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("module is required".to_string())
-        })?;
+        let module = params["module"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("module is required".to_string()))?;
 
-        let action = params["action"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("action is required".to_string())
-        })?;
+        let action = params["action"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("action is required".to_string()))?;
 
         Ok(ToolResult::success(json!({
             "module": module,

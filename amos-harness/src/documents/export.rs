@@ -114,19 +114,18 @@ fn export_pdf(content: &DocumentContent) -> Result<Vec<u8>> {
     use genpdf::Element as _; // bring .styled() method into scope
 
     // Use the built-in font family (Helvetica-like, always available)
-    let font_family = fonts::from_files("", "LiberationSans", None)
+    let font_family = fonts::from_files("", "LiberationSans", None).unwrap_or_else(|_| {
+        // Fallback: try system fonts or use built-in
+        fonts::from_files(
+            "/usr/share/fonts/truetype/liberation",
+            "LiberationSans",
+            None,
+        )
         .unwrap_or_else(|_| {
-            // Fallback: try system fonts or use built-in
-            fonts::from_files("/usr/share/fonts/truetype/liberation", "LiberationSans", None)
-                .unwrap_or_else(|_| {
-                    fonts::from_files(
-                        "/System/Library/Fonts/Supplemental",
-                        "Arial",
-                        None,
-                    )
-                    .expect("No usable font found — install LiberationSans or Arial")
-                })
-        });
+            fonts::from_files("/System/Library/Fonts/Supplemental", "Arial", None)
+                .expect("No usable font found — install LiberationSans or Arial")
+        })
+    });
 
     let mut doc = genpdf::Document::new(font_family);
     doc.set_title(content.title.as_deref().unwrap_or("Document"));
@@ -208,9 +207,7 @@ fn export_docx(content: &DocumentContent) -> Result<Vec<u8>> {
     // Title
     if let Some(ref title) = content.title {
         let run = Run::new().add_text(title).bold();
-        let para = Paragraph::new()
-            .add_run(run)
-            .align(AlignmentType::Center);
+        let para = Paragraph::new().add_run(run).align(AlignmentType::Center);
         docx = docx.add_paragraph(para);
 
         // Blank line after title
@@ -245,9 +242,7 @@ fn export_docx(content: &DocumentContent) -> Result<Vec<u8>> {
     // Footer
     if let Some(ref footer_text) = content.footer {
         let run = Run::new().add_text(footer_text).italic();
-        let para = Paragraph::new()
-            .add_run(run)
-            .align(AlignmentType::Center);
+        let para = Paragraph::new().add_run(run).align(AlignmentType::Center);
         docx = docx.add_paragraph(para);
     }
 
@@ -288,7 +283,9 @@ mod tests {
     #[test]
     fn test_export_format_content_type() {
         assert_eq!(ExportFormat::Pdf.content_type(), "application/pdf");
-        assert!(ExportFormat::Docx.content_type().contains("wordprocessingml"));
+        assert!(ExportFormat::Docx
+            .content_type()
+            .contains("wordprocessingml"));
     }
 
     #[test]
@@ -301,8 +298,14 @@ mod tests {
     fn test_export_format_from_str_loose() {
         assert_eq!(ExportFormat::from_str_loose("pdf"), Some(ExportFormat::Pdf));
         assert_eq!(ExportFormat::from_str_loose("PDF"), Some(ExportFormat::Pdf));
-        assert_eq!(ExportFormat::from_str_loose("docx"), Some(ExportFormat::Docx));
-        assert_eq!(ExportFormat::from_str_loose("doc"), Some(ExportFormat::Docx));
+        assert_eq!(
+            ExportFormat::from_str_loose("docx"),
+            Some(ExportFormat::Docx)
+        );
+        assert_eq!(
+            ExportFormat::from_str_loose("doc"),
+            Some(ExportFormat::Docx)
+        );
         assert_eq!(ExportFormat::from_str_loose("txt"), None);
     }
 

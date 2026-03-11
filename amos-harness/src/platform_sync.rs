@@ -5,13 +5,13 @@
 //! - **Config sync**: Pulls configuration updates (agent defs, templates, schemas)
 //! - **Activity reporter**: Pushes usage metrics and activity data
 
-use amos_core::config::{DeploymentMode, PlatformConfig, DeploymentConfig};
+use amos_core::config::{DeploymentConfig, DeploymentMode, PlatformConfig};
 use reqwest::Client;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Platform sync client manages communication between harness and platform.
 pub struct PlatformSyncClient {
@@ -123,10 +123,7 @@ impl PlatformSyncClient {
     }
 
     /// Start all background sync loops. Returns a JoinHandle for the spawned task.
-    pub fn start(
-        self: Arc<Self>,
-        counters: Arc<ActivityCounters>,
-    ) -> tokio::task::JoinHandle<()> {
+    pub fn start(self: Arc<Self>, counters: Arc<ActivityCounters>) -> tokio::task::JoinHandle<()> {
         let client = self.clone();
         tokio::spawn(async move {
             let start_time = std::time::Instant::now();
@@ -159,9 +156,9 @@ impl PlatformSyncClient {
     // ── Heartbeat Loop ──────────────────────────────────────────────────
 
     async fn heartbeat_loop(&self, start_time: std::time::Instant) {
-        let mut interval = tokio::time::interval(
-            std::time::Duration::from_secs(self.config.heartbeat_interval_secs),
-        );
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            self.config.heartbeat_interval_secs,
+        ));
 
         loop {
             interval.tick().await;
@@ -196,9 +193,9 @@ impl PlatformSyncClient {
     // ── Config Sync Loop ────────────────────────────────────────────────
 
     async fn config_sync_loop(&self) {
-        let mut interval = tokio::time::interval(
-            std::time::Duration::from_secs(self.config.sync_interval_secs),
-        );
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            self.config.sync_interval_secs,
+        ));
 
         loop {
             interval.tick().await;
@@ -255,9 +252,9 @@ impl PlatformSyncClient {
             }
         }
 
-        let mut interval = tokio::time::interval(
-            std::time::Duration::from_secs(self.config.activity_report_interval_secs),
-        );
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            self.config.activity_report_interval_secs,
+        ));
         let mut last_report = chrono::Utc::now();
 
         loop {
@@ -295,7 +292,8 @@ impl PlatformSyncClient {
                 Ok(resp) if resp.status().is_success() => {
                     debug!(
                         "Activity report sent: {} convs, {} msgs, {} tokens",
-                        report.conversations, report.messages,
+                        report.conversations,
+                        report.messages,
                         report.tokens_input + report.tokens_output,
                     );
                 }
@@ -341,7 +339,9 @@ mod tests {
     fn test_activity_counters_default() {
         let counters = ActivityCounters::default();
         assert_eq!(
-            counters.conversations.load(std::sync::atomic::Ordering::Relaxed),
+            counters
+                .conversations
+                .load(std::sync::atomic::Ordering::Relaxed),
             0
         );
         assert_eq!(

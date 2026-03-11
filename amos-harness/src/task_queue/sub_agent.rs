@@ -8,7 +8,7 @@
 
 use super::{Task, TaskQueue};
 use crate::tools::ToolRegistry;
-use amos_core::{AmosError, Result};
+use amos_core::Result;
 use std::sync::Arc;
 use tracing::warn;
 

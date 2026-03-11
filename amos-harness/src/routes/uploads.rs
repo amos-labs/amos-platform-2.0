@@ -178,37 +178,43 @@ pub async fn list_uploads(
     let limit = params.limit.unwrap_or(50);
 
     // Build the query dynamically depending on filters
-    let rows: Vec<(Uuid, String, String, i64, String, chrono::DateTime<chrono::Utc>)> =
-        if let Some(ref sid) = params.session_id {
-            let uuid = Uuid::parse_str(sid).map_err(|_| StatusCode::BAD_REQUEST)?;
-            sqlx::query_as(
-                r#"
+    let rows: Vec<(
+        Uuid,
+        String,
+        String,
+        i64,
+        String,
+        chrono::DateTime<chrono::Utc>,
+    )> = if let Some(ref sid) = params.session_id {
+        let uuid = Uuid::parse_str(sid).map_err(|_| StatusCode::BAD_REQUEST)?;
+        sqlx::query_as(
+            r#"
                 SELECT id, original_filename, content_type, size_bytes, upload_context, created_at
                 FROM uploads
                 WHERE session_id = $1
                 ORDER BY created_at DESC
                 LIMIT $2
                 "#,
-            )
-            .bind(uuid)
-            .bind(limit)
-            .fetch_all(&state.db_pool)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        } else {
-            sqlx::query_as(
-                r#"
+        )
+        .bind(uuid)
+        .bind(limit)
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        sqlx::query_as(
+            r#"
                 SELECT id, original_filename, content_type, size_bytes, upload_context, created_at
                 FROM uploads
                 ORDER BY created_at DESC
                 LIMIT $1
                 "#,
-            )
-            .bind(limit)
-            .fetch_all(&state.db_pool)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        };
+        )
+        .bind(limit)
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
 
     let uploads: Vec<serde_json::Value> = rows
         .into_iter()
@@ -277,12 +283,11 @@ pub async fn delete_upload(
     let uuid = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Get the storage key first
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT storage_key FROM uploads WHERE id = $1")
-            .bind(uuid)
-            .fetch_optional(&state.db_pool)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT storage_key FROM uploads WHERE id = $1")
+        .bind(uuid)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let (storage_key,) = row.ok_or(StatusCode::NOT_FOUND)?;
 
@@ -330,10 +335,7 @@ pub async fn serve_file(
             header::CONTENT_DISPOSITION,
             format!("inline; filename=\"{}\"", original_filename),
         ),
-        (
-            header::CACHE_CONTROL,
-            "public, max-age=86400".to_string(),
-        ),
+        (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
     ];
 
     Ok((headers, Body::from(data)))

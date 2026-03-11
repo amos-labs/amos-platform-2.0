@@ -49,9 +49,9 @@ impl Tool for LoadCanvasTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let slug = params["slug"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("slug is required".to_string())
-        })?;
+        let slug = params["slug"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("slug is required".to_string()))?;
 
         let config = Arc::new(AppConfig::load()?);
         let engine = CanvasEngine::new(self.db_pool.clone(), config);
@@ -61,8 +61,10 @@ impl Tool for LoadCanvasTool {
 
         let response = engine.render_canvas(&canvas, data_context).await?;
 
-        Ok(ToolResult::success(serde_json::to_value(response)
-            .map_err(|e| AmosError::Internal(format!("Failed to serialize response: {}", e)))?))
+        Ok(ToolResult::success(
+            serde_json::to_value(response)
+                .map_err(|e| AmosError::Internal(format!("Failed to serialize response: {}", e)))?,
+        ))
     }
 
     fn category(&self) -> ToolCategory {
@@ -123,9 +125,9 @@ impl Tool for CreateDynamicCanvasTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let name = params["name"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("name is required".to_string())
-        })?;
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("name is required".to_string()))?;
 
         let canvas_type_str = params["canvas_type"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("canvas_type is required".to_string())
@@ -144,10 +146,8 @@ impl Tool for CreateDynamicCanvasTool {
             sample_data: params.get("data_sources").cloned(),
         };
 
-        let generated = generator::generate_canvas(
-            generate_request,
-            self.bedrock.as_deref(),
-        ).await?;
+        let generated =
+            generator::generate_canvas(generate_request, self.bedrock.as_deref()).await?;
 
         // Create canvas in database
         let config = Arc::new(AppConfig::load()?);
@@ -230,17 +230,23 @@ impl Tool for CreateFreeformCanvasTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let name = params["name"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("name is required".to_string())
-        })?;
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("name is required".to_string()))?;
 
         let description = params["description"].as_str().unwrap_or("");
         let html_content = params["html_content"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("html_content is required".to_string())
         })?;
 
-        let js_content = params.get("js_content").and_then(|v| v.as_str()).map(String::from);
-        let css_content = params.get("css_content").and_then(|v| v.as_str()).map(String::from);
+        let js_content = params
+            .get("js_content")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let css_content = params
+            .get("css_content")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let config = Arc::new(AppConfig::load()?);
         let engine = CanvasEngine::new(self.db_pool.clone(), config);
@@ -321,9 +327,9 @@ impl Tool for UpdateCanvasTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let canvas_id_str = params["canvas_id"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("canvas_id is required".to_string())
-        })?;
+        let canvas_id_str = params["canvas_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("canvas_id is required".to_string()))?;
         let canvas_id = Uuid::parse_str(canvas_id_str).map_err(|e| {
             amos_core::AmosError::Validation(format!("Invalid canvas_id UUID: {}", e))
         })?;
@@ -332,11 +338,26 @@ impl Tool for UpdateCanvasTool {
         let engine = CanvasEngine::new(self.db_pool.clone(), config);
 
         let updates = crate::canvas::CanvasUpdate {
-            name: params.get("name").and_then(|v| v.as_str()).map(String::from),
-            description: params.get("description").and_then(|v| v.as_str()).map(String::from),
-            html_content: params.get("html_content").and_then(|v| v.as_str()).map(String::from),
-            js_content: params.get("js_content").and_then(|v| v.as_str()).map(String::from),
-            css_content: params.get("css_content").and_then(|v| v.as_str()).map(String::from),
+            name: params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            description: params
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            html_content: params
+                .get("html_content")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            js_content: params
+                .get("js_content")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            css_content: params
+                .get("css_content")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             data_sources: params.get("data_sources").cloned(),
             actions: params.get("actions").cloned(),
         };
@@ -390,9 +411,9 @@ impl Tool for PublishCanvasTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let canvas_id_str = params["canvas_id"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("canvas_id is required".to_string())
-        })?;
+        let canvas_id_str = params["canvas_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("canvas_id is required".to_string()))?;
         let canvas_id = Uuid::parse_str(canvas_id_str).map_err(|e| {
             amos_core::AmosError::Validation(format!("Invalid canvas_id UUID: {}", e))
         })?;

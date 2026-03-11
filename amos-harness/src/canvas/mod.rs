@@ -11,7 +11,7 @@ pub mod types;
 
 pub use types::{Canvas, CanvasResponse, CanvasTemplate, CanvasType, DataSource};
 
-use amos_core::{AppConfig, AmosError, Result};
+use amos_core::{AmosError, AppConfig, Result};
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -28,6 +28,7 @@ const CANVAS_COLUMNS: &str = r#"
 "#;
 
 /// The canvas engine handles all canvas operations
+#[allow(dead_code)]
 pub struct CanvasEngine {
     db_pool: PgPool,
     config: Arc<AppConfig>,
@@ -76,29 +77,27 @@ impl CanvasEngine {
         );
 
         let canvas = sqlx::query_as::<_, Canvas>(&query)
-        .bind(&slug)
-        .bind(&name)
-        .bind(description)
-        .bind(&html_content)
-        .bind(js_content)
-        .bind(css_content)
-        .bind(&canvas_type)
-        .bind(data_sources)
-        .bind(actions)
-        .bind(layout_config)
-        .fetch_one(&self.db_pool)
-        .await
-        .map_err(|e| AmosError::Internal(format!("Database: Failed to create canvas: {}", e)))?;
+            .bind(&slug)
+            .bind(&name)
+            .bind(description)
+            .bind(&html_content)
+            .bind(js_content)
+            .bind(css_content)
+            .bind(&canvas_type)
+            .bind(data_sources)
+            .bind(actions)
+            .bind(layout_config)
+            .fetch_one(&self.db_pool)
+            .await
+            .map_err(|e| {
+                AmosError::Internal(format!("Database: Failed to create canvas: {}", e))
+            })?;
 
         Ok(canvas)
     }
 
     /// Update an existing canvas
-    pub async fn update_canvas(
-        &self,
-        canvas_id: Uuid,
-        updates: CanvasUpdate,
-    ) -> Result<Canvas> {
+    pub async fn update_canvas(&self, canvas_id: Uuid, updates: CanvasUpdate) -> Result<Canvas> {
         // Build dynamic update query based on which fields are provided
         let mut set_parts: Vec<String> = vec!["version = version + 1".to_string()];
         let mut bind_idx = 1u32;
@@ -165,16 +164,19 @@ impl CanvasEngine {
 
         query_builder = query_builder.bind(canvas_id);
 
-        let canvas = query_builder
-            .fetch_one(&self.db_pool)
-            .await
-            .map_err(|e| AmosError::Internal(format!("Database: Failed to update canvas: {}", e)))?;
+        let canvas = query_builder.fetch_one(&self.db_pool).await.map_err(|e| {
+            AmosError::Internal(format!("Database: Failed to update canvas: {}", e))
+        })?;
 
         Ok(canvas)
     }
 
     /// List all canvases (excludes system canvases by default)
-    pub async fn list_canvases(&self, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<Canvas>> {
+    pub async fn list_canvases(
+        &self,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Vec<Canvas>> {
         let limit = limit.unwrap_or(50);
         let offset = offset.unwrap_or(0);
 
@@ -184,11 +186,13 @@ impl CanvasEngine {
         );
 
         let canvases = sqlx::query_as::<_, Canvas>(&query)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.db_pool)
-        .await
-        .map_err(|e| AmosError::Internal(format!("Database: Failed to list canvases: {}", e)))?;
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.db_pool)
+            .await
+            .map_err(|e| {
+                AmosError::Internal(format!("Database: Failed to list canvases: {}", e))
+            })?;
 
         Ok(canvases)
     }
@@ -201,9 +205,11 @@ impl CanvasEngine {
         );
 
         let canvases = sqlx::query_as::<_, Canvas>(&query)
-        .fetch_all(&self.db_pool)
-        .await
-        .map_err(|e| AmosError::Internal(format!("Database: Failed to list system canvases: {}", e)))?;
+            .fetch_all(&self.db_pool)
+            .await
+            .map_err(|e| {
+                AmosError::Internal(format!("Database: Failed to list system canvases: {}", e))
+            })?;
 
         Ok(canvases)
     }
@@ -213,12 +219,13 @@ impl CanvasEngine {
         let query = format!("SELECT {} FROM canvases WHERE id = $1", CANVAS_COLUMNS);
 
         let canvas = sqlx::query_as::<_, Canvas>(&query)
-        .bind(canvas_id)
-        .fetch_one(&self.db_pool)
-        .await
-        .map_err(|_e| {
-            AmosError::NotFound { entity: "Canvas".to_string(), id: canvas_id.to_string() }
-        })?;
+            .bind(canvas_id)
+            .fetch_one(&self.db_pool)
+            .await
+            .map_err(|_e| AmosError::NotFound {
+                entity: "Canvas".to_string(),
+                id: canvas_id.to_string(),
+            })?;
 
         Ok(canvas)
     }
@@ -228,12 +235,13 @@ impl CanvasEngine {
         let query = format!("SELECT {} FROM canvases WHERE slug = $1", CANVAS_COLUMNS);
 
         let canvas = sqlx::query_as::<_, Canvas>(&query)
-        .bind(slug)
-        .fetch_one(&self.db_pool)
-        .await
-        .map_err(|_e| {
-            AmosError::NotFound { entity: "Canvas".to_string(), id: slug.to_string() }
-        })?;
+            .bind(slug)
+            .fetch_one(&self.db_pool)
+            .await
+            .map_err(|_e| AmosError::NotFound {
+                entity: "Canvas".to_string(),
+                id: slug.to_string(),
+            })?;
 
         Ok(canvas)
     }
@@ -244,7 +252,9 @@ impl CanvasEngine {
             .bind(canvas_id)
             .execute(&self.db_pool)
             .await
-            .map_err(|e| AmosError::Internal(format!("Database: Failed to delete canvas: {}", e)))?;
+            .map_err(|e| {
+                AmosError::Internal(format!("Database: Failed to delete canvas: {}", e))
+            })?;
 
         Ok(())
     }
@@ -295,12 +305,13 @@ impl CanvasEngine {
         );
 
         let canvas = sqlx::query_as::<_, Canvas>(&query)
-        .bind(public_slug)
-        .fetch_one(&self.db_pool)
-        .await
-        .map_err(|_e| {
-            AmosError::NotFound { entity: "PublicCanvas".to_string(), id: public_slug.to_string() }
-        })?;
+            .bind(public_slug)
+            .fetch_one(&self.db_pool)
+            .await
+            .map_err(|_e| AmosError::NotFound {
+                entity: "PublicCanvas".to_string(),
+                id: public_slug.to_string(),
+            })?;
 
         Ok(canvas)
     }
@@ -357,7 +368,10 @@ mod tests {
     #[test]
     fn test_generate_slug() {
         assert_eq!(generate_slug("My Canvas"), "my-canvas");
-        assert_eq!(generate_slug("Sales Dashboard 2024"), "sales-dashboard-2024");
+        assert_eq!(
+            generate_slug("Sales Dashboard 2024"),
+            "sales-dashboard-2024"
+        );
         assert_eq!(generate_slug("User@Profile!"), "user_profile_");
     }
 }

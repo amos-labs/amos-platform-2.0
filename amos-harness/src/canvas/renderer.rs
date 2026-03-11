@@ -11,7 +11,9 @@ use tera::{Context, Tera};
 /// Validate that a string is a safe SQL identifier (alphanumeric + underscores only)
 fn validate_identifier(name: &str) -> Result<()> {
     if name.is_empty() || name.len() > 128 {
-        return Err(AmosError::Validation("Invalid identifier length".to_string()));
+        return Err(AmosError::Validation(
+            "Invalid identifier length".to_string(),
+        ));
     }
     let is_valid = name.chars().enumerate().all(|(i, c)| {
         if i == 0 {
@@ -36,7 +38,7 @@ fn is_private_ip(ip: IpAddr) -> bool {
             v4.is_loopback()             // 127.0.0.0/8
                 || v4.is_private()       // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
                 || v4.is_link_local()    // 169.254.0.0/16
-                || v4.is_unspecified()   // 0.0.0.0
+                || v4.is_unspecified() // 0.0.0.0
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()             // ::1
@@ -50,9 +52,8 @@ fn is_private_ip(ip: IpAddr) -> bool {
 
 /// Validate that a URL is safe to fetch (no SSRF)
 fn validate_url(endpoint: &str) -> Result<()> {
-    let parsed = url::Url::parse(endpoint).map_err(|e| {
-        AmosError::Validation(format!("Invalid URL '{}': {}", endpoint, e))
-    })?;
+    let parsed = url::Url::parse(endpoint)
+        .map_err(|e| AmosError::Validation(format!("Invalid URL '{}': {}", endpoint, e)))?;
 
     // Only allow http and https
     match parsed.scheme() {
@@ -68,10 +69,7 @@ fn validate_url(endpoint: &str) -> Result<()> {
     // Block known internal hostnames
     let host = parsed.host_str().unwrap_or("");
     let blocked_hosts = ["localhost", "0.0.0.0", "[::]", "[::1]"];
-    if blocked_hosts.contains(&host)
-        || host.ends_with(".local")
-        || host.ends_with(".internal")
-    {
+    if blocked_hosts.contains(&host) || host.ends_with(".local") || host.ends_with(".internal") {
         return Err(AmosError::Validation(format!(
             "URL host '{}' is not allowed: internal/private host",
             host
@@ -197,7 +195,8 @@ fn extract_collection_info(data_sources: &JsonValue) -> Option<(String, String)>
         }
         // Nested format: {"deals": {"collection": "deals"}}
         for (key, source_config) in sources {
-            if let Some(collection_name) = source_config.get("collection").and_then(|v| v.as_str()) {
+            if let Some(collection_name) = source_config.get("collection").and_then(|v| v.as_str())
+            {
                 return Some((collection_name.to_string(), key.clone()));
             }
         }
@@ -228,13 +227,14 @@ async fn build_kanban_columns(
         .map(|s| s.to_string());
 
     // Fetch collection fields to find the enum field with stage choices
-    let fields_row = sqlx::query_as::<_, (JsonValue,)>(
-        "SELECT fields FROM collections WHERE name = $1 LIMIT 1",
-    )
-    .bind(&collection_name)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| AmosError::Internal(format!("Failed to fetch collection fields: {}", e)))?;
+    let fields_row =
+        sqlx::query_as::<_, (JsonValue,)>("SELECT fields FROM collections WHERE name = $1 LIMIT 1")
+            .bind(&collection_name)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|e| {
+                AmosError::Internal(format!("Failed to fetch collection fields: {}", e))
+            })?;
 
     let (fields,) = match fields_row {
         Some(row) => row,
@@ -256,10 +256,7 @@ async fn build_kanban_columns(
             continue;
         }
 
-        let field_name = field
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let field_name = field.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
         // If a preferred group_by was specified, use that field
         if let Some(ref preferred) = preferred_group_by {
@@ -273,11 +270,9 @@ async fn build_kanban_columns(
                 || field_name.contains("status");
             if !is_stage
                 && field_list.iter().any(|f| {
-                    f.get("name")
-                        .and_then(|v| v.as_str())
-                        .map_or(false, |n| {
-                            n == "stage" || n.contains("stage") || n.contains("status")
-                        })
+                    f.get("name").and_then(|v| v.as_str()).is_some_and(|n| {
+                        n == "stage" || n.contains("stage") || n.contains("status")
+                    })
                 })
             {
                 continue; // Skip non-stage enums if a stage/status field exists
@@ -309,9 +304,7 @@ async fn build_kanban_columns(
                 let column_items: Vec<JsonValue> = items
                     .iter()
                     .filter(|item| {
-                        item.get(field_name)
-                            .and_then(|v| v.as_str())
-                            .map_or(false, |v| v == choice_str)
+                        item.get(field_name).and_then(|v| v.as_str()) == Some(choice_str)
                     })
                     .cloned()
                     .collect();
@@ -331,10 +324,7 @@ async fn build_kanban_columns(
 }
 
 /// Fetch column (field) names for a canvas from its first data source collection
-async fn fetch_columns_for_canvas(
-    canvas: &Canvas,
-    db_pool: &PgPool,
-) -> Result<Option<JsonValue>> {
+async fn fetch_columns_for_canvas(canvas: &Canvas, db_pool: &PgPool) -> Result<Option<JsonValue>> {
     let data_sources = match &canvas.data_sources {
         Some(ds) => ds,
         None => return Ok(None),
@@ -346,13 +336,14 @@ async fn fetch_columns_for_canvas(
     };
 
     // Fetch collection field display names
-    let fields_row = sqlx::query_as::<_, (JsonValue,)>(
-        "SELECT fields FROM collections WHERE name = $1 LIMIT 1",
-    )
-    .bind(&collection_name)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| AmosError::Internal(format!("Failed to fetch collection fields: {}", e)))?;
+    let fields_row =
+        sqlx::query_as::<_, (JsonValue,)>("SELECT fields FROM collections WHERE name = $1 LIMIT 1")
+            .bind(&collection_name)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|e| {
+                AmosError::Internal(format!("Failed to fetch collection fields: {}", e))
+            })?;
 
     if let Some((fields,)) = fields_row {
         if let JsonValue::Array(field_list) = fields {
@@ -405,10 +396,7 @@ fn render_with_tera(template_str: &str, context: &JsonValue) -> Result<String> {
 /// Supports two formats:
 /// 1. Nested: `{"contacts": {"collection": "contacts"}}` — each key is a named source
 /// 2. Flat: `{"collection": "support_tickets", "group_by": "status", ...}` — single source
-async fn fetch_data_from_sources(
-    data_sources: &JsonValue,
-    db_pool: &PgPool,
-) -> Result<JsonValue> {
+async fn fetch_data_from_sources(data_sources: &JsonValue, db_pool: &PgPool) -> Result<JsonValue> {
     let mut result = serde_json::Map::new();
 
     if let JsonValue::Object(sources) = data_sources {
@@ -422,7 +410,8 @@ async fn fetch_data_from_sources(
 
         for (key, source_config) in sources {
             // Support shorthand collection format: {"contacts": {"collection": "contacts"}}
-            if let Some(collection_name) = source_config.get("collection").and_then(|v| v.as_str()) {
+            if let Some(collection_name) = source_config.get("collection").and_then(|v| v.as_str())
+            {
                 let data = fetch_collection_data(collection_name, source_config, db_pool).await?;
                 result.insert(key.clone(), data);
                 continue;
@@ -432,7 +421,9 @@ async fn fetch_data_from_sources(
                 match source_type {
                     "model" => {
                         // Fetch data from a database model
-                        if let Some(model_name) = source_config.get("model_name").and_then(|v| v.as_str()) {
+                        if let Some(model_name) =
+                            source_config.get("model_name").and_then(|v| v.as_str())
+                        {
                             let data = fetch_model_data(model_name, source_config, db_pool).await?;
                             result.insert(key.clone(), data);
                         }
@@ -445,7 +436,9 @@ async fn fetch_data_from_sources(
                     }
                     "api" => {
                         // Fetch from external API
-                        if let Some(endpoint) = source_config.get("endpoint").and_then(|v| v.as_str()) {
+                        if let Some(endpoint) =
+                            source_config.get("endpoint").and_then(|v| v.as_str())
+                        {
                             let data = fetch_api_data(endpoint).await?;
                             result.insert(key.clone(), data);
                         }
@@ -468,10 +461,7 @@ async fn fetch_collection_data(
     config: &JsonValue,
     db_pool: &PgPool,
 ) -> Result<JsonValue> {
-    let limit = config
-        .get("limit")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(100);
+    let limit = config.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
 
     // Query records joined with collections to get the data JSONB field
     let rows = sqlx::query_as::<_, (sqlx::types::Uuid, JsonValue)>(
@@ -516,10 +506,7 @@ async fn fetch_model_data(
     // This is a simplified implementation
     // In production, this would use the actual module system to query data
 
-    let limit = config
-        .get("limit")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(50);
+    let limit = config.get("limit").and_then(|v| v.as_i64()).unwrap_or(50);
 
     // Validate model_name is a safe identifier (prevent SQL injection)
     validate_identifier(model_name)?;
@@ -569,16 +556,15 @@ async fn fetch_api_data(endpoint: &str) -> Result<JsonValue> {
         .build()
         .map_err(|e| AmosError::Internal(format!("Failed to build HTTP client: {}", e)))?;
 
-    let response: reqwest::Response = client.get(endpoint).send()
+    let response: reqwest::Response = client
+        .get(endpoint)
+        .send()
         .await
         .map_err(|e| AmosError::Internal(format!("External: API request failed: {}", e)))?;
 
-    let data = response
-        .json::<JsonValue>()
-        .await
-        .map_err(|e| {
-            AmosError::Internal(format!("External: Failed to parse API response: {}", e))
-        })?;
+    let data = response.json::<JsonValue>().await.map_err(|e| {
+        AmosError::Internal(format!("External: Failed to parse API response: {}", e))
+    })?;
 
     Ok(data)
 }

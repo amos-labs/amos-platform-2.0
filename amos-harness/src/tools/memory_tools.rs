@@ -53,9 +53,9 @@ impl Tool for RememberThisTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let content = params["content"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("content is required".to_string())
-        })?;
+        let content = params["content"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("content is required".to_string()))?;
 
         let category = params
             .get("category")
@@ -149,34 +149,32 @@ impl Tool for SearchMemoryTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let query = params["query"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("query is required".to_string())
-        })?;
+        let query = params["query"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("query is required".to_string()))?;
 
         let category = params.get("category").and_then(|v| v.as_str());
         let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
 
         // Search memory using text search
-        let sql = if let Some(cat) = category {
-            format!(
-                r#"
+        let sql = if let Some(_cat) = category {
+            r#"
                 SELECT id, content, category, salience, created_at
                 FROM working_memory
                 WHERE category = $1 AND content ILIKE $2
                 ORDER BY salience DESC, last_accessed DESC
                 LIMIT $3
                 "#
-            )
+            .to_string()
         } else {
-            format!(
-                r#"
+            r#"
                 SELECT id, content, category, salience, created_at
                 FROM working_memory
                 WHERE content ILIKE $1
                 ORDER BY salience DESC, last_accessed DESC
                 LIMIT $2
                 "#
-            )
+            .to_string()
         };
 
         let search_pattern = format!("%{}%", query);

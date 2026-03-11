@@ -22,7 +22,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -105,7 +104,10 @@ impl TaskStatus {
 
     /// Whether the task is in a terminal state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled)
+        matches!(
+            self,
+            TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+        )
     }
 }
 
@@ -346,17 +348,15 @@ impl TaskQueue {
 
     /// Get a task by ID.
     pub async fn get_task(&self, task_id: Uuid) -> Result<Task> {
-        let row = sqlx::query_as::<_, TaskRow>(
-            "SELECT * FROM tasks WHERE id = $1",
-        )
-        .bind(task_id)
-        .fetch_optional(&self.db_pool)
-        .await
-        .map_err(|e| AmosError::Internal(format!("Failed to fetch task: {e}")))?
-        .ok_or_else(|| AmosError::NotFound {
-            entity: "Task".to_string(),
-            id: task_id.to_string(),
-        })?;
+        let row = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks WHERE id = $1")
+            .bind(task_id)
+            .fetch_optional(&self.db_pool)
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to fetch task: {e}")))?
+            .ok_or_else(|| AmosError::NotFound {
+                entity: "Task".to_string(),
+                id: task_id.to_string(),
+            })?;
 
         Ok(row.into_task())
     }
@@ -378,7 +378,7 @@ impl TaskQueue {
         }
         if status_filter.is_some() {
             sql.push_str(&format!(" AND status = ${param_idx}"));
-            param_idx += 1;
+            // param_idx += 1; // Last use, no need to increment
         }
 
         sql.push_str(" ORDER BY priority ASC, created_at DESC");
@@ -461,7 +461,8 @@ impl TaskQueue {
 
     /// Cancel a task (if not already terminal).
     pub async fn cancel_task(&self, task_id: Uuid) -> Result<Task> {
-        self.update_task_status(task_id, TaskStatus::Cancelled, None, None).await
+        self.update_task_status(task_id, TaskStatus::Cancelled, None, None)
+            .await
     }
 
     /// Get active (non-terminal) tasks for a session.
@@ -534,10 +535,7 @@ impl TaskQueue {
 
     /// Get unacknowledged messages for tasks in a session.
     /// This is what the agent loop calls to check for pending updates.
-    pub async fn pending_messages_for_session(
-        &self,
-        session_id: Uuid,
-    ) -> Result<Vec<TaskMessage>> {
+    pub async fn pending_messages_for_session(&self, session_id: Uuid) -> Result<Vec<TaskMessage>> {
         let rows = sqlx::query_as::<_, TaskMessageRow>(
             r#"SELECT tm.*
                FROM task_messages tm
@@ -630,9 +628,11 @@ impl TaskQueue {
         .fetch_optional(&self.db_pool)
         .await
         .map_err(|e| AmosError::Internal(format!("Failed to claim bounty: {e}")))?
-        .ok_or_else(|| AmosError::Validation(
-            "Bounty is not available (already claimed or not external/pending)".to_string(),
-        ))?;
+        .ok_or_else(|| {
+            AmosError::Validation(
+                "Bounty is not available (already claimed or not external/pending)".to_string(),
+            )
+        })?;
 
         Ok(row.into_task())
     }
@@ -734,8 +734,14 @@ mod tests {
 
     #[test]
     fn task_category_roundtrip() {
-        assert_eq!(TaskCategory::from_str("internal"), Some(TaskCategory::Internal));
-        assert_eq!(TaskCategory::from_str("external"), Some(TaskCategory::External));
+        assert_eq!(
+            TaskCategory::from_str("internal"),
+            Some(TaskCategory::Internal)
+        );
+        assert_eq!(
+            TaskCategory::from_str("external"),
+            Some(TaskCategory::External)
+        );
         assert_eq!(TaskCategory::from_str("bogus"), None);
         assert_eq!(TaskCategory::Internal.as_str(), "internal");
         assert_eq!(TaskCategory::External.as_str(), "external");

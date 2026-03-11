@@ -85,8 +85,14 @@ impl Tool for GenerateDocumentTool {
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
         // Parse parameters
-        let title = params.get("title").and_then(|v| v.as_str()).map(String::from);
-        let footer = params.get("footer").and_then(|v| v.as_str()).map(String::from);
+        let title = params
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let footer = params
+            .get("footer")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let filename = params
             .get("filename")
             .and_then(|v| v.as_str())
@@ -152,10 +158,8 @@ impl Tool for GenerateDocumentTool {
 
         match result {
             Ok(Ok((content_type, generated_filename, bytes))) => {
-                let b64 = base64::Engine::encode(
-                    &base64::engine::general_purpose::STANDARD,
-                    &bytes,
-                );
+                let b64 =
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
 
                 Ok(ToolResult::success_with_metadata(
                     json!({

@@ -21,9 +21,9 @@ pub async fn start_http_server(state: RelayState) -> Result<()> {
     let app = build_http_router(state.clone());
 
     let addr = format!("{}:{}", state.config.server.host, state.config.server.port);
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .map_err(|e| amos_core::AmosError::Internal(format!("Failed to bind to {}: {}", addr, e)))?;
+    let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
+        amos_core::AmosError::Internal(format!("Failed to bind to {}: {}", addr, e))
+    })?;
 
     info!("AMOS Network Relay listening on {}", addr);
 
@@ -50,12 +50,7 @@ pub fn build_http_router(state: RelayState) -> Router {
                 .layer(
                     CorsLayer::new()
                         .allow_origin(tower_http::cors::Any)
-                        .allow_methods([
-                            Method::GET,
-                            Method::POST,
-                            Method::PUT,
-                            Method::DELETE,
-                        ])
+                        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
                         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
                 ),
         )

@@ -86,13 +86,16 @@ async fn get_reputation(
             quality_score
         FROM relay_reputation_reports
         WHERE agent_id = $1
-        "#
+        "#,
     )
     .bind(agent_id)
     .fetch_all(&state.db)
     .await
     .map_err(|e| {
-        warn!("Failed to fetch reputation reports for agent {}: {}", agent_id, e);
+        warn!(
+            "Failed to fetch reputation reports for agent {}: {}",
+            agent_id, e
+        );
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -162,7 +165,7 @@ async fn report_outcome(
             id, harness_id, agent_id, task_id,
             outcome,
             quality_score, reported_at
-        "#
+        "#,
     )
     .bind(report_id)
     .bind(&req.harness_id)
@@ -199,7 +202,7 @@ async fn update_agent_stats(state: &RelayState, agent_id: Uuid) -> Result<(), St
             quality_score
         FROM relay_reputation_reports
         WHERE agent_id = $1
-        "#
+        "#,
     )
     .bind(agent_id)
     .fetch_all(&state.db)
@@ -244,7 +247,7 @@ async fn update_agent_stats(state: &RelayState, agent_id: Uuid) -> Result<(), St
             avg_quality_score = $2,
             trust_level = $3
         WHERE id = $4
-        "#
+        "#,
     )
     .bind(total_completed)
     .bind(avg_quality)

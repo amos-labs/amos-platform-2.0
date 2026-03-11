@@ -69,7 +69,11 @@ impl ApiExecutor {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { client, db_pool, vault: None }
+        Self {
+            client,
+            db_pool,
+            vault: None,
+        }
     }
 
     /// Create a new API executor with vault support for encrypted credential resolution
@@ -79,7 +83,11 @@ impl ApiExecutor {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { client, db_pool, vault: Some(vault) }
+        Self {
+            client,
+            db_pool,
+            vault: Some(vault),
+        }
     }
 
     /// Execute an API operation with the given connection and parameters
@@ -110,19 +118,18 @@ impl ApiExecutor {
         })?;
 
         // Load integration from database
-        let integration = sqlx::query_as::<_, IntegrationRow>(
-            "SELECT * FROM integrations WHERE id = $1"
-        )
-        .bind(connection.integration_id)
-        .fetch_optional(&self.db_pool)
-        .await
-        .map_err(|e| ExecutionError::ConfigError(format!("Database error: {}", e)))?
-        .ok_or_else(|| {
-            ExecutionError::NotFound(format!(
-                "Integration not found: {}",
-                connection.integration_id
-            ))
-        })?;
+        let integration =
+            sqlx::query_as::<_, IntegrationRow>("SELECT * FROM integrations WHERE id = $1")
+                .bind(connection.integration_id)
+                .fetch_optional(&self.db_pool)
+                .await
+                .map_err(|e| ExecutionError::ConfigError(format!("Database error: {}", e)))?
+                .ok_or_else(|| {
+                    ExecutionError::NotFound(format!(
+                        "Integration not found: {}",
+                        connection.integration_id
+                    ))
+                })?;
 
         // Load credential from database if credential_id is set
         let mut credential = if let Some(credential_id) = connection.credential_id {
@@ -141,7 +148,11 @@ impl ApiExecutor {
         // a `vault_credential_id`, decrypt the secret from the encrypted vault
         // and inject it into credentials_data so add_auth_headers works unchanged.
         if let Some(ref mut cred) = credential {
-            if let Some(vault_id_str) = cred.credentials_data.get("vault_credential_id").and_then(|v| v.as_str()) {
+            if let Some(vault_id_str) = cred
+                .credentials_data
+                .get("vault_credential_id")
+                .and_then(|v| v.as_str())
+            {
                 if let Some(ref vault) = self.vault {
                     let vault_id = Uuid::parse_str(vault_id_str).map_err(|_| {
                         ExecutionError::ConfigError("Invalid vault_credential_id UUID".to_string())
@@ -164,7 +175,9 @@ impl ApiExecutor {
 
                     // Determine the key name based on auth_type (clone to String
                     // so we release the immutable borrow before as_object_mut).
-                    let key_name: String = cred.credentials_data.get("vault_key_name")
+                    let key_name: String = cred
+                        .credentials_data
+                        .get("vault_key_name")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| match cred.auth_type.as_str() {
@@ -182,7 +195,10 @@ impl ApiExecutor {
                         obj.remove("vault_key_name");
                     }
 
-                    debug!("Resolved vault credential {} for auth_type={}", vault_id, cred.auth_type);
+                    debug!(
+                        "Resolved vault credential {} for auth_type={}",
+                        vault_id, cred.auth_type
+                    );
                 } else {
                     warn!("Credential references vault_credential_id but vault is not configured");
                     return Err(ExecutionError::ConfigError(
@@ -294,10 +310,9 @@ impl ApiExecutor {
                     .collect();
 
                 // Read response body
-                let response_text = response
-                    .text()
-                    .await
-                    .map_err(|e| ExecutionError::NetworkError(format!("Failed to read response: {}", e)))?;
+                let response_text = response.text().await.map_err(|e| {
+                    ExecutionError::NetworkError(format!("Failed to read response: {}", e))
+                })?;
 
                 let duration_ms = start_time.elapsed().as_millis() as u64;
 
@@ -342,7 +357,7 @@ impl ApiExecutor {
             .unwrap_or_else(|_| JsonValue::String(response_text.clone()));
 
         // Determine log status
-        let log_status = if status_code >= 200 && status_code < 300 {
+        let log_status = if (200..300).contains(&status_code) {
             "success"
         } else if status_code == 429 {
             "rate_limited"
@@ -536,10 +551,7 @@ impl ApiExecutor {
                     request = request.header(header_name, header_value);
                     debug!("Added custom authentication from template");
                 } else {
-                    warn!(
-                        "Unknown auth type: {}, no authentication added",
-                        auth_type
-                    );
+                    warn!("Unknown auth type: {}, no authentication added", auth_type);
                 }
             }
         }

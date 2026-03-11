@@ -4,7 +4,7 @@
 //! employees. Each agent has its own workspace, memory, tools, and capabilities.
 //! They communicate with AMOS via a real WebSocket connection to the OpenClaw gateway.
 
-use amos_core::{AppConfig, AmosError, Result};
+use amos_core::{AmosError, AppConfig, Result};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -204,7 +204,10 @@ impl OpenClawConnection {
                     if backoff_secs <= 5 {
                         warn!("Failed to connect to OpenClaw gateway: {}", e);
                     } else {
-                        debug!("OpenClaw gateway still unavailable (retry in {}s)", backoff_secs);
+                        debug!(
+                            "OpenClaw gateway still unavailable (retry in {}s)",
+                            backoff_secs
+                        );
                     }
                     *connected.write().await = false;
                     *protocol_ready.write().await = false;
@@ -221,10 +224,15 @@ impl OpenClawConnection {
     async fn handle_frame(
         frame: OpenClawFrame,
         pending_requests: &Arc<DashMap<String, oneshot::Sender<JsonValue>>>,
-        protocol_ready: &Arc<RwLock<bool>>,
+        _protocol_ready: &Arc<RwLock<bool>>,
     ) {
         match frame {
-            OpenClawFrame::Response { id, ok, payload, error } => {
+            OpenClawFrame::Response {
+                id,
+                ok,
+                payload,
+                error,
+            } => {
                 if let Some((_, tx)) = pending_requests.remove(&id) {
                     if ok {
                         if let Some(payload) = payload {
@@ -239,25 +247,23 @@ impl OpenClawConnection {
                     }
                 }
             }
-            OpenClawFrame::Event { event, payload } => {
-                match event.as_str() {
-                    "connect.challenge" => {
-                        info!("Received connect.challenge: {:?}", payload);
-                    }
-                    "agent.task.completed" => {
-                        info!("Agent task completed: {:?}", payload);
-                    }
-                    "agent.status" => {
-                        debug!("Agent status update: {:?}", payload);
-                    }
-                    "tick" => {
-                        debug!("Heartbeat tick");
-                    }
-                    _ => {
-                        debug!("Unknown event: {} {:?}", event, payload);
-                    }
+            OpenClawFrame::Event { event, payload } => match event.as_str() {
+                "connect.challenge" => {
+                    info!("Received connect.challenge: {:?}", payload);
                 }
-            }
+                "agent.task.completed" => {
+                    info!("Agent task completed: {:?}", payload);
+                }
+                "agent.status" => {
+                    debug!("Agent status update: {:?}", payload);
+                }
+                "tick" => {
+                    debug!("Heartbeat tick");
+                }
+                _ => {
+                    debug!("Unknown event: {} {:?}", event, payload);
+                }
+            },
             OpenClawFrame::Request { .. } => {
                 warn!("Received unexpected request frame from server");
             }
@@ -309,9 +315,7 @@ impl OpenClawConnection {
             info!("OpenClaw handshake successful");
             Ok(())
         } else {
-            Err(AmosError::Internal(
-                "OpenClaw handshake failed".to_string(),
-            ))
+            Err(AmosError::Internal("OpenClaw handshake failed".to_string()))
         }
     }
 
@@ -475,10 +479,9 @@ impl AgentManager {
                 drop(conn_guard);
                 self.ensure_openclaw_connection().await?;
                 let conn_guard = self.openclaw_conn.read().await;
-                conn_guard
-                    .as_ref()
-                    .cloned()
-                    .ok_or_else(|| AmosError::Internal("Failed to establish connection".to_string()))
+                conn_guard.as_ref().cloned().ok_or_else(|| {
+                    AmosError::Internal("Failed to establish connection".to_string())
+                })
             }
         }
     }
@@ -533,22 +536,35 @@ impl AgentManager {
         let config = self.get_agent_config(agent_id).await?;
 
         // Update status to active
-        self.update_agent_status(agent_id, AgentStatus::Active).await?;
+        self.update_agent_status(agent_id, AgentStatus::Active)
+            .await?;
 
         // If gateway is available, register on the gateway
         if let Ok(conn) = self.get_openclaw_connection().await {
             match conn.register_agent(&config).await {
                 Ok(gateway_id) => {
-                    info!("Registered agent {} on OpenClaw gateway as {}", agent_id, gateway_id);
-                    self.gateway_agent_ids.write().await.insert(agent_id, gateway_id);
+                    info!(
+                        "Registered agent {} on OpenClaw gateway as {}",
+                        agent_id, gateway_id
+                    );
+                    self.gateway_agent_ids
+                        .write()
+                        .await
+                        .insert(agent_id, gateway_id);
                 }
                 Err(e) => {
-                    warn!("Could not register agent on gateway (will work locally): {}", e);
+                    warn!(
+                        "Could not register agent on gateway (will work locally): {}",
+                        e
+                    );
                 }
             }
         }
 
-        self.active_agents.write().await.insert(agent_id, AgentStatus::Active);
+        self.active_agents
+            .write()
+            .await
+            .insert(agent_id, AgentStatus::Active);
         info!("Agent {} ({}) activated", config.display_name, agent_id);
 
         Ok(())
@@ -564,7 +580,8 @@ impl AgentManager {
         }
 
         // Update database
-        self.update_agent_status(agent_id, AgentStatus::Stopped).await?;
+        self.update_agent_status(agent_id, AgentStatus::Stopped)
+            .await?;
 
         // Remove from active agents
         self.active_agents.write().await.remove(&agent_id);
@@ -576,7 +593,10 @@ impl AgentManager {
     /// Get agent status
     pub async fn get_status(&self, agent_id: i32) -> Result<AgentStatus> {
         let agents = self.active_agents.read().await;
-        Ok(agents.get(&agent_id).cloned().unwrap_or(AgentStatus::Stopped))
+        Ok(agents
+            .get(&agent_id)
+            .cloned()
+            .unwrap_or(AgentStatus::Stopped))
     }
 
     /// List all agents
@@ -602,8 +622,10 @@ impl AgentManager {
             let system_prompt: Option<String> = row.get(5);
             let model: String = row.get(6);
 
-            let capabilities: Vec<String> = serde_json::from_value(capabilities_json)
-                .map_err(|e| AmosError::Internal(format!("Failed to deserialize capabilities: {}", e)))?;
+            let capabilities: Vec<String> =
+                serde_json::from_value(capabilities_json).map_err(|e| {
+                    AmosError::Internal(format!("Failed to deserialize capabilities: {}", e))
+                })?;
 
             agents.push(AgentConfig {
                 agent_id,
@@ -676,9 +698,10 @@ impl AgentManager {
         }
         query_builder = query_builder.bind(agent_id);
 
-        let row = query_builder.fetch_one(&self.db_pool).await.map_err(|e| {
-            AmosError::Internal(format!("Failed to update agent: {}", e))
-        })?;
+        let row = query_builder
+            .fetch_one(&self.db_pool)
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to update agent: {}", e)))?;
 
         let agent_id: i32 = row.get(0);
         let name: String = row.get(1);

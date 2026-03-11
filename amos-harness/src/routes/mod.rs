@@ -32,8 +32,7 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         // Upload routes (25 MB body limit for file uploads)
         .nest(
             "/api/v1/uploads",
-            uploads::routes(state.clone())
-                .layer(DefaultBodyLimit::max(25 * 1024 * 1024)),
+            uploads::routes(state.clone()).layer(DefaultBodyLimit::max(25 * 1024 * 1024)),
         )
         // Integration routes
         .nest("/api/v1/integrations", integrations::routes(state.clone()))
@@ -45,7 +44,13 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/sites", sites::routes(state.clone()))
         // Public site serving
         .route("/s/{slug}", axum::routing::get(sites::serve_site_index))
-        .route("/s/{slug}/{*path}", axum::routing::get(sites::serve_site_page))
-        .route("/s/{slug}/submit/{collection}", axum::routing::post(sites::handle_form_submit))
+        .route(
+            "/s/{slug}/{*path}",
+            axum::routing::get(sites::serve_site_page),
+        )
+        .route(
+            "/s/{slug}/submit/{collection}",
+            axum::routing::post(sites::handle_form_submit),
+        )
         .with_state(state)
 }

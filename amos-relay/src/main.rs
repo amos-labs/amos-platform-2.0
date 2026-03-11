@@ -22,10 +22,7 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let config = AppConfig::load()?;
-    info!(
-        "Configuration loaded: HTTP port={}",
-        config.server.port
-    );
+    info!("Configuration loaded: HTTP port={}", config.server.port);
 
     // Initialize relay state (DB, Redis, optional Solana)
     let state = RelayState::new(config).await?;

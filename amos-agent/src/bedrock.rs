@@ -1,5 +1,8 @@
 use crate::provider::{ModelProvider, StreamEvent, TokenUsage};
-use amos_core::{types::{ContentBlock, Message, Role}, AmosError, Result};
+use amos_core::{
+    types::{ContentBlock, Message, Role},
+    AmosError, Result,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use hmac::{Hmac, Mac};
@@ -154,7 +157,9 @@ impl BedrockProvider {
                 Role::Assistant => "assistant",
                 Role::System => {
                     // System messages are not sent as regular messages in Bedrock
-                    warn!("System role in messages list - this should be in system_prompt parameter");
+                    warn!(
+                        "System role in messages list - this should be in system_prompt parameter"
+                    );
                     continue;
                 }
                 Role::Tool => {
@@ -181,7 +186,11 @@ impl BedrockProvider {
                             }
                         }));
                     }
-                    ContentBlock::ToolResult { tool_use_id, content, is_error } => {
+                    ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
                         let mut tool_result = serde_json::json!({
                             "toolUseId": tool_use_id,
                             "content": []
@@ -301,14 +310,16 @@ impl BedrockProvider {
                     "contentBlockStart" => {
                         if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(payload) {
                             debug!("contentBlockStart: {:?}", parsed);
-                            if let Some(tool_use) = parsed.get("start")
-                                .and_then(|s| s.get("toolUse"))
+                            if let Some(tool_use) =
+                                parsed.get("start").and_then(|s| s.get("toolUse"))
                             {
-                                let id = tool_use.get("toolUseId")
+                                let id = tool_use
+                                    .get("toolUseId")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string();
-                                let name = tool_use.get("name")
+                                let name = tool_use
+                                    .get("name")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string();
@@ -322,20 +333,26 @@ impl BedrockProvider {
                     }
                     "contentBlockDelta" => {
                         if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(payload) {
-                            if let Some(text) = parsed.get("delta")
+                            if let Some(text) = parsed
+                                .get("delta")
                                 .and_then(|d| d.get("text"))
                                 .and_then(|t| t.as_str())
                             {
                                 events.push(StreamEvent::TextDelta(text.to_string()));
-                            } else if let Some(tool_input) = parsed.get("delta")
+                            } else if let Some(tool_input) = parsed
+                                .get("delta")
                                 .and_then(|d| d.get("toolUse"))
                                 .and_then(|t| t.get("input"))
                                 .and_then(|i| i.as_str())
                             {
                                 // Tool input comes as a JSON string that needs to be parsed
-                                if let Ok(input_json) = serde_json::from_str::<serde_json::Value>(tool_input) {
+                                if let Ok(input_json) =
+                                    serde_json::from_str::<serde_json::Value>(tool_input)
+                                {
                                     // Update the last ToolUse event with the complete input
-                                    if let Some(StreamEvent::ToolUse { input, .. }) = events.last_mut() {
+                                    if let Some(StreamEvent::ToolUse { input, .. }) =
+                                        events.last_mut()
+                                    {
                                         *input = input_json;
                                     }
                                 }
@@ -351,10 +368,12 @@ impl BedrockProvider {
                     "metadata" => {
                         if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(payload) {
                             if let Some(usage) = parsed.get("usage") {
-                                let input_tokens = usage.get("inputTokens")
+                                let input_tokens = usage
+                                    .get("inputTokens")
                                     .and_then(|v| v.as_u64())
                                     .unwrap_or(0);
-                                let output_tokens = usage.get("outputTokens")
+                                let output_tokens = usage
+                                    .get("outputTokens")
                                     .and_then(|v| v.as_u64())
                                     .unwrap_or(0);
                                 events.push(StreamEvent::TokenUsage(TokenUsage {
@@ -407,30 +426,44 @@ impl ModelProvider for BedrockProvider {
 
         // Build headers
         let mut headers = HeaderMap::new();
-        headers.insert("host", format!("bedrock-runtime.{}.amazonaws.com", self.region).parse()
-            .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?);
-        headers.insert("content-type", "application/json".parse()
-            .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?);
-        headers.insert("x-amz-date", timestamp.parse()
-            .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?);
+        headers.insert(
+            "host",
+            format!("bedrock-runtime.{}.amazonaws.com", self.region)
+                .parse()
+                .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert(
+            "content-type",
+            "application/json"
+                .parse()
+                .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert(
+            "x-amz-date",
+            timestamp
+                .parse()
+                .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?,
+        );
 
         if let Some(token) = &self.session_token {
-            headers.insert("x-amz-security-token", token.parse()
-                .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?);
+            headers.insert(
+                "x-amz-security-token",
+                token
+                    .parse()
+                    .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?,
+            );
         }
 
         // Sign request
-        let authorization = self.sign_request(
-            "POST",
-            &canonical_uri,
-            "",
-            &headers,
-            &body_str,
-            &timestamp,
-        )?;
+        let authorization =
+            self.sign_request("POST", &canonical_uri, "", &headers, &body_str, &timestamp)?;
 
-        headers.insert("authorization", authorization.parse()
-            .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?);
+        headers.insert(
+            "authorization",
+            authorization
+                .parse()
+                .map_err(|e| AmosError::Internal(format!("Invalid header value: {}", e)))?,
+        );
 
         debug!("Sending request to: {}", url);
         debug!("Request body: {}", body_str);
@@ -450,16 +483,26 @@ impl ModelProvider for BedrockProvider {
                 Ok(resp) => resp,
                 Err(e) => {
                     error!("Request failed: {}", e);
-                    let _ = tx_clone.send(StreamEvent::Error(format!("Request failed: {}", e))).await;
+                    let _ = tx_clone
+                        .send(StreamEvent::Error(format!("Request failed: {}", e)))
+                        .await;
                     return;
                 }
             };
 
             if !response.status().is_success() {
                 let status = response.status();
-                let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                let error_body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
                 error!("Bedrock API error {}: {}", status, error_body);
-                let _ = tx_clone.send(StreamEvent::Error(format!("API error {}: {}", status, error_body))).await;
+                let _ = tx_clone
+                    .send(StreamEvent::Error(format!(
+                        "API error {}: {}",
+                        status, error_body
+                    )))
+                    .await;
                 return;
             }
 
@@ -500,7 +543,9 @@ impl ModelProvider for BedrockProvider {
                     }
                     Err(e) => {
                         error!("Stream error: {}", e);
-                        let _ = tx_clone.send(StreamEvent::Error(format!("Stream error: {}", e))).await;
+                        let _ = tx_clone
+                            .send(StreamEvent::Error(format!("Stream error: {}", e)))
+                            .await;
                         return;
                     }
                 }
@@ -519,7 +564,9 @@ impl ModelProvider for BedrockProvider {
         messages: &[Message],
         tools: &[serde_json::Value],
     ) -> Result<(Message, TokenUsage)> {
-        let mut rx = self.converse_stream(model_id, system_prompt, messages, tools).await?;
+        let mut rx = self
+            .converse_stream(model_id, system_prompt, messages, tools)
+            .await?;
 
         let mut content_blocks = Vec::new();
         let mut current_text = String::new();
@@ -637,7 +684,8 @@ fn parse_headers(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
                     break;
                 }
 
-                let value_str = String::from_utf8_lossy(&bytes[offset..offset + value_len]).to_string();
+                let value_str =
+                    String::from_utf8_lossy(&bytes[offset..offset + value_len]).to_string();
                 offset += value_len;
                 value_str
             }
@@ -694,9 +742,10 @@ fn load_credentials_from_file(profile: &str) -> Result<(String, String, Option<S
 
     match (access_key, secret_key) {
         (Some(access), Some(secret)) => Ok((access, secret, session_token)),
-        _ => Err(AmosError::Config(
-            format!("Profile '{}' not found or incomplete in {}", profile, credentials_path)
-        )),
+        _ => Err(AmosError::Config(format!(
+            "Profile '{}' not found or incomplete in {}",
+            profile, credentials_path
+        ))),
     }
 }
 

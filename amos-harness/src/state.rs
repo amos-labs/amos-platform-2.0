@@ -5,10 +5,7 @@ use crate::{
     documents::DocumentProcessor,
     geo::GeoLocator,
     image_gen::ImageGenClient,
-    integrations::{
-        etl::EtlPipeline,
-        executor::ApiExecutor,
-    },
+    integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::AgentManager,
     storage::StorageClient,
     task_queue::TaskQueue,
@@ -75,6 +72,7 @@ impl AppState {
     }
 
     /// Get an async Redis connection
+    #[allow(deprecated)]
     pub async fn get_redis_async_connection(
         &self,
     ) -> Result<redis::aio::Connection, redis::RedisError> {

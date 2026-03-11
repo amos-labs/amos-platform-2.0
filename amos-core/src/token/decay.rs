@@ -193,10 +193,7 @@ pub fn effective_annual_rate_bps(base_rate_bps: u64, context: &StakeContext) -> 
 /// Apply one day of decay to a single stake.
 ///
 /// This is the main entry point for the daily decay job.
-pub fn apply_daily_decay(
-    base_annual_rate_bps: u64,
-    context: &StakeContext,
-) -> DecayResult {
+pub fn apply_daily_decay(base_annual_rate_bps: u64, context: &StakeContext) -> DecayResult {
     // Grace period check: no decay for first 365 days
     if context.tenure_days < GRACE_PERIOD_DAYS {
         return DecayResult {
@@ -215,11 +212,8 @@ pub fn apply_daily_decay(
 
     // Calculate floors
     let floor_bps = tenure_floor_bps(context.tenure_days);
-    let floor_amount = context
-        .original_balance
-        .checked_mul(floor_bps)
-        .unwrap_or(0)
-        / BPS_DENOMINATOR;
+    let floor_amount =
+        context.original_balance.checked_mul(floor_bps).unwrap_or(0) / BPS_DENOMINATOR;
 
     // Already at or below floor
     if context.current_balance <= floor_amount {
@@ -295,8 +289,8 @@ mod tests {
     fn breakeven_yields_10_percent_decay() {
         // profit_ratio = 0 → decay = 10%
         let econ = PlatformEconomics {
-            monthly_revenue_cents: 10_000_00,
-            monthly_costs_cents: 10_000_00,
+            monthly_revenue_cents: 1_000_000,
+            monthly_costs_cents: 1_000_000,
         };
         assert_eq!(calculate_dynamic_decay_rate(&econ), 1_000);
     }
@@ -306,8 +300,8 @@ mod tests {
         // profit_ratio = (200k - 50k)/50k = 3.0
         // decay = 10% - (3.0 * 5%) = 10% - 15% = -5% → clamped to 2%
         let econ = PlatformEconomics {
-            monthly_revenue_cents: 200_000_00,
-            monthly_costs_cents: 50_000_00,
+            monthly_revenue_cents: 20_000_000,
+            monthly_costs_cents: 5_000_000,
         };
         assert_eq!(calculate_dynamic_decay_rate(&econ), MIN_DECAY_RATE_BPS);
     }
@@ -318,8 +312,8 @@ mod tests {
         // decay = 10% - (-0.9 * 5%) = 10% + 4.5% = 14.5%
         // Still under 25% max
         let econ = PlatformEconomics {
-            monthly_revenue_cents: 10_000_00,
-            monthly_costs_cents: 100_000_00,
+            monthly_revenue_cents: 1_000_000,
+            monthly_costs_cents: 10_000_000,
         };
         let rate = calculate_dynamic_decay_rate(&econ);
         assert!(rate > BASE_DECAY_RATE_BPS);
@@ -333,7 +327,7 @@ mod tests {
         // But revenue = 0, costs = 500k → ratio = -1.0 → same
         let econ = PlatformEconomics {
             monthly_revenue_cents: 0,
-            monthly_costs_cents: 500_000_00,
+            monthly_costs_cents: 50_000_000,
         };
         let rate = calculate_dynamic_decay_rate(&econ);
         assert!(rate <= MAX_DECAY_RATE_BPS);
@@ -392,7 +386,7 @@ mod tests {
         // 10% annual → ~0.029% daily
         let daily = annual_to_daily_rate_bps(1_000);
         // Should be roughly 3 bps (0.03%)
-        assert!(daily >= 2 && daily <= 4, "daily was {daily}");
+        assert!((2..=4).contains(&daily), "daily was {daily}");
     }
 
     #[test]

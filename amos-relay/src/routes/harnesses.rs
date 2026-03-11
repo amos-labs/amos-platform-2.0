@@ -85,7 +85,7 @@ async fn connect_harness(
             harness_id, name, version, endpoint_url,
             healthy, agent_count, active_bounties,
             connected_at, last_heartbeat
-        "#
+        "#,
     )
     .bind(&req.harness_id)
     .bind(&req.name)
@@ -124,7 +124,7 @@ async fn list_harnesses(
             connected_at, last_heartbeat
         FROM relay_harnesses
         ORDER BY connected_at DESC
-        "#
+        "#,
     )
     .fetch_all(&state.db)
     .await
@@ -149,7 +149,7 @@ async fn get_harness(
             connected_at, last_heartbeat
         FROM relay_harnesses
         WHERE harness_id = $1
-        "#
+        "#,
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -185,7 +185,7 @@ async fn harness_heartbeat(
             harness_id, name, version, endpoint_url,
             healthy, agent_count, active_bounties,
             connected_at, last_heartbeat
-        "#
+        "#,
     )
     .bind(&req.version)
     .bind(req.healthy)

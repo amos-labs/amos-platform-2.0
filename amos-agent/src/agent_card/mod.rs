@@ -41,7 +41,8 @@ impl Default for AgentCard {
     fn default() -> Self {
         Self {
             name: "amos-agent".to_string(),
-            description: "AMOS autonomous agent with local tools, memory, and harness integration".to_string(),
+            description: "AMOS autonomous agent with local tools, memory, and harness integration"
+                .to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             url: "http://localhost:3100".to_string(),
             capabilities: vec![
@@ -76,11 +77,13 @@ impl Default for AgentCard {
 
 /// Create the Agent Card router.
 pub fn agent_card_router(card: AgentCard) -> Router {
-    Router::new()
-        .route("/.well-known/agent.json", get(move || {
+    Router::new().route(
+        "/.well-known/agent.json",
+        get(move || {
             let c = card.clone();
             async move { Json(c) }
-        }))
+        }),
+    )
 }
 
 #[cfg(test)]

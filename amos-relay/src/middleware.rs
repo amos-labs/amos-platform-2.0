@@ -14,8 +14,8 @@ pub struct ErrorResponse(pub AmosError);
 /// Convert ErrorResponse to HTTP response.
 impl IntoResponse for ErrorResponse {
     fn into_response(self) -> Response {
-        let status_code = StatusCode::from_u16(self.0.status_code())
-            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status_code =
+            StatusCode::from_u16(self.0.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let message = self.0.to_string();
 
         let body = Json(json!({

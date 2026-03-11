@@ -35,13 +35,27 @@ pub enum Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    Text { text: String },
-    ToolUse { id: String, name: String, input: serde_json::Value },
-    ToolResult { tool_use_id: String, content: String, is_error: bool },
-    Image { source: ImageSource },
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        is_error: bool,
+    },
+    Image {
+        source: ImageSource,
+    },
     /// Raw document passthrough (e.g. image-heavy PDFs sent directly to Claude
     /// via Bedrock's `document` content block for native vision analysis).
-    Document { source: DocumentSource },
+    Document {
+        source: DocumentSource,
+    },
 }
 
 /// Image source for multimodal messages.

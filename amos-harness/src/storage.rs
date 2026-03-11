@@ -26,7 +26,9 @@ pub enum StorageBackend {
 impl Default for StorageConfig {
     fn default() -> Self {
         // Default to a `data/uploads` directory relative to the harness crate root
-        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data").join("uploads");
+        let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("data")
+            .join("uploads");
         Self {
             backend: StorageBackend::Local { base_dir: base },
         }
@@ -122,9 +124,9 @@ impl StorageClient {
     /// Check whether a file exists.
     pub async fn exists(&self, key: &str) -> bool {
         match &self.config.backend {
-            StorageBackend::Local { base_dir } => {
-                tokio::fs::try_exists(base_dir.join(key)).await.unwrap_or(false)
-            }
+            StorageBackend::Local { base_dir } => tokio::fs::try_exists(base_dir.join(key))
+                .await
+                .unwrap_or(false),
         }
     }
 }

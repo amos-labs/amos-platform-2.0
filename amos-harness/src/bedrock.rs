@@ -133,9 +133,7 @@ fn load_aws_credentials(
 fn read_aws_config_value(key: &str) -> Option<String> {
     let config_path = std::env::var("AWS_CONFIG_FILE")
         .ok()
-        .or_else(|| {
-            dirs_path("/.aws/config")
-        })?;
+        .or_else(|| dirs_path("/.aws/config"))?;
 
     let profile = std::env::var("AWS_PROFILE").unwrap_or_else(|_| "default".to_string());
     read_ini_value(&config_path, &profile, key, true)
@@ -145,9 +143,7 @@ fn read_aws_config_value(key: &str) -> Option<String> {
 fn read_aws_credentials_file() -> Option<(String, String, Option<String>)> {
     let creds_path = std::env::var("AWS_SHARED_CREDENTIALS_FILE")
         .ok()
-        .or_else(|| {
-            dirs_path("/.aws/credentials")
-        })?;
+        .or_else(|| dirs_path("/.aws/credentials"))?;
 
     let profile = std::env::var("AWS_PROFILE").unwrap_or_else(|_| "default".to_string());
 
@@ -282,9 +278,7 @@ impl BedrockClient {
         debug!("Request body length: {} bytes", body_json.len());
 
         // Sign the request
-        let headers = self
-            .sign_request("POST", &endpoint, &body_json)
-            .await?;
+        let headers = self.sign_request("POST", &endpoint, &body_json).await?;
 
         // Clone values for the async task
         let http_client = self.http_client.clone();
@@ -371,12 +365,7 @@ impl BedrockClient {
     }
 
     /// Sign an HTTP request using AWS SigV4
-    async fn sign_request(
-        &self,
-        method: &str,
-        url: &str,
-        body: &str,
-    ) -> Result<HeaderMap> {
+    async fn sign_request(&self, method: &str, url: &str, body: &str) -> Result<HeaderMap> {
         let now = Utc::now();
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
@@ -392,7 +381,8 @@ impl BedrockClient {
         // (e.g., `:0` in model IDs must remain as `%3A0`).
         // Re-encode each path segment individually to get the correct canonical URI.
         let canonical_uri = {
-            let segments: Vec<&str> = parsed_url.path_segments()
+            let segments: Vec<&str> = parsed_url
+                .path_segments()
                 .map(|segs| segs.collect())
                 .unwrap_or_default();
             if segments.is_empty() {
@@ -404,7 +394,12 @@ impl BedrockClient {
                         // Percent-encode per RFC 3986 (unreserved chars are NOT encoded)
                         seg.bytes()
                             .map(|b| {
-                                if b.is_ascii_alphanumeric() || b == b'-' || b == b'.' || b == b'_' || b == b'~' {
+                                if b.is_ascii_alphanumeric()
+                                    || b == b'-'
+                                    || b == b'.'
+                                    || b == b'_'
+                                    || b == b'~'
+                                {
                                     format!("{}", b as char)
                                 } else {
                                     format!("%{:02X}", b)
@@ -438,7 +433,11 @@ impl BedrockClient {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let signed_headers = canonical_headers_map.keys().map(|s| s.as_str()).collect::<Vec<_>>().join(";");
+        let signed_headers = canonical_headers_map
+            .keys()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(";");
 
         // Build canonical request
         let canonical_request = format!(
@@ -589,7 +588,8 @@ fn build_converse_request(
     // Convert messages to Bedrock format.
     // Track document names across the entire conversation to avoid Bedrock's
     // "duplicate document names" error when the same file appears in history.
-    let mut doc_name_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut doc_name_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
 
     let bedrock_messages: Vec<serde_json::Value> = messages
         .iter()
@@ -642,16 +642,14 @@ fn build_converse_request(
                             "status": if *is_error { "error" } else { "success" }
                         }
                     })),
-                    amos_core::types::ContentBlock::Image { source } => {
-                        Some(serde_json::json!({
-                            "image": {
-                                "format": media_type_to_format(&source.media_type),
-                                "source": {
-                                    "bytes": source.data
-                                }
+                    amos_core::types::ContentBlock::Image { source } => Some(serde_json::json!({
+                        "image": {
+                            "format": media_type_to_format(&source.media_type),
+                            "source": {
+                                "bytes": source.data
                             }
-                        }))
-                    }
+                        }
+                    })),
                     amos_core::types::ContentBlock::Document { source } => {
                         // Deduplicate document names across the entire conversation.
                         // Bedrock requires unique names; the same file in history
@@ -824,7 +822,13 @@ async fn parse_event_stream(
             if let Some(ref et) = event_type {
                 let payload_str = String::from_utf8_lossy(payload);
                 if !payload_str.is_empty() {
-                    match parse_event(et, &payload_str, &mut current_tool_use_id, &mut current_tool_name, &mut tool_input_buffer) {
+                    match parse_event(
+                        et,
+                        &payload_str,
+                        &mut current_tool_use_id,
+                        &mut current_tool_name,
+                        &mut tool_input_buffer,
+                    ) {
                         Ok(Some(event)) => {
                             if tx.send(event).await.is_err() {
                                 debug!("Stream receiver dropped");
@@ -855,27 +859,37 @@ fn parse_event_headers(data: &[u8]) -> std::collections::HashMap<String, String>
 
     while pos < data.len() {
         // Header name length (1 byte)
-        if pos >= data.len() { break; }
+        if pos >= data.len() {
+            break;
+        }
         let name_len = data[pos] as usize;
         pos += 1;
 
         // Header name
-        if pos + name_len > data.len() { break; }
+        if pos + name_len > data.len() {
+            break;
+        }
         let name = String::from_utf8_lossy(&data[pos..pos + name_len]).to_string();
         pos += name_len;
 
         // Value type (1 byte) — 7 = string, 6 = bool, etc.
-        if pos >= data.len() { break; }
+        if pos >= data.len() {
+            break;
+        }
         let value_type = data[pos];
         pos += 1;
 
         match value_type {
             7 => {
                 // String: 2-byte length + value
-                if pos + 2 > data.len() { break; }
+                if pos + 2 > data.len() {
+                    break;
+                }
                 let value_len = u16::from_be_bytes([data[pos], data[pos + 1]]) as usize;
                 pos += 2;
-                if pos + value_len > data.len() { break; }
+                if pos + value_len > data.len() {
+                    break;
+                }
                 let value = String::from_utf8_lossy(&data[pos..pos + value_len]).to_string();
                 pos += value_len;
                 headers.insert(name, value);
@@ -906,7 +920,9 @@ fn parse_event_headers(data: &[u8]) -> std::collections::HashMap<String, String>
             }
             6 => {
                 // Bytes: 2-byte length + value
-                if pos + 2 > data.len() { break; }
+                if pos + 2 > data.len() {
+                    break;
+                }
                 let value_len = u16::from_be_bytes([data[pos], data[pos + 1]]) as usize;
                 pos += 2;
                 pos += value_len;
@@ -944,12 +960,8 @@ fn parse_event(
 
             // Check if this is a tool use start
             if let Some(tool_use) = json["start"]["toolUse"].as_object() {
-                *current_tool_use_id = tool_use["toolUseId"]
-                    .as_str()
-                    .map(|s| s.to_string());
-                *current_tool_name = tool_use["name"]
-                    .as_str()
-                    .map(|s| s.to_string());
+                *current_tool_use_id = tool_use["toolUseId"].as_str().map(|s| s.to_string());
+                *current_tool_name = tool_use["name"].as_str().map(|s| s.to_string());
                 *tool_input_buffer = String::new();
             }
             Ok(None)
@@ -973,10 +985,15 @@ fn parse_event(
         }
         "contentBlockStop" => {
             // If we have accumulated tool input, parse and send it
-            if let (Some(id), Some(name)) = (current_tool_use_id.as_ref(), current_tool_name.as_ref()) {
+            if let (Some(id), Some(name)) =
+                (current_tool_use_id.as_ref(), current_tool_name.as_ref())
+            {
                 let input: serde_json::Value = serde_json::from_str(tool_input_buffer)
                     .unwrap_or_else(|e| {
-                        warn!("Failed to parse tool input JSON: {}. Input: {}", e, tool_input_buffer);
+                        warn!(
+                            "Failed to parse tool input JSON: {}. Input: {}",
+                            e, tool_input_buffer
+                        );
                         serde_json::json!({})
                     });
 
@@ -995,9 +1012,7 @@ fn parse_event(
             }
             Ok(None)
         }
-        "messageStop" => {
-            Ok(Some(StreamEvent::Stop))
-        }
+        "messageStop" => Ok(Some(StreamEvent::Stop)),
         "metadata" => {
             let json: serde_json::Value = serde_json::from_str(data)
                 .map_err(|e| AmosError::Internal(format!("Failed to parse JSON: {}", e)))?;

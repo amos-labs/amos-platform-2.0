@@ -5,10 +5,10 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Html,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -38,11 +38,14 @@ pub struct RenderCanvasRequest {
     pub data_context: Option<JsonValue>,
 }
 
-pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_canvases).post(create_canvas))
         .route("/system", get(list_system_canvases))
-        .route("/{id}", get(get_canvas).put(update_canvas).delete(delete_canvas))
+        .route(
+            "/{id}",
+            get(get_canvas).put(update_canvas).delete(delete_canvas),
+        )
         .route("/{id}/render", post(render_canvas))
         .route("/{id}/publish", post(publish_canvas))
 }
@@ -50,7 +53,10 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
 async fn list_canvases(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::canvas::Canvas>>, StatusCode> {
-    let canvases = state.canvas_engine.list_canvases(Some(100), None).await
+    let canvases = state
+        .canvas_engine
+        .list_canvases(Some(100), None)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(canvases))
 }
@@ -58,7 +64,10 @@ async fn list_canvases(
 async fn list_system_canvases(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::canvas::Canvas>>, StatusCode> {
-    let canvases = state.canvas_engine.list_system_canvases().await
+    let canvases = state
+        .canvas_engine
+        .list_system_canvases()
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(canvases))
 }
@@ -69,17 +78,21 @@ async fn create_canvas(
 ) -> Result<Json<crate::canvas::Canvas>, StatusCode> {
     let canvas_type = CanvasType::from_str(&req.canvas_type);
 
-    let canvas = state.canvas_engine.create_canvas(
-        req.name,
-        req.description,
-        canvas_type,
-        req.html_content,
-        req.js_content,
-        req.css_content,
-        req.data_sources,
-        req.actions,
-        None,
-    ).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let canvas = state
+        .canvas_engine
+        .create_canvas(
+            req.name,
+            req.description,
+            canvas_type,
+            req.html_content,
+            req.js_content,
+            req.css_content,
+            req.data_sources,
+            req.actions,
+            None,
+        )
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(canvas))
 }
@@ -88,7 +101,10 @@ async fn get_canvas(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<crate::canvas::Canvas>, StatusCode> {
-    let canvas = state.canvas_engine.get_canvas(id).await
+    let canvas = state
+        .canvas_engine
+        .get_canvas(id)
+        .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(Json(canvas))
 }
@@ -108,7 +124,10 @@ async fn update_canvas(
         actions: None,
     };
 
-    let canvas = state.canvas_engine.update_canvas(id, updates).await
+    let canvas = state
+        .canvas_engine
+        .update_canvas(id, updates)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(canvas))
 }
@@ -117,7 +136,10 @@ async fn delete_canvas(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    state.canvas_engine.delete_canvas(id).await
+    state
+        .canvas_engine
+        .delete_canvas(id)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -127,13 +149,15 @@ async fn render_canvas(
     Path(id): Path<Uuid>,
     Json(req): Json<RenderCanvasRequest>,
 ) -> Result<Json<crate::canvas::CanvasResponse>, StatusCode> {
-    let canvas = state.canvas_engine.get_canvas(id).await
-        .map_err(|e| {
-            tracing::error!("Canvas not found {}: {}", id, e);
-            StatusCode::NOT_FOUND
-        })?;
+    let canvas = state.canvas_engine.get_canvas(id).await.map_err(|e| {
+        tracing::error!("Canvas not found {}: {}", id, e);
+        StatusCode::NOT_FOUND
+    })?;
 
-    let response = state.canvas_engine.render_canvas(&canvas, req.data_context).await
+    let response = state
+        .canvas_engine
+        .render_canvas(&canvas, req.data_context)
+        .await
         .map_err(|e| {
             tracing::error!("Canvas render failed for {}: {}", id, e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -146,7 +170,10 @@ async fn publish_canvas(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let public_slug = state.canvas_engine.publish_canvas(id).await
+    let public_slug = state
+        .canvas_engine
+        .publish_canvas(id)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(serde_json::json!({
@@ -159,10 +186,16 @@ pub async fn serve_public_canvas(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    let canvas = state.canvas_engine.get_public_canvas(&slug).await
+    let canvas = state
+        .canvas_engine
+        .get_public_canvas(&slug)
+        .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let response = state.canvas_engine.render_canvas(&canvas, None).await
+    let response = state
+        .canvas_engine
+        .render_canvas(&canvas, None)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Html(response.content))
@@ -175,18 +208,22 @@ pub async fn serve_auth_canvas(
     State(state): State<Arc<AppState>>,
     slug: &str,
 ) -> Result<Html<String>, StatusCode> {
-    let canvas = state.canvas_engine.get_canvas_by_slug(slug).await
+    let canvas = state
+        .canvas_engine
+        .get_canvas_by_slug(slug)
+        .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let response = state.canvas_engine.render_canvas(&canvas, None).await
+    let response = state
+        .canvas_engine
+        .render_canvas(&canvas, None)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Html(response.content))
 }
 
-pub async fn serve_login(
-    State(state): State<Arc<AppState>>,
-) -> Result<Html<String>, StatusCode> {
+pub async fn serve_login(State(state): State<Arc<AppState>>) -> Result<Html<String>, StatusCode> {
     serve_auth_canvas(State(state), "system-login").await
 }
 

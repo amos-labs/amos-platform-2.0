@@ -22,10 +22,20 @@ use std::sync::Arc;
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(api_list_sites).post(api_create_site))
-        .route("/{slug}", get(api_get_site).put(api_update_site).delete(api_delete_site))
+        .route(
+            "/{slug}",
+            get(api_get_site)
+                .put(api_update_site)
+                .delete(api_delete_site),
+        )
         .route("/{slug}/publish", post(api_publish_site))
         .route("/{slug}/pages", get(api_list_pages).post(api_upsert_page))
-        .route("/{slug}/pages/{page_id}", get(api_get_page).put(api_update_page).delete(api_delete_page))
+        .route(
+            "/{slug}/pages/{page_id}",
+            get(api_get_page)
+                .put(api_update_page)
+                .delete(api_delete_page),
+        )
 }
 
 // ── Request types ───────────────────────────────────────────────────────
@@ -66,11 +76,12 @@ pub struct UpsertPageRequest {
 
 // ── Management API handlers ─────────────────────────────────────────────
 
-async fn api_list_sites(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<JsonValue>, StatusCode> {
+async fn api_list_sites(State(state): State<Arc<AppState>>) -> Result<Json<JsonValue>, StatusCode> {
     let engine = SiteEngine::new(state.db_pool.clone());
-    let sites = engine.list_sites().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let sites = engine
+        .list_sites()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(json!({ "sites": sites })))
 }
 
@@ -80,7 +91,12 @@ async fn api_create_site(
 ) -> Result<Json<JsonValue>, StatusCode> {
     let engine = SiteEngine::new(state.db_pool.clone());
     let site = engine
-        .create_site(&req.name, &req.slug, req.description.as_deref(), req.settings)
+        .create_site(
+            &req.name,
+            &req.slug,
+            req.description.as_deref(),
+            req.settings,
+        )
         .await
         .map_err(|e| {
             tracing::error!("Failed to create site: {e}");
@@ -94,7 +110,10 @@ async fn api_get_site(
     Path(slug): Path<String>,
 ) -> Result<Json<JsonValue>, StatusCode> {
     let engine = SiteEngine::new(state.db_pool.clone());
-    let site = engine.get_site(&slug).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    let site = engine
+        .get_site(&slug)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
     let pages = engine.list_pages(&slug).await.unwrap_or_default();
     Ok(Json(json!({ "site": site, "pages": pages })))
 }
@@ -152,7 +171,10 @@ async fn api_list_pages(
     Path(slug): Path<String>,
 ) -> Result<Json<JsonValue>, StatusCode> {
     let engine = SiteEngine::new(state.db_pool.clone());
-    let pages = engine.list_pages(&slug).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    let pages = engine
+        .list_pages(&slug)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(Json(json!({ "pages": pages })))
 }
 
@@ -373,7 +395,12 @@ pub async fn handle_form_submit(
         .create_record(&collection, data)
         .await
         .map_err(|e| {
-            tracing::error!("Form submission failed for site '{}', collection '{}': {}", slug, collection, e);
+            tracing::error!(
+                "Form submission failed for site '{}', collection '{}': {}",
+                slug,
+                collection,
+                e
+            );
             StatusCode::BAD_REQUEST
         })?;
 

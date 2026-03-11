@@ -78,15 +78,18 @@ impl Tool for CreateTaskTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let title = params["title"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("title is required".to_string())
-        })?;
+        let title = params["title"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("title is required".to_string()))?;
 
         let description = params["description"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("description is required".to_string())
         })?;
 
-        let priority = params.get("priority").and_then(|v| v.as_i64()).map(|v| v as i32);
+        let priority = params
+            .get("priority")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32);
         let context = params.get("context").cloned();
         let session_id = params
             .get("session_id")
@@ -194,19 +197,20 @@ impl Tool for CreateBountyTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let title = params["title"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("title is required".to_string())
-        })?;
+        let title = params["title"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("title is required".to_string()))?;
 
         let description = params["description"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("description is required".to_string())
         })?;
 
-        let priority = params.get("priority").and_then(|v| v.as_i64()).map(|v| v as i32);
+        let priority = params
+            .get("priority")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32);
         let context = params.get("context").cloned();
-        let reward_tokens = params
-            .get("reward_tokens")
-            .and_then(|v| v.as_i64());
+        let reward_tokens = params.get("reward_tokens").and_then(|v| v.as_i64());
         let session_id = params
             .get("session_id")
             .and_then(|v| v.as_str())
@@ -306,12 +310,13 @@ impl Tool for ListTasksTool {
             .and_then(|v| v.as_str())
             .and_then(TaskStatus::from_str);
 
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .or(Some(20));
+        let limit = params.get("limit").and_then(|v| v.as_i64()).or(Some(20));
 
-        match self.task_queue.list_tasks(session_id, status_filter, limit).await {
+        match self
+            .task_queue
+            .list_tasks(session_id, status_filter, limit)
+            .await
+        {
             Ok(tasks) => {
                 let task_list: Vec<JsonValue> = tasks
                     .iter()
@@ -385,9 +390,9 @@ impl Tool for GetTaskResultTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let task_id_str = params["task_id"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("task_id is required".to_string())
-        })?;
+        let task_id_str = params["task_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("task_id is required".to_string()))?;
 
         let task_id = Uuid::parse_str(task_id_str).map_err(|_| {
             amos_core::AmosError::Validation(format!("Invalid UUID: {task_id_str}"))
@@ -484,9 +489,9 @@ impl Tool for CancelTaskTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let task_id_str = params["task_id"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("task_id is required".to_string())
-        })?;
+        let task_id_str = params["task_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("task_id is required".to_string()))?;
 
         let task_id = Uuid::parse_str(task_id_str).map_err(|_| {
             amos_core::AmosError::Validation(format!("Invalid UUID: {task_id_str}"))
@@ -597,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn all_tools_have_unique_names() {
         let tq = test_task_queue();
-        let names = vec![
+        let names = [
             CreateTaskTool::new(tq.clone()).name().to_string(),
             CreateBountyTool::new(tq.clone()).name().to_string(),
             ListTasksTool::new(tq.clone()).name().to_string(),

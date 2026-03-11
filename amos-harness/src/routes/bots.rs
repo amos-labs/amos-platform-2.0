@@ -4,7 +4,7 @@ use crate::{openclaw::AgentConfig, state::AppState};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -28,7 +28,7 @@ pub struct UpdateAgentRequest {
     pub model: Option<String>,
 }
 
-pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_agents).post(register_agent))
         .route("/{id}", get(get_agent).put(update_agent))
@@ -39,7 +39,10 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
 async fn list_agents(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<AgentConfig>>, StatusCode> {
-    let agents = state.agent_manager.list_agents().await
+    let agents = state
+        .agent_manager
+        .list_agents()
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(agents))
 }
@@ -48,14 +51,18 @@ async fn register_agent(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RegisterAgentRequest>,
 ) -> Result<Json<AgentConfig>, StatusCode> {
-    let agent = state.agent_manager.register_agent(
-        req.name,
-        req.display_name,
-        req.role,
-        req.capabilities,
-        req.system_prompt,
-        req.model,
-    ).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let agent = state
+        .agent_manager
+        .register_agent(
+            req.name,
+            req.display_name,
+            req.role,
+            req.capabilities,
+            req.system_prompt,
+            req.model,
+        )
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(agent))
 }
@@ -64,7 +71,10 @@ async fn get_agent(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let status = state.agent_manager.get_status(id).await
+    let status = state
+        .agent_manager
+        .get_status(id)
+        .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok(Json(serde_json::json!({
@@ -85,7 +95,10 @@ async fn update_agent(
         model: req.model,
     };
 
-    let agent = state.agent_manager.update_agent(id, updates).await
+    let agent = state
+        .agent_manager
+        .update_agent(id, updates)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(agent))
@@ -95,7 +108,10 @@ async fn activate_agent(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, StatusCode> {
-    state.agent_manager.activate_agent(id).await
+    state
+        .agent_manager
+        .activate_agent(id)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::OK)
 }
@@ -104,7 +120,10 @@ async fn stop_agent(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, StatusCode> {
-    state.agent_manager.stop_agent(id).await
+    state
+        .agent_manager
+        .stop_agent(id)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::OK)
 }

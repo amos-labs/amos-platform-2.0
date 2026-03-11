@@ -152,7 +152,7 @@ impl Tool for ListConnectionsTool {
         let integration_id = params
             .get("integration_id")
             .and_then(|v| v.as_str())
-            .map(|s| Uuid::from_str(s))
+            .map(Uuid::from_str)
             .transpose()
             .map_err(|_| {
                 amos_core::AmosError::Validation("Invalid integration_id UUID format".to_string())
@@ -335,18 +335,20 @@ impl Tool for CreateConnectionTool {
         } else {
             params
                 .get("credentials")
-                .ok_or_else(|| amos_core::AmosError::Validation(
-                    "Either credentials or vault_credential_id is required".to_string(),
-                ))?
+                .ok_or_else(|| {
+                    amos_core::AmosError::Validation(
+                        "Either credentials or vault_credential_id is required".to_string(),
+                    )
+                })?
                 .clone()
         };
 
-        let name = params.get("name").and_then(|v| v.as_str()).map(String::from);
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
-        let config = params
-            .get("config")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let config = params.get("config").cloned().unwrap_or_else(|| json!({}));
 
         // First, create the credential
         let credential: CredentialIdRow = sqlx::query_as(
@@ -563,16 +565,11 @@ impl Tool for ExecuteIntegrationActionTool {
                 })
             })?;
 
-        let operation_id = params["operation_id"]
-            .as_str()
-            .ok_or_else(|| {
-                amos_core::AmosError::Validation("operation_id is required".to_string())
-            })?;
+        let operation_id = params["operation_id"].as_str().ok_or_else(|| {
+            amos_core::AmosError::Validation("operation_id is required".to_string())
+        })?;
 
-        let operation_params = params
-            .get("params")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let operation_params = params.get("params").cloned().unwrap_or_else(|| json!({}));
 
         // Execute the operation
         match self

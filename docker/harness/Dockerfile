@@ -12,13 +12,12 @@ COPY Cargo.toml Cargo.lock ./
 # Copy all workspace crate sources (cargo requires all members for workspace resolution)
 COPY amos-core ./amos-core
 COPY amos-harness ./amos-harness
-COPY amos-platform ./amos-platform
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay
 
-# Build only the harness binary
-RUN cargo build --release --bin amos-harness
+# Build only the harness binary (SQLX_OFFLINE since no live DB in Docker build)
+RUN SQLX_OFFLINE=true cargo build --release --bin amos-harness
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim

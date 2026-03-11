@@ -157,7 +157,10 @@ async fn create_bounty(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    info!("Created bounty {} with reward {}", bounty_id, req.reward_tokens);
+    info!(
+        "Created bounty {} with reward {}",
+        bounty_id, req.reward_tokens
+    );
 
     Ok((StatusCode::CREATED, Json(bounty)))
 }

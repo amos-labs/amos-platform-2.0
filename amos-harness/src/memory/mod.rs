@@ -6,7 +6,7 @@
 //! - Reinforcement through repeated access
 //! - Efficient retrieval of top N entries
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -85,7 +85,7 @@ impl WorkingMemory {
     }
 
     /// Add a memory entry
-    pub fn remember(&mut self, mut entry: MemoryEntry) {
+    pub fn remember(&mut self, entry: MemoryEntry) {
         // Apply decay to existing entries
         self.apply_decay_all();
 
@@ -218,7 +218,7 @@ mod tests {
         );
 
         // Simulate 24 hours passing
-        entry.last_accessed = Utc::now() - Duration::hours(24);
+        entry.last_accessed = Utc::now() - chrono::Duration::hours(24);
 
         let current = entry.current_salience();
         assert!(current < 1.0); // Should have decayed

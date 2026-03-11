@@ -257,11 +257,7 @@ pub fn calculate_daily_rewards(
 
 impl PointEntry {
     /// Creates a new point entry.
-    pub fn new(
-        activity: PointActivity,
-        timestamp: i64,
-        reference_id: Option<String>,
-    ) -> Self {
+    pub fn new(activity: PointActivity, timestamp: i64, reference_id: Option<String>) -> Self {
         let points = calculate_points(&activity);
         Self {
             activity,
@@ -291,11 +287,7 @@ impl ContributorPoints {
     }
 
     /// Calculates this contributor's token reward for a given emission.
-    pub fn calculate_reward(
-        &self,
-        total_points: u64,
-        daily_emission: u64,
-    ) -> Result<u64> {
+    pub fn calculate_reward(&self, total_points: u64, daily_emission: u64) -> Result<u64> {
         calculate_token_reward(self.total_points, total_points, daily_emission)
     }
 }
@@ -333,8 +325,8 @@ impl DailyPointsSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::economics::MAX_BOUNTY_POINTS;
+    use super::*;
 
     #[test]
     fn test_calculate_points() {
@@ -344,7 +336,10 @@ mod tests {
         assert_eq!(calculate_points(&PointActivity::ActiveMonth), 2);
         assert_eq!(calculate_points(&PointActivity::SalesSignup), 1);
         assert_eq!(calculate_points(&PointActivity::BountyCompletion(100)), 100);
-        assert_eq!(calculate_points(&PointActivity::BountyCompletion(2000)), 2000);
+        assert_eq!(
+            calculate_points(&PointActivity::BountyCompletion(2000)),
+            2000
+        );
     }
 
     #[test]
@@ -440,9 +435,9 @@ mod tests {
             total_points: 1000,
             contributor_count: 3,
             entries: vec![
-                (1, 500),  // 50%
-                (2, 300),  // 30%
-                (3, 200),  // 20%
+                (1, 500), // 50%
+                (2, 300), // 30%
+                (3, 200), // 20%
             ],
         };
 
@@ -461,11 +456,11 @@ mod tests {
             total_points: 1000,
             contributor_count: 5,
             entries: vec![
-                (1, 400),  // 40% = 6400 AMOS
-                (2, 250),  // 25% = 4000 AMOS
-                (3, 200),  // 20% = 3200 AMOS
-                (4, 100),  // 10% = 1600 AMOS
-                (5, 50),   // 5% = 800 AMOS
+                (1, 400), // 40% = 6400 AMOS
+                (2, 250), // 25% = 4000 AMOS
+                (3, 200), // 20% = 3200 AMOS
+                (4, 100), // 10% = 1600 AMOS
+                (5, 50),  // 5% = 800 AMOS
             ],
         };
 
@@ -509,11 +504,7 @@ mod tests {
         let mut contributor = ContributorPoints::new(1, 0, 86400);
 
         // Add some activities
-        contributor.add_entry(PointEntry::new(
-            PointActivity::EmailInvitation,
-            1000,
-            None,
-        ));
+        contributor.add_entry(PointEntry::new(PointActivity::EmailInvitation, 1000, None));
         contributor.add_entry(PointEntry::new(
             PointActivity::ReferralSignup,
             2000,
@@ -599,11 +590,8 @@ mod tests {
         assert_eq!(calculate_points(&activity), MAX_BOUNTY_POINTS);
 
         // Should work in reward calculation
-        let reward = calculate_token_reward(
-            MAX_BOUNTY_POINTS,
-            MAX_BOUNTY_POINTS * 2,
-            16000,
-        ).unwrap();
+        let reward =
+            calculate_token_reward(MAX_BOUNTY_POINTS, MAX_BOUNTY_POINTS * 2, 16000).unwrap();
         assert_eq!(reward, 8000); // 50% of emission
     }
 
@@ -648,7 +636,10 @@ mod tests {
 
         // Should match calculate_referral_points formula
         assert_eq!(contributor.total_points, 39); // 10 + 15 + 10 + 4
-        assert_eq!(contributor.total_points, calculate_referral_points(10, 3, 1, 2));
+        assert_eq!(
+            contributor.total_points,
+            calculate_referral_points(10, 3, 1, 2)
+        );
     }
 
     #[test]
@@ -683,10 +674,10 @@ mod tests {
         // Calculate rewards with 16000 AMOS emission
         let rewards = calculate_daily_rewards(&snapshot, 16000).unwrap();
 
-        assert_eq!(rewards[0], (1, 6400));  // 40% of 16000
-        assert_eq!(rewards[1], (2, 4800));  // 30% of 16000
-        assert_eq!(rewards[2], (3, 3200));  // 20% of 16000
-        assert_eq!(rewards[3], (4, 1600));  // 10% of 16000
+        assert_eq!(rewards[0], (1, 6400)); // 40% of 16000
+        assert_eq!(rewards[1], (2, 4800)); // 30% of 16000
+        assert_eq!(rewards[2], (3, 3200)); // 20% of 16000
+        assert_eq!(rewards[3], (4, 1600)); // 10% of 16000
 
         // Verify total distribution equals emission
         let total_distributed: u64 = rewards.iter().map(|(_, r)| r).sum();

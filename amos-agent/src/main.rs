@@ -11,7 +11,7 @@
 //!   background task consumer that polls the harness for work.
 
 use amos_agent::{
-    agent_card::{AgentCard, agent_card_router},
+    agent_card::{agent_card_router, AgentCard},
     agent_loop::{self, LoopConfig},
     config::{AgentConfig, Cli},
     harness_client::HarnessClient,
@@ -65,7 +65,10 @@ async fn main() -> anyhow::Result<()> {
     let mut harness = HarnessClient::new(&config.harness_url, config.agent_token.clone());
 
     // Try to register with the harness
-    let card_url = format!("http://localhost:{}/.well-known/agent.json", config.agent_port);
+    let card_url = format!(
+        "http://localhost:{}/.well-known/agent.json",
+        config.agent_port
+    );
     match harness.register(&config.agent_name, Some(&card_url)).await {
         Ok(()) => {
             info!(
@@ -80,14 +83,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Create the model provider
-    let model_provider: Arc<dyn provider::ModelProvider> = Arc::from(
-        provider::create_provider(
-            &config.model_provider,
-            &config.model_id,
-            config.api_base.as_deref(),
-            config.api_key.as_deref(),
-        )?
-    );
+    let model_provider: Arc<dyn provider::ModelProvider> = Arc::from(provider::create_provider(
+        &config.model_provider,
+        &config.model_id,
+        config.api_base.as_deref(),
+        config.api_key.as_deref(),
+    )?);
 
     let loop_config = LoopConfig {
         max_iterations: config.max_iterations,
@@ -108,7 +109,10 @@ async fn main() -> anyhow::Result<()> {
     if config.serve {
         // ─── Service mode ───────────────────────────────────────────────
         // Merge the agent card routes with the API routes on a single port.
-        info!(port = config.agent_port, "Service mode: starting HTTP API + task consumer");
+        info!(
+            port = config.agent_port,
+            "Service mode: starting HTTP API + task consumer"
+        );
 
         let agent_state = AgentState {
             provider: model_provider.clone(),
@@ -117,8 +121,7 @@ async fn main() -> anyhow::Result<()> {
             loop_config: loop_config.clone(),
         };
 
-        let app = routes::agent_router(agent_state)
-            .merge(card_router);
+        let app = routes::agent_router(agent_state).merge(card_router);
 
         // Start heartbeat loop
         let heartbeat_harness = harness.clone();
@@ -203,11 +206,18 @@ async fn main() -> anyhow::Result<()> {
                                 agent_loop::AgentEvent::TextDelta { content } => {
                                     eprint!("{}", content);
                                 }
-                                agent_loop::AgentEvent::ToolStart { tool_name, is_local } => {
+                                agent_loop::AgentEvent::ToolStart {
+                                    tool_name,
+                                    is_local,
+                                } => {
                                     let loc = if is_local { "local" } else { "harness" };
                                     eprintln!("\n[{loc}] {tool_name}...");
                                 }
-                                agent_loop::AgentEvent::ToolEnd { tool_name, duration_ms, is_error } => {
+                                agent_loop::AgentEvent::ToolEnd {
+                                    tool_name,
+                                    duration_ms,
+                                    is_error,
+                                } => {
                                     if is_error {
                                         eprintln!("[error] {tool_name} failed ({duration_ms}ms)");
                                     }

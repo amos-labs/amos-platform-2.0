@@ -11,6 +11,12 @@ use tokio::fs;
 /// Read a file from the filesystem
 pub struct ReadFileTool;
 
+impl Default for ReadFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReadFileTool {
     pub fn new() -> Self {
         Self
@@ -41,9 +47,9 @@ impl Tool for ReadFileTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let path = params["path"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("path is required".to_string())
-        })?;
+        let path = params["path"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("path is required".to_string()))?;
 
         // Security: canonicalize to resolve symlinks and ..
         let canonical = tokio::fs::canonicalize(path).await.map_err(|e| {
@@ -53,10 +59,21 @@ impl Tool for ReadFileTool {
 
         // Block sensitive system directories
         let blocked_prefixes = [
-            "/etc", "/proc", "/sys", "/dev", "/root", "/var/run",
-            "/var/log", "/tmp", "/private/tmp", "/private/var",
+            "/etc",
+            "/proc",
+            "/sys",
+            "/dev",
+            "/root",
+            "/var/run",
+            "/var/log",
+            "/tmp",
+            "/private/tmp",
+            "/private/var",
         ];
-        if blocked_prefixes.iter().any(|p| canonical_str.starts_with(p)) {
+        if blocked_prefixes
+            .iter()
+            .any(|p| canonical_str.starts_with(p))
+        {
             return Ok(ToolResult::error(
                 "Access denied: Cannot read files in system directories".to_string(),
             ));
@@ -74,11 +91,13 @@ impl Tool for ReadFileTool {
         }
 
         // Enforce allowed base directory if configured, otherwise use cwd
-        let allowed_base = std::env::var("AMOS__TOOLS__ALLOWED_READ_DIR")
-            .unwrap_or_else(|_| std::env::current_dir()
+        let allowed_base = std::env::var("AMOS__TOOLS__ALLOWED_READ_DIR").unwrap_or_else(|_| {
+            std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "/".to_string()));
-        let allowed_canonical = tokio::fs::canonicalize(&allowed_base).await
+                .unwrap_or_else(|_| "/".to_string())
+        });
+        let allowed_canonical = tokio::fs::canonicalize(&allowed_base)
+            .await
             .unwrap_or_else(|_| Path::new(&allowed_base).to_path_buf());
 
         if !canonical.starts_with(&allowed_canonical) {
@@ -87,9 +106,9 @@ impl Tool for ReadFileTool {
             ));
         }
 
-        let content = fs::read_to_string(path).await.map_err(|e| {
-            amos_core::AmosError::Internal(format!("Failed to read file: {}", e))
-        })?;
+        let content = fs::read_to_string(path)
+            .await
+            .map_err(|e| amos_core::AmosError::Internal(format!("Failed to read file: {}", e)))?;
 
         Ok(ToolResult::success(json!({
             "path": path,
@@ -105,6 +124,12 @@ impl Tool for ReadFileTool {
 
 /// Execute a bash command
 pub struct BashTool;
+
+impl Default for BashTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl BashTool {
     pub fn new() -> Self {
@@ -140,9 +165,10 @@ impl Tool for BashTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let command = params["command"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("command is required".to_string())
-        })?.to_string();
+        let command = params["command"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("command is required".to_string()))?
+            .to_string();
 
         // Security: reject subshell execution and backticks
         if command.contains("$(") || command.contains('`') {
@@ -153,16 +179,76 @@ impl Tool for BashTool {
 
         // Comprehensive list of blocked commands (checked by token, not substring)
         const BLOCKED_COMMANDS: &[&str] = &[
-            "rm", "mv", "cp", "chmod", "chown", "chroot", "mount", "umount",
-            "mkfs", "dd", "kill", "killall", "pkill", "shutdown", "reboot",
-            "halt", "poweroff", "systemctl", "service", "useradd", "userdel",
-            "passwd", "su", "sudo", "curl", "wget", "nc", "ncat", "socat",
-            "ssh", "scp", "sftp", "ftp", "telnet", "python", "python3",
-            "ruby", "perl", "node", "php", "lua", "bash", "zsh", "csh",
-            "ksh", "fish", "nohup", "screen", "tmux", "at", "crontab",
-            "eval", "exec", "source", "docker", "podman", "kubectl",
-            "apt", "yum", "dnf", "brew", "pip", "npm", "gem", "netcat",
-            "mknod", "insmod", "modprobe", "iptables", "ip6tables",
+            "rm",
+            "mv",
+            "cp",
+            "chmod",
+            "chown",
+            "chroot",
+            "mount",
+            "umount",
+            "mkfs",
+            "dd",
+            "kill",
+            "killall",
+            "pkill",
+            "shutdown",
+            "reboot",
+            "halt",
+            "poweroff",
+            "systemctl",
+            "service",
+            "useradd",
+            "userdel",
+            "passwd",
+            "su",
+            "sudo",
+            "curl",
+            "wget",
+            "nc",
+            "ncat",
+            "socat",
+            "ssh",
+            "scp",
+            "sftp",
+            "ftp",
+            "telnet",
+            "python",
+            "python3",
+            "ruby",
+            "perl",
+            "node",
+            "php",
+            "lua",
+            "bash",
+            "zsh",
+            "csh",
+            "ksh",
+            "fish",
+            "nohup",
+            "screen",
+            "tmux",
+            "at",
+            "crontab",
+            "eval",
+            "exec",
+            "source",
+            "docker",
+            "podman",
+            "kubectl",
+            "apt",
+            "yum",
+            "dnf",
+            "brew",
+            "pip",
+            "npm",
+            "gem",
+            "netcat",
+            "mknod",
+            "insmod",
+            "modprobe",
+            "iptables",
+            "ip6tables",
         ];
 
         // Tokenize: split on whitespace and shell metacharacters
@@ -188,32 +274,39 @@ impl Tool for BashTool {
         }
 
         // Block output redirection to sensitive paths
-        if command.contains("> /dev/") || command.contains("> /etc/") || command.contains("> /proc/") {
+        if command.contains("> /dev/")
+            || command.contains("> /etc/")
+            || command.contains("> /proc/")
+        {
             return Ok(ToolResult::error(
                 "Blocked: Redirecting output to system paths is not allowed".to_string(),
             ));
         }
 
         // Execute command with timeout
-        let output = tokio::task::spawn_blocking(move || {
-            Command::new("sh")
-                .arg("-c")
-                .arg(command)
-                .output()
-        })
-        .await
-        .map_err(|e| amos_core::AmosError::Internal(format!("Task join error: {}", e)))?
-        .map_err(|e| {
-            amos_core::AmosError::Internal(format!("Command execution failed: {}", e))
-        })?;
+        let output =
+            tokio::task::spawn_blocking(move || Command::new("sh").arg("-c").arg(command).output())
+                .await
+                .map_err(|e| amos_core::AmosError::Internal(format!("Task join error: {}", e)))?
+                .map_err(|e| {
+                    amos_core::AmosError::Internal(format!("Command execution failed: {}", e))
+                })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         // Limit output size to prevent exfiltration of large files
         let max_output = 10 * 1024; // 10KB
-        let stdout = if stdout.len() > max_output { stdout[..max_output].to_string() } else { stdout };
-        let stderr = if stderr.len() > max_output { stderr[..max_output].to_string() } else { stderr };
+        let stdout = if stdout.len() > max_output {
+            stdout[..max_output].to_string()
+        } else {
+            stdout
+        };
+        let stderr = if stderr.len() > max_output {
+            stderr[..max_output].to_string()
+        } else {
+            stderr
+        };
 
         Ok(ToolResult::success(json!({
             "stdout": stdout,

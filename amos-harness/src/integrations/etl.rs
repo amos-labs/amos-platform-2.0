@@ -3,10 +3,10 @@
 //! Implements Extract → Transform → Load for pulling data from external APIs
 //! into AMOS collections, with deduplication, change detection, and cursor tracking.
 
-use crate::integrations::executor::{ApiExecutor, ExecutionError, ExecutionResult};
+use crate::integrations::executor::{ApiExecutor, ExecutionError};
 use crate::integrations::types::{ConnectionRow, SyncConfigRow, SyncCursorRow, SyncRecordRow};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -59,7 +59,8 @@ impl EtlPipeline {
                 result.errors.push(format!("Extract: {}", e));
                 result.status = "failed".to_string();
                 result.duration_ms = start_time.elapsed().as_millis() as u64;
-                self.update_sync_config_status(&sync_config, &result).await?;
+                self.update_sync_config_status(&sync_config, &result)
+                    .await?;
                 return Err(e);
             }
         };
@@ -76,13 +77,14 @@ impl EtlPipeline {
                 result.errors.push(format!("Transform: {}", e));
                 result.status = "failed".to_string();
                 result.duration_ms = start_time.elapsed().as_millis() as u64;
-                self.update_sync_config_status(&sync_config, &result).await?;
+                self.update_sync_config_status(&sync_config, &result)
+                    .await?;
                 return Err(e);
             }
         };
 
         // 4. Load transformed records into AMOS collections
-        let load_result = match self.load(&transformed_records, &sync_config).await {
+        let _load_result = match self.load(&transformed_records, &sync_config).await {
             Ok(lr) => {
                 result.loaded = lr.inserted + lr.updated;
                 info!(
@@ -90,7 +92,9 @@ impl EtlPipeline {
                     lr.inserted, lr.updated, lr.skipped
                 );
                 if !lr.errors.is_empty() {
-                    result.errors.extend(lr.errors.iter().map(|e| format!("Load: {}", e)));
+                    result
+                        .errors
+                        .extend(lr.errors.iter().map(|e| format!("Load: {}", e)));
                     result.status = "partial".to_string();
                 }
                 lr
@@ -100,7 +104,8 @@ impl EtlPipeline {
                 result.errors.push(format!("Load: {}", e));
                 result.status = "failed".to_string();
                 result.duration_ms = start_time.elapsed().as_millis() as u64;
-                self.update_sync_config_status(&sync_config, &result).await?;
+                self.update_sync_config_status(&sync_config, &result)
+                    .await?;
                 return Err(e);
             }
         };
@@ -108,7 +113,8 @@ impl EtlPipeline {
         result.duration_ms = start_time.elapsed().as_millis() as u64;
 
         // 5. Update sync_config with run status
-        self.update_sync_config_status(&sync_config, &result).await?;
+        self.update_sync_config_status(&sync_config, &result)
+            .await?;
 
         info!(
             "ETL completed in {}ms: status={}, extracted={}, transformed={}, loaded={}",
@@ -146,7 +152,10 @@ impl EtlPipeline {
             // Add cursor params for incremental sync
             if sync_config.sync_mode == "incremental" {
                 if let Some(cursor_value) = &cursor.cursor_value {
-                    fetch_params.insert("starting_after".to_string(), JsonValue::String(cursor_value.clone()));
+                    fetch_params.insert(
+                        "starting_after".to_string(),
+                        JsonValue::String(cursor_value.clone()),
+                    );
                 }
             }
 
@@ -163,7 +172,12 @@ impl EtlPipeline {
 
             // Parse response and extract records
             let (records, next_cursor, more) = self.parse_response(&response.body)?;
-            debug!("Page {}: got {} records, has_more={}", page_count, records.len(), more);
+            debug!(
+                "Page {}: got {} records, has_more={}",
+                page_count,
+                records.len(),
+                more
+            );
 
             all_records.extend(records);
 
@@ -182,7 +196,10 @@ impl EtlPipeline {
         }
 
         if page_count >= MAX_PAGES {
-            warn!("Reached max pages limit ({}), stopping pagination", MAX_PAGES);
+            warn!(
+                "Reached max pages limit ({}), stopping pagination",
+                MAX_PAGES
+            );
         }
 
         // Update cursor in DB
@@ -273,9 +290,7 @@ impl EtlPipeline {
                         EtlError::TransformError("Missing 'target' in mapping".to_string())
                     })?;
 
-                let transform = mapping_obj
-                    .get("transform")
-                    .and_then(|v| v.as_str());
+                let transform = mapping_obj.get("transform").and_then(|v| v.as_str());
 
                 // Extract source field (supports dot notation)
                 if let Some(mut value) = extract_nested_field(record, source) {
@@ -320,10 +335,7 @@ impl EtlPipeline {
         let collection = self.load_collection(&sync_config.target_collection).await?;
 
         for (idx, record) in records.iter().enumerate() {
-            match self
-                .upsert_record(record, sync_config, &collection)
-                .await
-            {
+            match self.upsert_record(record, sync_config, &collection).await {
                 Ok(UpsertResult::Inserted) => result.inserted += 1,
                 Ok(UpsertResult::Updated) => result.updated += 1,
                 Ok(UpsertResult::Skipped) => result.skipped += 1,
@@ -350,9 +362,7 @@ impl EtlPipeline {
         let external_id = record
             .get("external_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                EtlError::LoadError("Record missing 'external_id' field".to_string())
-            })?;
+            .ok_or_else(|| EtlError::LoadError("Record missing 'external_id' field".to_string()))?;
 
         let external_type = sync_config.resource_type.clone();
 
@@ -420,7 +430,10 @@ impl EtlPipeline {
                 .await
                 .map_err(|e| EtlError::LoadError(format!("Failed to create sync_record: {}", e)))?;
 
-                debug!("Inserted new record {} with external_id {}", record_id, external_id);
+                debug!(
+                    "Inserted new record {} with external_id {}",
+                    record_id, external_id
+                );
                 Ok(UpsertResult::Inserted)
             }
             Some(sync_record) => {
@@ -445,7 +458,9 @@ impl EtlPipeline {
                         .bind(internal_record_id)
                         .execute(&self.db_pool)
                         .await
-                        .map_err(|e| EtlError::LoadError(format!("Failed to update record: {}", e)))?;
+                        .map_err(|e| {
+                            EtlError::LoadError(format!("Failed to update record: {}", e))
+                        })?;
                     }
 
                     // Update sync_record
@@ -465,9 +480,14 @@ impl EtlPipeline {
                     .bind(sync_record.id)
                     .execute(&self.db_pool)
                     .await
-                    .map_err(|e| EtlError::LoadError(format!("Failed to update sync_record: {}", e)))?;
+                    .map_err(|e| {
+                        EtlError::LoadError(format!("Failed to update sync_record: {}", e))
+                    })?;
 
-                    debug!("Updated record {:?} with external_id {}", sync_record.internal_record_id, external_id);
+                    debug!(
+                        "Updated record {:?} with external_id {}",
+                        sync_record.internal_record_id, external_id
+                    );
                     Ok(UpsertResult::Updated)
                 }
             }
@@ -520,7 +540,10 @@ impl EtlPipeline {
     }
 
     /// Load or create sync cursor
-    async fn load_or_create_cursor(&self, sync_config: &SyncConfigRow) -> Result<SyncCursorRow, EtlError> {
+    async fn load_or_create_cursor(
+        &self,
+        sync_config: &SyncConfigRow,
+    ) -> Result<SyncCursorRow, EtlError> {
         if let Some(cursor) = sqlx::query_as::<_, SyncCursorRow>(
             r#"
             SELECT * FROM integration_sync_cursors
@@ -769,9 +792,9 @@ fn apply_transform(value: &JsonValue, transform: &str) -> JsonValue {
         "to_number" => {
             if let Some(s) = value.as_str() {
                 if let Ok(n) = s.parse::<f64>() {
-                    JsonValue::Number(serde_json::Number::from_f64(n).unwrap_or(
-                        serde_json::Number::from(0),
-                    ))
+                    JsonValue::Number(
+                        serde_json::Number::from_f64(n).unwrap_or(serde_json::Number::from(0)),
+                    )
                 } else {
                     value.clone()
                 }

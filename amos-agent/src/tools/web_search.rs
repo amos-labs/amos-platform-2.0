@@ -65,7 +65,7 @@ pub async fn execute(input: &serde_json::Value, api_key: Option<&str>) -> Result
 
     let api_key = api_key.ok_or(
         "Web search unavailable: BRAVE_API_KEY not configured. \
-         Set the BRAVE_API_KEY environment variable to enable web search."
+         Set the BRAVE_API_KEY environment variable to enable web search.",
     )?;
 
     let client = reqwest::Client::new();

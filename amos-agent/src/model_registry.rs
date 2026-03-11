@@ -60,7 +60,10 @@ impl ModelRegistry {
             },
         ];
         let default_model_id = models[1].model_id.clone(); // Sonnet as default
-        Self { models, default_model_id }
+        Self {
+            models,
+            default_model_id,
+        }
     }
 
     /// Create a registry with a single custom model.
@@ -104,7 +107,11 @@ impl ModelRegistry {
         let len = message.len();
         let tier = if len < 100 && tool_count == 0 {
             ModelTier::Fast
-        } else if len > 2000 || tool_count > 10 || message.contains("analyze") || message.contains("architect") {
+        } else if len > 2000
+            || tool_count > 10
+            || message.contains("analyze")
+            || message.contains("architect")
+        {
             ModelTier::Complex
         } else {
             ModelTier::Default

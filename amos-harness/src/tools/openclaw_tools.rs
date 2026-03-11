@@ -70,19 +70,22 @@ impl Tool for RegisterAgentTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let name = params["name"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("name is required".to_string())
-        })?;
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("name is required".to_string()))?;
 
         let display_name = params["display_name"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("display_name is required".to_string())
         })?;
 
-        let role = params["role"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("role is required".to_string())
-        })?;
+        let role = params["role"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("role is required".to_string()))?;
 
-        let model = params.get("model").and_then(|v| v.as_str()).unwrap_or("claude-3-5-sonnet");
+        let model = params
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("claude-3-5-sonnet");
         let capabilities = params.get("capabilities").cloned().unwrap_or(json!([]));
         let system_prompt = params.get("system_prompt").and_then(|v| v.as_str());
 
@@ -115,7 +118,10 @@ impl Tool for RegisterAgentTool {
                     "message": format!("Agent '{}' registered successfully. Use assign_task to give it work.", display_name)
                 })))
             }
-            Err(e) => Ok(ToolResult::error(format!("Failed to register agent: {}", e))),
+            Err(e) => Ok(ToolResult::error(format!(
+                "Failed to register agent: {}",
+                e
+            ))),
         }
     }
 
@@ -174,9 +180,7 @@ impl Tool for ListAgentsTool {
              FROM openclaw_agents ORDER BY created_at DESC".to_string()
         };
 
-        let rows = sqlx::query(&query)
-            .fetch_all(&self.db_pool)
-            .await;
+        let rows = sqlx::query(&query).fetch_all(&self.db_pool).await;
 
         match rows {
             Ok(rows) => {
@@ -271,19 +275,23 @@ impl Tool for AssignTaskTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let agent_id = params["agent_id"].as_i64().ok_or_else(|| {
-            amos_core::AmosError::Validation("agent_id is required".to_string())
-        })? as i32;
+        let agent_id = params["agent_id"]
+            .as_i64()
+            .ok_or_else(|| amos_core::AmosError::Validation("agent_id is required".to_string()))?
+            as i32;
 
-        let title = params["title"].as_str().ok_or_else(|| {
-            amos_core::AmosError::Validation("title is required".to_string())
-        })?;
+        let title = params["title"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("title is required".to_string()))?;
 
         let description = params["description"].as_str().ok_or_else(|| {
             amos_core::AmosError::Validation("description is required".to_string())
         })?;
 
-        let priority = params.get("priority").and_then(|v| v.as_str()).unwrap_or("normal");
+        let priority = params
+            .get("priority")
+            .and_then(|v| v.as_str())
+            .unwrap_or("normal");
         let context = params.get("context").cloned().unwrap_or(json!({}));
 
         // Verify agent exists
@@ -295,7 +303,10 @@ impl Tool for AssignTaskTool {
         match agent_exists {
             Ok(Some(_)) => {}
             Ok(None) => {
-                return Ok(ToolResult::error(format!("Agent with id {} not found", agent_id)));
+                return Ok(ToolResult::error(format!(
+                    "Agent with id {} not found",
+                    agent_id
+                )));
             }
             Err(e) => {
                 return Ok(ToolResult::error(format!("Database error: {}", e)));
@@ -383,9 +394,10 @@ impl Tool for GetAgentStatusTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let agent_id = params["agent_id"].as_i64().ok_or_else(|| {
-            amos_core::AmosError::Validation("agent_id is required".to_string())
-        })? as i32;
+        let agent_id = params["agent_id"]
+            .as_i64()
+            .ok_or_else(|| amos_core::AmosError::Validation("agent_id is required".to_string()))?
+            as i32;
 
         // Get agent info
         let agent_row = sqlx::query(
@@ -399,7 +411,10 @@ impl Tool for GetAgentStatusTool {
         let agent_row = match agent_row {
             Ok(Some(row)) => row,
             Ok(None) => {
-                return Ok(ToolResult::error(format!("Agent with id {} not found", agent_id)));
+                return Ok(ToolResult::error(format!(
+                    "Agent with id {} not found",
+                    agent_id
+                )));
             }
             Err(e) => {
                 return Ok(ToolResult::error(format!("Database error: {}", e)));
@@ -446,7 +461,7 @@ impl Tool for GetAgentStatusTool {
             "agent": agent,
             "recent_tasks": tasks,
             "active_task_count": tasks.iter().filter(|t| {
-                t["status"].as_str().map_or(false, |s| s == "pending" || s == "in_progress")
+                t["status"].as_str().is_some_and(|s| s == "pending" || s == "in_progress")
             }).count()
         })))
     }
@@ -493,22 +508,24 @@ impl Tool for StopAgentTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let agent_id = params["agent_id"].as_i64().ok_or_else(|| {
-            amos_core::AmosError::Validation("agent_id is required".to_string())
-        })? as i32;
+        let agent_id = params["agent_id"]
+            .as_i64()
+            .ok_or_else(|| amos_core::AmosError::Validation("agent_id is required".to_string()))?
+            as i32;
 
         // Update agent status
-        let result = sqlx::query(
-            "UPDATE openclaw_agents SET status = 'stopped' WHERE id = $1",
-        )
-        .bind(agent_id)
-        .execute(&self.db_pool)
-        .await;
+        let result = sqlx::query("UPDATE openclaw_agents SET status = 'stopped' WHERE id = $1")
+            .bind(agent_id)
+            .execute(&self.db_pool)
+            .await;
 
         match result {
             Ok(r) => {
                 if r.rows_affected() == 0 {
-                    return Ok(ToolResult::error(format!("Agent with id {} not found", agent_id)));
+                    return Ok(ToolResult::error(format!(
+                        "Agent with id {} not found",
+                        agent_id
+                    )));
                 }
 
                 // Cancel pending tasks

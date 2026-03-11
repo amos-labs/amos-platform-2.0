@@ -1,5 +1,6 @@
 //! Authentication middleware
 
+use crate::state::AppState;
 use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
@@ -11,7 +12,6 @@ use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::state::AppState;
 
 /// JWT claims (matches platform's auth::Claims)
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -43,15 +43,11 @@ pub async fn authenticate(
     // Check Authorization: Bearer <JWT>
     if let Some(auth_header) = headers.get("Authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
-            if auth_str.starts_with("Bearer ") {
-                let token = &auth_str[7..];
-                match validate_jwt(token, &state) {
-                    Ok(claims) => {
-                        let mut request = request;
-                        request.extensions_mut().insert(claims);
-                        return Ok(next.run(request).await);
-                    }
-                    Err(_) => {}
+            if let Some(token) = auth_str.strip_prefix("Bearer ") {
+                if let Ok(claims) = validate_jwt(token, &state) {
+                    let mut request = request;
+                    request.extensions_mut().insert(claims);
+                    return Ok(next.run(request).await);
                 }
             }
         }
@@ -64,7 +60,8 @@ pub async fn authenticate(
             "code": "unauthorized",
             "hint": "Provide 'Authorization: Bearer <jwt>' or 'X-API-Key: <key>' header"
         })),
-    ).into_response())
+    )
+        .into_response())
 }
 
 fn validate_jwt(token: &str, state: &AppState) -> Result<Claims, ()> {
@@ -81,7 +78,9 @@ fn validate_jwt(token: &str, state: &AppState) -> Result<Claims, ()> {
 
 /// Validate API key against database (check api_keys table)
 async fn is_valid_api_key(api_key: &str, state: &AppState) -> bool {
-    if api_key.is_empty() { return false; }
+    if api_key.is_empty() {
+        return false;
+    }
     // Hash the key and look it up in the database
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();

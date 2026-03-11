@@ -11,7 +11,7 @@ use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Relay sync client manages communication between harness and relay.
@@ -74,8 +74,8 @@ impl RelaySyncClient {
             .map(|s| s.expose_secret().to_string());
 
         // Generate a stable harness ID from env var or use a UUID
-        let harness_id = std::env::var("HARNESS_ID")
-            .unwrap_or_else(|_| format!("harness-{}", Uuid::new_v4()));
+        let harness_id =
+            std::env::var("HARNESS_ID").unwrap_or_else(|_| format!("harness-{}", Uuid::new_v4()));
 
         Self {
             http: Client::builder()
@@ -135,9 +135,9 @@ impl RelaySyncClient {
     // ── Heartbeat Loop ──────────────────────────────────────────────────
 
     async fn heartbeat_loop(&self) {
-        let mut interval = tokio::time::interval(
-            std::time::Duration::from_secs(self.config.heartbeat_interval_secs),
-        );
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            self.config.heartbeat_interval_secs,
+        ));
 
         loop {
             interval.tick().await;
@@ -166,7 +166,11 @@ impl RelaySyncClient {
                     debug!("Relay heartbeat sent successfully");
                 }
                 Ok(resp) => {
-                    warn!("Relay heartbeat returned {}: {}", resp.status(), resp.status());
+                    warn!(
+                        "Relay heartbeat returned {}: {}",
+                        resp.status(),
+                        resp.status()
+                    );
                 }
                 Err(e) => {
                     debug!("Relay heartbeat failed (relay may be unreachable): {}", e);
@@ -178,9 +182,9 @@ impl RelaySyncClient {
     // ── Bounty Sync Loop ────────────────────────────────────────────────
 
     async fn bounty_sync_loop(&self) {
-        let mut interval = tokio::time::interval(
-            std::time::Duration::from_secs(self.config.bounty_sync_interval_secs),
-        );
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            self.config.bounty_sync_interval_secs,
+        ));
 
         loop {
             interval.tick().await;
@@ -217,9 +221,9 @@ impl RelaySyncClient {
     // ── Reputation Report Loop ──────────────────────────────────────────
 
     async fn reputation_report_loop(&self) {
-        let mut interval = tokio::time::interval(
-            std::time::Duration::from_secs(self.config.reputation_report_interval_secs),
-        );
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            self.config.reputation_report_interval_secs,
+        ));
 
         loop {
             interval.tick().await;

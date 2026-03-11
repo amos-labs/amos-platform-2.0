@@ -12,5 +12,5 @@
 pub mod export;
 pub mod extract;
 
-pub use extract::{DocumentProcessor, ExtractionResult, PageContent};
 pub use export::{DocumentExporter, ExportFormat};
+pub use extract::{DocumentProcessor, ExtractionResult, PageContent};

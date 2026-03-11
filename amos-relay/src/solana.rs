@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 /// Wrapper around Solana RPC client for relay operations.
 pub struct SolanaClient {
-    rpc: Arc<RpcClient>,
+    _rpc: Arc<RpcClient>,
     rpc_url: String,
     /// Bounty program ID
     pub bounty_program_id: Pubkey,
@@ -21,16 +21,14 @@ impl SolanaClient {
     /// * `rpc_url` - Solana RPC endpoint URL
     /// * `bounty_program_id` - Program ID for the bounty program
     pub fn new(rpc_url: &str, bounty_program_id: &str) -> Result<Self> {
-        let rpc = RpcClient::new_with_commitment(
-            rpc_url.to_string(),
-            CommitmentConfig::confirmed(),
-        );
+        let rpc =
+            RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
         let bounty_program_id = Pubkey::from_str(bounty_program_id)
             .map_err(|e| AmosError::SolanaRpc(format!("Invalid bounty program ID: {}", e)))?;
 
         Ok(Self {
-            rpc: Arc::new(rpc),
+            _rpc: Arc::new(rpc),
             rpc_url: rpc_url.to_string(),
             bounty_program_id,
         })

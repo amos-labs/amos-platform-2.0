@@ -85,7 +85,8 @@ impl ConnectorRegistry {
 
     /// Register a connector
     pub fn register(&mut self, connector: Arc<dyn Connector>) {
-        self.connectors.insert(connector.name().to_string(), connector);
+        self.connectors
+            .insert(connector.name().to_string(), connector);
     }
 
     /// Get a connector by name
@@ -138,7 +139,7 @@ impl Connector for CRMConnector {
         Ok(())
     }
 
-    async fn execute_action(&self, action: &str, params: JsonValue) -> Result<JsonValue> {
+    async fn execute_action(&self, action: &str, _params: JsonValue) -> Result<JsonValue> {
         match action {
             "get_contact" => Ok(serde_json::json!({
                 "id": "contact_123",
@@ -149,7 +150,10 @@ impl Connector for CRMConnector {
                 "id": "lead_456",
                 "status": "created"
             })),
-            _ => Err(AmosError::NotFound { entity: "Action".to_string(), id: action.to_string() }),
+            _ => Err(AmosError::NotFound {
+                entity: "Action".to_string(),
+                id: action.to_string(),
+            }),
         }
     }
 
@@ -207,7 +211,10 @@ impl Connector for EmailConnector {
                 "message_id": "msg_789",
                 "status": "sent"
             })),
-            _ => Err(AmosError::NotFound { entity: "Action".to_string(), id: action.to_string() }),
+            _ => Err(AmosError::NotFound {
+                entity: "Action".to_string(),
+                id: action.to_string(),
+            }),
         }
     }
 
@@ -254,7 +261,10 @@ impl Connector for PaymentConnector {
                 "payment_id": "pay_123",
                 "status": "succeeded"
             })),
-            _ => Err(AmosError::NotFound { entity: "Action".to_string(), id: action.to_string() }),
+            _ => Err(AmosError::NotFound {
+                entity: "Action".to_string(),
+                id: action.to_string(),
+            }),
         }
     }
 
@@ -300,7 +310,10 @@ impl Connector for CalendarConnector {
                 "event_id": "evt_456",
                 "status": "created"
             })),
-            _ => Err(AmosError::NotFound { entity: "Action".to_string(), id: action.to_string() }),
+            _ => Err(AmosError::NotFound {
+                entity: "Action".to_string(),
+                id: action.to_string(),
+            }),
         }
     }
 
@@ -347,7 +360,10 @@ impl Connector for StorageConnector {
                 "file_id": "file_789",
                 "url": "https://storage.example.com/file_789"
             })),
-            _ => Err(AmosError::NotFound { entity: "Action".to_string(), id: action.to_string() }),
+            _ => Err(AmosError::NotFound {
+                entity: "Action".to_string(),
+                id: action.to_string(),
+            }),
         }
     }
 

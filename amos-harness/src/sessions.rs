@@ -95,13 +95,11 @@ pub async fn create_session(pool: &PgPool, title: Option<&str>) -> Result<Sessio
 
 /// Get a session by ID.
 pub async fn get_session(pool: &PgPool, session_id: Uuid) -> Result<Option<Session>> {
-    let row = sqlx::query_as::<_, Session>(
-        "SELECT * FROM sessions WHERE id = $1",
-    )
-    .bind(session_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| amos_core::AmosError::Internal(format!("get_session: {e}")))?;
+    let row = sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("get_session: {e}")))?;
 
     Ok(row)
 }
@@ -122,13 +120,16 @@ pub async fn list_sessions(pool: &PgPool, limit: i64) -> Result<Vec<SessionSumma
     .await
     .map_err(|e| amos_core::AmosError::Internal(format!("list_sessions: {e}")))?;
 
-    Ok(rows.into_iter().map(|r| SessionSummary {
-        id: r.id,
-        title: r.title,
-        message_count: r.message_count,
-        last_activity_at: r.last_activity_at,
-        created_at: r.created_at,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| SessionSummary {
+            id: r.id,
+            title: r.title,
+            message_count: r.message_count,
+            last_activity_at: r.last_activity_at,
+            created_at: r.created_at,
+        })
+        .collect())
 }
 
 /// Delete a session (cascades to messages).
@@ -291,13 +292,11 @@ pub async fn load_messages(pool: &PgPool, session_id: Uuid) -> Result<Vec<Messag
 
 /// Get the current message count for a session (used as start_seq for new saves).
 pub async fn message_count(pool: &PgPool, session_id: Uuid) -> Result<i32> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM messages WHERE session_id = $1",
-    )
-    .bind(session_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| amos_core::AmosError::Internal(format!("message_count: {e}")))?;
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages WHERE session_id = $1")
+        .bind(session_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("message_count: {e}")))?;
 
     Ok(count.0 as i32)
 }

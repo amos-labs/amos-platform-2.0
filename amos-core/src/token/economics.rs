@@ -272,9 +272,15 @@ mod tests {
 
     #[test]
     fn decay_range_is_valid() {
-        assert!(MIN_DECAY_RATE_BPS < MAX_DECAY_RATE_BPS);
-        assert!(DEFAULT_DECAY_RATE_BPS >= MIN_DECAY_RATE_BPS);
-        assert!(DEFAULT_DECAY_RATE_BPS <= MAX_DECAY_RATE_BPS);
+        const {
+            assert!(MIN_DECAY_RATE_BPS < MAX_DECAY_RATE_BPS);
+        }
+        const {
+            assert!(DEFAULT_DECAY_RATE_BPS >= MIN_DECAY_RATE_BPS);
+        }
+        const {
+            assert!(DEFAULT_DECAY_RATE_BPS <= MAX_DECAY_RATE_BPS);
+        }
     }
 
     #[test]
@@ -287,15 +293,27 @@ mod tests {
 
     #[test]
     fn tenure_floors_are_progressive() {
-        assert!(TENURE_FLOOR_YEAR_0_BPS < TENURE_FLOOR_YEAR_1_BPS);
-        assert!(TENURE_FLOOR_YEAR_1_BPS < TENURE_FLOOR_YEAR_2_BPS);
-        assert!(TENURE_FLOOR_YEAR_2_BPS < TENURE_FLOOR_YEAR_5_BPS);
+        const {
+            assert!(TENURE_FLOOR_YEAR_0_BPS < TENURE_FLOOR_YEAR_1_BPS);
+        }
+        const {
+            assert!(TENURE_FLOOR_YEAR_1_BPS < TENURE_FLOOR_YEAR_2_BPS);
+        }
+        const {
+            assert!(TENURE_FLOOR_YEAR_2_BPS < TENURE_FLOOR_YEAR_5_BPS);
+        }
     }
 
     #[test]
     fn tenure_reductions_are_progressive() {
-        assert!(TENURE_REDUCTION_YEAR_0_BPS < TENURE_REDUCTION_YEAR_1_BPS);
-        assert!(TENURE_REDUCTION_YEAR_1_BPS < TENURE_REDUCTION_YEAR_2_BPS);
-        assert!(TENURE_REDUCTION_YEAR_2_BPS < TENURE_REDUCTION_YEAR_5_BPS);
+        const {
+            assert!(TENURE_REDUCTION_YEAR_0_BPS < TENURE_REDUCTION_YEAR_1_BPS);
+        }
+        const {
+            assert!(TENURE_REDUCTION_YEAR_1_BPS < TENURE_REDUCTION_YEAR_2_BPS);
+        }
+        const {
+            assert!(TENURE_REDUCTION_YEAR_2_BPS < TENURE_REDUCTION_YEAR_5_BPS);
+        }
     }
 }

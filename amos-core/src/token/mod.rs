@@ -4,9 +4,9 @@
 //! `token_economy_equations.md`. Every constant and formula here must match
 //! the on-chain Anchor programs bit-for-bit.
 
-pub mod economics;
 pub mod decay;
-pub mod revenue;
+pub mod economics;
 pub mod emission;
-pub mod trust;
 pub mod points;
+pub mod revenue;
+pub mod trust;

@@ -151,11 +151,7 @@ pub fn write_file(input: &serde_json::Value, work_dir: &str) -> Result<String, S
 
     std::fs::write(&full_path, content).map_err(|e| format!("Failed to write file: {e}"))?;
 
-    Ok(format!(
-        "Written {} bytes to {}",
-        content.len(),
-        rel_path
-    ))
+    Ok(format!("Written {} bytes to {}", content.len(), rel_path))
 }
 
 #[cfg(test)]

@@ -211,7 +211,11 @@ impl OpenAiProvider {
                     for block in &msg.content {
                         match block {
                             ContentBlock::Text { text } => text_parts.push(text.clone()),
-                            ContentBlock::ToolResult { tool_use_id, content, .. } => {
+                            ContentBlock::ToolResult {
+                                tool_use_id,
+                                content,
+                                ..
+                            } => {
                                 tool_results.push((tool_use_id.clone(), content.clone()));
                             }
                             _ => {}
@@ -255,8 +259,16 @@ impl OpenAiProvider {
                     }
                     oai.push(OaiMessage {
                         role: "assistant".to_string(),
-                        content: if text_parts.is_empty() { None } else { Some(text_parts.join("\n")) },
-                        tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+                        content: if text_parts.is_empty() {
+                            None
+                        } else {
+                            Some(text_parts.join("\n"))
+                        },
+                        tool_calls: if tool_calls.is_empty() {
+                            None
+                        } else {
+                            Some(tool_calls)
+                        },
                         tool_call_id: None,
                     });
                 }
@@ -267,16 +279,25 @@ impl OpenAiProvider {
     }
 
     fn convert_tools(&self, tools: &[serde_json::Value]) -> Vec<OaiTool> {
-        tools.iter().filter_map(|tool| {
-            let name = tool["name"].as_str()?.to_string();
-            let description = tool["description"].as_str().unwrap_or("").to_string();
-            let parameters = tool.get("inputSchema").cloned()
-                .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}}));
-            Some(OaiTool {
-                tool_type: "function".to_string(),
-                function: OaiToolFunction { name, description, parameters },
+        tools
+            .iter()
+            .filter_map(|tool| {
+                let name = tool["name"].as_str()?.to_string();
+                let description = tool["description"].as_str().unwrap_or("").to_string();
+                let parameters = tool
+                    .get("inputSchema")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}}));
+                Some(OaiTool {
+                    tool_type: "function".to_string(),
+                    function: OaiToolFunction {
+                        name,
+                        description,
+                        parameters,
+                    },
+                })
             })
-        }).collect()
+            .collect()
     }
 }
 
@@ -291,7 +312,11 @@ impl ModelProvider for OpenAiProvider {
     ) -> Result<mpsc::Receiver<StreamEvent>> {
         let (tx, rx) = mpsc::channel(100);
         let oai_messages = self.convert_messages(system_prompt, messages);
-        let oai_tools = if tools.is_empty() { None } else { Some(self.convert_tools(tools)) };
+        let oai_tools = if tools.is_empty() {
+            None
+        } else {
+            Some(self.convert_tools(tools))
+        };
 
         let request = ChatCompletionRequest {
             model: self.model_id.clone(),
@@ -308,7 +333,9 @@ impl ModelProvider for OpenAiProvider {
         }
         req_builder = req_builder.json(&request);
 
-        let response = req_builder.send().await
+        let response = req_builder
+            .send()
+            .await
             .map_err(|e| AmosError::Internal(format!("API request failed: {e}")))?;
 
         if !response.status().is_success() {
@@ -333,7 +360,9 @@ impl ModelProvider for OpenAiProvider {
         messages: &[Message],
         tools: &[serde_json::Value],
     ) -> Result<(Message, TokenUsage)> {
-        let mut rx = self.converse_stream(model_id, system_prompt, messages, tools).await?;
+        let mut rx = self
+            .converse_stream(model_id, system_prompt, messages, tools)
+            .await?;
         let mut text_parts = Vec::new();
         let mut tool_uses = Vec::new();
         let mut usage = TokenUsage::default();
@@ -350,7 +379,9 @@ impl ModelProvider for OpenAiProvider {
 
         let mut content = Vec::new();
         if !text_parts.is_empty() {
-            content.push(ContentBlock::Text { text: text_parts.join("") });
+            content.push(ContentBlock::Text {
+                text: text_parts.join(""),
+            });
         }
         for (id, name, input) in tool_uses {
             content.push(ContentBlock::ToolUse { id, name, input });
@@ -367,10 +398,15 @@ impl ModelProvider for OpenAiProvider {
         ))
     }
 
-    fn provider_name(&self) -> &str { "openai_compatible" }
+    fn provider_name(&self) -> &str {
+        "openai_compatible"
+    }
 }
 
-async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+async fn parse_sse_stream(
+    response: reqwest::Response,
+    tx: mpsc::Sender<StreamEvent>,
+) -> Result<()> {
     use tokio_stream::StreamExt;
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
@@ -384,7 +420,9 @@ async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<StreamEv
         while let Some(line_end) = buffer.find('\n') {
             let line = buffer[..line_end].trim_end_matches('\r').to_string();
             buffer = buffer[line_end + 1..].to_string();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             if line == "data: [DONE]" {
                 for (_idx, (id, name, args)) in tool_call_state.drain() {
@@ -398,38 +436,51 @@ async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<StreamEv
             if let Some(data) = line.strip_prefix("data: ") {
                 if let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data) {
                     if let Some(ref usage) = chunk.usage {
-                        let _ = tx.send(StreamEvent::TokenUsage(TokenUsage {
-                            input_tokens: usage.prompt_tokens,
-                            output_tokens: usage.completion_tokens,
-                            total_tokens: usage.total_tokens,
-                        })).await;
+                        let _ = tx
+                            .send(StreamEvent::TokenUsage(TokenUsage {
+                                input_tokens: usage.prompt_tokens,
+                                output_tokens: usage.completion_tokens,
+                                total_tokens: usage.total_tokens,
+                            }))
+                            .await;
                     }
                     for choice in &chunk.choices {
                         if let Some(ref text) = choice.delta.content {
-                            if !text.is_empty() {
-                                if tx.send(StreamEvent::TextDelta(text.clone())).await.is_err() {
-                                    return Ok(());
-                                }
+                            if !text.is_empty()
+                                && tx.send(StreamEvent::TextDelta(text.clone())).await.is_err()
+                            {
+                                return Ok(());
                             }
                         }
                         if let Some(ref tcs) = choice.delta.tool_calls {
                             for tc in tcs {
                                 let entry = tool_call_state.entry(tc.index).or_insert_with(|| {
-                                    (tc.id.clone().unwrap_or_default(), String::new(), String::new())
+                                    (
+                                        tc.id.clone().unwrap_or_default(),
+                                        String::new(),
+                                        String::new(),
+                                    )
                                 });
                                 if let Some(ref id) = tc.id {
-                                    if !id.is_empty() { entry.0 = id.clone(); }
+                                    if !id.is_empty() {
+                                        entry.0 = id.clone();
+                                    }
                                 }
                                 if let Some(ref func) = tc.function {
-                                    if let Some(ref name) = func.name { entry.1 = name.clone(); }
-                                    if let Some(ref args) = func.arguments { entry.2.push_str(args); }
+                                    if let Some(ref name) = func.name {
+                                        entry.1 = name.clone();
+                                    }
+                                    if let Some(ref args) = func.arguments {
+                                        entry.2.push_str(args);
+                                    }
                                 }
                             }
                         }
                         if let Some(ref reason) = choice.finish_reason {
                             if reason == "tool_calls" {
                                 for (_idx, (id, name, args)) in tool_call_state.drain() {
-                                    let input = serde_json::from_str(&args).unwrap_or(serde_json::json!({}));
+                                    let input = serde_json::from_str(&args)
+                                        .unwrap_or(serde_json::json!({}));
                                     let _ = tx.send(StreamEvent::ToolUse { id, name, input }).await;
                                 }
                             }
@@ -464,9 +515,7 @@ pub fn create_provider(
                 model_id.to_string(),
             )?))
         }
-        "bedrock" => {
-            Ok(Box::new(crate::bedrock::BedrockProvider::from_env()?))
-        }
+        "bedrock" => Ok(Box::new(crate::bedrock::BedrockProvider::from_env()?)),
         _ => Err(AmosError::Config(format!(
             "Unknown model provider: '{}'. Supported: openai, ollama, vllm, bedrock",
             provider_type

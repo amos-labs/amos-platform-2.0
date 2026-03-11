@@ -3,10 +3,7 @@
 //! Full CRUD for integrations, connections, credentials, operations,
 //! sync configs, and action execution.
 
-use crate::{
-    integrations::types::*,
-    state::AppState,
-};
+use crate::{integrations::types::*, state::AppState};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -24,7 +21,10 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/{id}", get(get_integration))
         .route("/{id}/operations", get(list_operations))
         // Connections
-        .route("/connections", get(list_connections).post(create_connection))
+        .route(
+            "/connections",
+            get(list_connections).post(create_connection),
+        )
         .route(
             "/connections/{id}",
             get(get_connection)
@@ -170,13 +170,12 @@ async fn create_connection(
     })?;
 
     // Fetch and return the created connection
-    let connection = sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM integration_connections WHERE id = $1",
-    )
-    .bind(connection_id)
-    .fetch_one(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let connection =
+        sqlx::query_as::<_, ConnectionRow>("SELECT * FROM integration_connections WHERE id = $1")
+            .bind(connection_id)
+            .fetch_one(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((StatusCode::CREATED, Json(connection)))
 }
@@ -185,14 +184,13 @@ async fn get_connection(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ConnectionRow>, StatusCode> {
-    let connection = sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM integration_connections WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let connection =
+        sqlx::query_as::<_, ConnectionRow>("SELECT * FROM integration_connections WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(connection))
 }
@@ -203,23 +201,23 @@ async fn update_connection(
     Json(body): Json<UpdateConnectionRequest>,
 ) -> Result<Json<ConnectionRow>, StatusCode> {
     // Check exists
-    sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM integration_connections WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, ConnectionRow>("SELECT * FROM integration_connections WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     // Update fields that are present
     if let Some(name) = &body.name {
-        sqlx::query("UPDATE integration_connections SET name = $1, updated_at = NOW() WHERE id = $2")
-            .bind(name)
-            .bind(id)
-            .execute(&state.db_pool)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        sqlx::query(
+            "UPDATE integration_connections SET name = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(name)
+        .bind(id)
+        .execute(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
     if let Some(config) = &body.config {
@@ -234,13 +232,12 @@ async fn update_connection(
     }
 
     // Fetch and return updated
-    let connection = sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM integration_connections WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_one(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let connection =
+        sqlx::query_as::<_, ConnectionRow>("SELECT * FROM integration_connections WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(connection))
 }
@@ -267,14 +264,12 @@ async fn test_connection(
     Path(id): Path<Uuid>,
 ) -> Result<Json<JsonValue>, StatusCode> {
     // Check connection exists
-    sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM integration_connections WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, ConnectionRow>("SELECT * FROM integration_connections WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     match state.api_executor.test_connection(id).await {
         Ok(result) => {
@@ -324,14 +319,12 @@ async fn execute_action(
     Json(body): Json<ExecuteActionRequest>,
 ) -> Result<Json<JsonValue>, StatusCode> {
     // Check connection exists
-    sqlx::query_as::<_, ConnectionRow>(
-        "SELECT * FROM integration_connections WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, ConnectionRow>("SELECT * FROM integration_connections WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     match state
         .api_executor
@@ -424,13 +417,12 @@ async fn create_sync_config(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let config = sqlx::query_as::<_, SyncConfigRow>(
-        "SELECT * FROM integration_sync_configs WHERE id = $1",
-    )
-    .bind(config_id)
-    .fetch_one(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let config =
+        sqlx::query_as::<_, SyncConfigRow>("SELECT * FROM integration_sync_configs WHERE id = $1")
+            .bind(config_id)
+            .fetch_one(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((StatusCode::CREATED, Json(config)))
 }
@@ -439,14 +431,13 @@ async fn get_sync_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<SyncConfigRow>, StatusCode> {
-    let config = sqlx::query_as::<_, SyncConfigRow>(
-        "SELECT * FROM integration_sync_configs WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let config =
+        sqlx::query_as::<_, SyncConfigRow>("SELECT * FROM integration_sync_configs WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(config))
 }
@@ -474,14 +465,12 @@ async fn trigger_sync(
     Json(_body): Json<TriggerSyncRequest>,
 ) -> Result<Json<JsonValue>, StatusCode> {
     // Check sync config exists
-    sqlx::query_as::<_, SyncConfigRow>(
-        "SELECT * FROM integration_sync_configs WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, SyncConfigRow>("SELECT * FROM integration_sync_configs WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     match state.etl_pipeline.run(id).await {
         Ok(result) => Ok(Json(

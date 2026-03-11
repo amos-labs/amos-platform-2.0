@@ -14,9 +14,7 @@ use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::revisions::{
-    CreateRevisionRequest, RevisionService, TemplateService,
-};
+use crate::revisions::{CreateRevisionRequest, RevisionService, TemplateService};
 use crate::state::AppState;
 
 // ── Query / Body types ──────────────────────────────────────────────────
@@ -50,7 +48,10 @@ struct RevertRequestBody {
 
 fn map_err(e: amos_core::AmosError) -> (StatusCode, Json<serde_json::Value>) {
     let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    (status, Json(json!({ "error": e.to_string(), "status": status.as_u16() })))
+    (
+        status,
+        Json(json!({ "error": e.to_string(), "status": status.as_u16() })),
+    )
 }
 
 // ── Revision handlers ───────────────────────────────────────────────────
@@ -169,7 +170,9 @@ async fn list_templates(
         .await
         .map_err(map_err)?;
 
-    Ok(Json(json!({ "templates": templates, "total": templates.len() })))
+    Ok(Json(
+        json!({ "templates": templates, "total": templates.len() }),
+    ))
 }
 
 async fn get_template(
@@ -202,7 +205,9 @@ async fn get_template_versions(
         .await
         .map_err(map_err)?;
 
-    Ok(Json(json!({ "versions": versions, "total": versions.len() })))
+    Ok(Json(
+        json!({ "versions": versions, "total": versions.len() }),
+    ))
 }
 
 async fn check_for_updates(

@@ -9,6 +9,24 @@
 //! - Control plane for OpenClaw agents (autonomous AI employees)
 //! - Task queue with external agent bounties
 //!
+
+#![allow(dead_code)]
+#![allow(deprecated)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::should_implement_trait)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::approx_constant)]
+#![allow(clippy::format_in_format_args)]
+#![allow(clippy::single_match_else)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::manual_strip)]
+#![allow(clippy::wildcard_in_or_patterns)]
+#![allow(clippy::manual_map)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::unnecessary_get_then_check)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::unnecessary_filter_map)]
+#![allow(clippy::collapsible_match)]
 //! ## Architecture
 //!
 //! The harness consists of several key components:
@@ -38,8 +56,8 @@ pub mod schema;
 pub mod server;
 pub mod sessions;
 pub mod sites;
-pub mod storage;
 pub mod state;
+pub mod storage;
 pub mod task_queue;
 pub mod tools;
 

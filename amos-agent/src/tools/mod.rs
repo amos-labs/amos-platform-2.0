@@ -11,17 +11,17 @@
 //! - **read_file**: Read a local file
 //! - **write_file**: Write content to a local file
 
-pub mod think;
+pub mod file_tools;
 pub mod memory_tools;
 pub mod plan;
+pub mod think;
 pub mod web_search;
-pub mod file_tools;
 
+use crate::memory::MemoryStore;
 use amos_core::types::ToolDefinition;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::memory::MemoryStore;
 
 /// All local tool definitions for the LLM.
 pub fn local_tool_definitions() -> Vec<ToolDefinition> {
@@ -64,8 +64,12 @@ pub async fn execute_local_tool(
 ) -> Result<String, String> {
     match name {
         "think" => Ok(think::execute(input)),
-        "remember" => memory_tools::remember(input, &ctx.memory).await.map_err(|e| e.to_string()),
-        "recall" => memory_tools::recall(input, &ctx.memory).await.map_err(|e| e.to_string()),
+        "remember" => memory_tools::remember(input, &ctx.memory)
+            .await
+            .map_err(|e| e.to_string()),
+        "recall" => memory_tools::recall(input, &ctx.memory)
+            .await
+            .map_err(|e| e.to_string()),
         "plan" => Ok(plan::execute(input)),
         "web_search" => web_search::execute(input, ctx.brave_api_key.as_deref()).await,
         "read_file" => file_tools::read_file(input, &ctx.work_dir),

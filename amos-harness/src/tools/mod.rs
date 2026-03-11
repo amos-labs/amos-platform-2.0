@@ -21,7 +21,7 @@ pub mod web_tools;
 
 use crate::integrations::{etl::EtlPipeline, executor::ApiExecutor};
 use crate::task_queue::TaskQueue;
-use amos_core::{AppConfig, AmosError, Result};
+use amos_core::{AmosError, AppConfig, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -160,7 +160,10 @@ impl ToolRegistry {
         let tool = self
             .tools
             .get(tool_name)
-            .ok_or_else(|| AmosError::NotFound { entity: "Tool".to_string(), id: tool_name.to_string() })?;
+            .ok_or_else(|| AmosError::NotFound {
+                entity: "Tool".to_string(),
+                id: tool_name.to_string(),
+            })?;
 
         tool.execute(params).await
     }
@@ -318,11 +321,19 @@ impl ToolRegistry {
         registry.register(Arc::new(site_tools::ListSitesTool::new(db_pool.clone())));
 
         // Register task queue tools (background tasks and bounties)
-        registry.register(Arc::new(task_tools::CreateTaskTool::new(task_queue.clone())));
-        registry.register(Arc::new(task_tools::CreateBountyTool::new(task_queue.clone())));
+        registry.register(Arc::new(task_tools::CreateTaskTool::new(
+            task_queue.clone(),
+        )));
+        registry.register(Arc::new(task_tools::CreateBountyTool::new(
+            task_queue.clone(),
+        )));
         registry.register(Arc::new(task_tools::ListTasksTool::new(task_queue.clone())));
-        registry.register(Arc::new(task_tools::GetTaskResultTool::new(task_queue.clone())));
-        registry.register(Arc::new(task_tools::CancelTaskTool::new(task_queue.clone())));
+        registry.register(Arc::new(task_tools::GetTaskResultTool::new(
+            task_queue.clone(),
+        )));
+        registry.register(Arc::new(task_tools::CancelTaskTool::new(
+            task_queue.clone(),
+        )));
 
         // Register document tools (export documents)
         registry.register(Arc::new(document_tools::GenerateDocumentTool::new(
@@ -432,10 +443,8 @@ mod tests {
 
     #[test]
     fn tool_result_success_with_metadata() {
-        let result = ToolResult::success_with_metadata(
-            json!({"items": []}),
-            json!({"total": 0, "page": 1}),
-        );
+        let result =
+            ToolResult::success_with_metadata(json!({"items": []}), json!({"total": 0, "page": 1}));
         assert!(result.success);
         assert!(result.data.is_some());
         assert!(result.metadata.is_some());

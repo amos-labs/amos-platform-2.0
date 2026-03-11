@@ -7,7 +7,7 @@
 //! - `list_templates`: List available templates
 //! - `check_template_updates`: Check if a subscribed template has updates
 
-use crate::revisions::{RevisionService, RevertRequest, TemplateService};
+use crate::revisions::{RevertRequest, RevisionService, TemplateService};
 use crate::tools::{Tool, ToolCategory, ToolResult};
 use amos_core::Result;
 use async_trait::async_trait;
@@ -71,15 +71,25 @@ impl Tool for ListRevisionsTool {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        let entity_id = match params["entity_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()) {
+        let entity_id = match params["entity_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
             Some(id) => id,
-            None => return Ok(ToolResult::error("Invalid or missing entity_id".to_string())),
+            None => {
+                return Ok(ToolResult::error(
+                    "Invalid or missing entity_id".to_string(),
+                ))
+            }
         };
         let limit = params["limit"].as_i64().unwrap_or(20);
         let offset = params["offset"].as_i64().unwrap_or(0);
 
         let service = RevisionService::new(self.db_pool.clone());
-        match service.list_revisions(&entity_type, entity_id, limit, offset).await {
+        match service
+            .list_revisions(&entity_type, entity_id, limit, offset)
+            .await
+        {
             Ok(response) => Ok(ToolResult::success(serde_json::json!({
                 "revisions": response.revisions,
                 "total": response.total,
@@ -141,9 +151,16 @@ impl Tool for GetRevisionTool {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        let entity_id = match params["entity_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()) {
+        let entity_id = match params["entity_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
             Some(id) => id,
-            None => return Ok(ToolResult::error("Invalid or missing entity_id".to_string())),
+            None => {
+                return Ok(ToolResult::error(
+                    "Invalid or missing entity_id".to_string(),
+                ))
+            }
         };
 
         let service = RevisionService::new(self.db_pool.clone());
@@ -158,7 +175,9 @@ impl Tool for GetRevisionTool {
         };
 
         match result {
-            Ok(Some(revision)) => Ok(ToolResult::success(serde_json::to_value(&revision).unwrap())),
+            Ok(Some(revision)) => Ok(ToolResult::success(
+                serde_json::to_value(&revision).unwrap(),
+            )),
             Ok(None) => Ok(ToolResult::error(format!(
                 "No revisions found for {} {}",
                 entity_type, entity_id
@@ -224,9 +243,16 @@ impl Tool for RevertEntityTool {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        let entity_id = match params["entity_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()) {
+        let entity_id = match params["entity_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
             Some(id) => id,
-            None => return Ok(ToolResult::error("Invalid or missing entity_id".to_string())),
+            None => {
+                return Ok(ToolResult::error(
+                    "Invalid or missing entity_id".to_string(),
+                ))
+            }
         };
         let target_version = match params["target_version"].as_i64() {
             Some(v) => v as i32,
@@ -361,16 +387,21 @@ impl Tool for CheckTemplateUpdatesTool {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        let entity_id = match params["entity_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()) {
+        let entity_id = match params["entity_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
             Some(id) => id,
-            None => return Ok(ToolResult::error("Invalid or missing entity_id".to_string())),
+            None => {
+                return Ok(ToolResult::error(
+                    "Invalid or missing entity_id".to_string(),
+                ))
+            }
         };
 
         let service = TemplateService::new(self.db_pool.clone());
         match service.check_for_updates(&entity_type, entity_id).await {
-            Ok(Some(result)) => Ok(ToolResult::success(
-                serde_json::to_value(&result).unwrap(),
-            )),
+            Ok(Some(result)) => Ok(ToolResult::success(serde_json::to_value(&result).unwrap())),
             Ok(None) => Ok(ToolResult::success(serde_json::json!({
                 "message": "Entity is not subscribed to any template",
                 "has_update": false,
@@ -540,7 +571,10 @@ mod tests {
         let tool = ListTemplatesTool::new(pool);
         let schema = tool.parameters_schema();
         let required = schema["required"].as_array().unwrap();
-        assert!(required.is_empty(), "list_templates should have no required fields");
+        assert!(
+            required.is_empty(),
+            "list_templates should have no required fields"
+        );
     }
 
     #[tokio::test]
@@ -577,7 +611,10 @@ mod tests {
         let pool = mock_pool();
         let tool = RevertEntityTool::new(pool);
         let schema = tool.parameters_schema();
-        assert!(schema["properties"]["reason"].is_object(), "Should have optional reason field");
+        assert!(
+            schema["properties"]["reason"].is_object(),
+            "Should have optional reason field"
+        );
         assert_eq!(schema["properties"]["reason"]["type"], "string");
     }
 
@@ -588,7 +625,8 @@ mod tests {
         for tool in all_tools() {
             let schema = tool.parameters_schema();
             assert_eq!(
-                schema["type"], "object",
+                schema["type"],
+                "object",
                 "Tool '{}' schema should be type: object",
                 tool.name()
             );
@@ -601,10 +639,13 @@ mod tests {
     async fn list_revisions_returns_error_on_invalid_uuid() {
         let pool = mock_pool();
         let tool = ListRevisionsTool::new(pool);
-        let result = tool.execute(json!({
-            "entity_type": "integration",
-            "entity_id": "not-a-uuid"
-        })).await.unwrap();
+        let result = tool
+            .execute(json!({
+                "entity_type": "integration",
+                "entity_id": "not-a-uuid"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(result.error.unwrap().contains("Invalid"));
@@ -614,9 +655,12 @@ mod tests {
     async fn get_revision_returns_error_on_missing_entity_id() {
         let pool = mock_pool();
         let tool = GetRevisionTool::new(pool);
-        let result = tool.execute(json!({
-            "entity_type": "integration"
-        })).await.unwrap();
+        let result = tool
+            .execute(json!({
+                "entity_type": "integration"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(result.error.unwrap().contains("Invalid"));
@@ -626,10 +670,13 @@ mod tests {
     async fn revert_entity_returns_error_on_missing_target_version() {
         let pool = mock_pool();
         let tool = RevertEntityTool::new(pool);
-        let result = tool.execute(json!({
-            "entity_type": "integration",
-            "entity_id": Uuid::new_v4().to_string()
-        })).await.unwrap();
+        let result = tool
+            .execute(json!({
+                "entity_type": "integration",
+                "entity_id": Uuid::new_v4().to_string()
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(result.error.unwrap().contains("Missing target_version"));
@@ -639,10 +686,13 @@ mod tests {
     async fn check_template_updates_returns_error_on_invalid_uuid() {
         let pool = mock_pool();
         let tool = CheckTemplateUpdatesTool::new(pool);
-        let result = tool.execute(json!({
-            "entity_type": "integration",
-            "entity_id": "bad"
-        })).await.unwrap();
+        let result = tool
+            .execute(json!({
+                "entity_type": "integration",
+                "entity_id": "bad"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.success);
         assert!(result.error.unwrap().contains("Invalid"));

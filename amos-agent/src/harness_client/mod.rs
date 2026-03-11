@@ -118,9 +118,10 @@ impl HarnessClient {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await.map_err(|e| {
-            AmosError::Internal(format!("Failed to register with harness: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to register with harness: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -149,9 +150,10 @@ impl HarnessClient {
 
     /// Send heartbeat to the harness.
     pub async fn heartbeat(&self) -> Result<()> {
-        let agent_id = self.agent_id.as_ref().ok_or_else(|| {
-            AmosError::Internal("Not registered".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| AmosError::Internal("Not registered".to_string()))?;
 
         let url = format!("{}/api/v1/agents/{}/heartbeat", self.base_url, agent_id);
         let mut request = self.http.post(&url);
@@ -159,9 +161,10 @@ impl HarnessClient {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await.map_err(|e| {
-            AmosError::Internal(format!("Heartbeat failed: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Heartbeat failed: {e}")))?;
 
         if !response.status().is_success() {
             warn!("Heartbeat failed: {}", response.status());
@@ -172,9 +175,10 @@ impl HarnessClient {
 
     /// Poll for available tasks.
     pub async fn poll_tasks(&self) -> Result<Vec<TaskAssignment>> {
-        let agent_id = self.agent_id.as_ref().ok_or_else(|| {
-            AmosError::Internal("Not registered".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| AmosError::Internal("Not registered".to_string()))?;
 
         let url = format!("{}/api/v1/agents/{}/tasks", self.base_url, agent_id);
         let mut request = self.http.get(&url);
@@ -182,26 +186,34 @@ impl HarnessClient {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await.map_err(|e| {
-            AmosError::Internal(format!("Task poll failed: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Task poll failed: {e}")))?;
 
         if !response.status().is_success() {
             return Ok(Vec::new());
         }
 
-        let tasks: Vec<TaskAssignment> = response.json().await.map_err(|e| {
-            AmosError::Internal(format!("Failed to parse tasks: {e}"))
-        })?;
+        let tasks: Vec<TaskAssignment> = response
+            .json()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to parse tasks: {e}")))?;
 
         Ok(tasks)
     }
 
     /// Execute a tool on the harness.
-    pub async fn execute_tool(&self, tool_name: &str, input: serde_json::Value, task_id: Option<&str>) -> Result<ToolExecutionResponse> {
-        let agent_id = self.agent_id.as_ref().ok_or_else(|| {
-            AmosError::Internal("Not registered".to_string())
-        })?;
+    pub async fn execute_tool(
+        &self,
+        tool_name: &str,
+        input: serde_json::Value,
+        task_id: Option<&str>,
+    ) -> Result<ToolExecutionResponse> {
+        let agent_id = self
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| AmosError::Internal("Not registered".to_string()))?;
 
         let url = format!("{}/api/v1/agents/{}/tools/execute", self.base_url, agent_id);
         let req = ToolExecutionRequest {
@@ -215,9 +227,10 @@ impl HarnessClient {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await.map_err(|e| {
-            AmosError::Internal(format!("Tool execution request failed: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Tool execution request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -227,16 +240,18 @@ impl HarnessClient {
             )));
         }
 
-        response.json().await.map_err(|e| {
-            AmosError::Internal(format!("Failed to parse tool result: {e}"))
-        })
+        response
+            .json()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to parse tool result: {e}")))
     }
 
     /// Report task result to the harness.
     pub async fn report_result(&self, task_id: &str, result: TaskResult) -> Result<()> {
-        let agent_id = self.agent_id.as_ref().ok_or_else(|| {
-            AmosError::Internal("Not registered".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| AmosError::Internal("Not registered".to_string()))?;
 
         let url = format!(
             "{}/api/v1/agents/{}/tasks/{}/result",
@@ -248,9 +263,10 @@ impl HarnessClient {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await.map_err(|e| {
-            AmosError::Internal(format!("Failed to report result: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AmosError::Internal(format!("Failed to report result: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -291,13 +307,11 @@ mod tests {
     #[test]
     fn test_harness_tool_schemas() {
         let mut client = HarnessClient::new("http://localhost:3000", None);
-        client.harness_tools = vec![
-            HarnessTool {
-                name: "get_time".to_string(),
-                description: "Get current time".to_string(),
-                input_schema: serde_json::json!({"type": "object"}),
-            },
-        ];
+        client.harness_tools = vec![HarnessTool {
+            name: "get_time".to_string(),
+            description: "Get current time".to_string(),
+            input_schema: serde_json::json!({"type": "object"}),
+        }];
 
         let schemas = client.harness_tool_schemas();
         assert_eq!(schemas.len(), 1);

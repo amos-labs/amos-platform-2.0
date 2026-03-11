@@ -144,11 +144,12 @@ pub fn calculate_bounty_award(
         })?;
 
     // The denominator includes this bounty's points
-    let total_points = total_points_today
-        .checked_add(adjusted_points)
-        .ok_or(AmosError::ArithmeticOverflow {
-            context: "total points accumulation".into(),
-        })?;
+    let total_points =
+        total_points_today
+            .checked_add(adjusted_points)
+            .ok_or(AmosError::ArithmeticOverflow {
+                context: "total points accumulation".into(),
+            })?;
 
     // Calculate token award from remaining emission pool
     let remaining_emission = daily_emission.saturating_sub(tokens_already_distributed_today);
@@ -226,7 +227,7 @@ mod tests {
         let award = calculate_bounty_award(
             100,
             ContributionType::Feature,
-            0,   // first bounty today
+            0, // first bounty today
             16_000,
             0,
         )
@@ -240,14 +241,8 @@ mod tests {
 
     #[test]
     fn infra_gets_130_percent_multiplier() {
-        let award = calculate_bounty_award(
-            100,
-            ContributionType::Infrastructure,
-            0,
-            16_000,
-            0,
-        )
-        .unwrap();
+        let award =
+            calculate_bounty_award(100, ContributionType::Infrastructure, 0, 16_000, 0).unwrap();
         assert_eq!(award.adjusted_points, 130); // 130% of 100
     }
 

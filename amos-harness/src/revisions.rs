@@ -342,9 +342,9 @@ impl RevisionService {
                     }
                 }
 
-                let changed_empty = diff["changed"].as_object().map_or(true, |o| o.is_empty());
-                let added_empty = diff["added"].as_object().map_or(true, |o| o.is_empty());
-                let removed_empty = diff["removed"].as_object().map_or(true, |o| o.is_empty());
+                let changed_empty = diff["changed"].as_object().is_none_or(|o| o.is_empty());
+                let added_empty = diff["added"].as_object().is_none_or(|o| o.is_empty());
+                let removed_empty = diff["removed"].as_object().is_none_or(|o| o.is_empty());
 
                 if changed_empty && added_empty && removed_empty {
                     None
@@ -402,11 +402,7 @@ impl TemplateService {
     }
 
     /// Get a specific template by entity_type and slug.
-    pub async fn get_template(
-        &self,
-        entity_type: &str,
-        slug: &str,
-    ) -> Result<TemplateRegistryRow> {
+    pub async fn get_template(&self, entity_type: &str, slug: &str) -> Result<TemplateRegistryRow> {
         sqlx::query_as::<_, TemplateRegistryRow>(
             "SELECT * FROM template_registry WHERE entity_type = $1 AND slug = $2",
         )
@@ -637,7 +633,10 @@ mod tests {
         let hash_a = RevisionService::compute_content_hash(&snap_a);
         let hash_b = RevisionService::compute_content_hash(&snap_b);
 
-        assert_ne!(hash_a, hash_b, "Different snapshots must have different hashes");
+        assert_ne!(
+            hash_a, hash_b,
+            "Different snapshots must have different hashes"
+        );
     }
 
     #[test]
@@ -646,7 +645,10 @@ mod tests {
         let hash = RevisionService::compute_content_hash(&empty);
         assert_eq!(hash.len(), 64);
         // Should be deterministic
-        assert_eq!(hash, RevisionService::compute_content_hash(&serde_json::json!({})));
+        assert_eq!(
+            hash,
+            RevisionService::compute_content_hash(&serde_json::json!({}))
+        );
     }
 
     #[test]
@@ -675,7 +677,9 @@ mod tests {
     fn hash_is_lowercase_hex() {
         let snap = serde_json::json!({"key": "value"});
         let hash = RevisionService::compute_content_hash(&snap);
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(hash
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     }
 
     // ── Diff Tests ──────────────────────────────────────────────────────
@@ -784,8 +788,14 @@ mod tests {
 
         let diff = RevisionService::compute_diff(&old, &new).unwrap();
         assert!(diff["changed"]["config"].is_object());
-        assert_eq!(diff["changed"]["config"]["old"], serde_json::json!({"a": 1, "b": 2}));
-        assert_eq!(diff["changed"]["config"]["new"], serde_json::json!({"a": 1, "b": 3}));
+        assert_eq!(
+            diff["changed"]["config"]["old"],
+            serde_json::json!({"a": 1, "b": 2})
+        );
+        assert_eq!(
+            diff["changed"]["config"]["new"],
+            serde_json::json!({"a": 1, "b": 3})
+        );
     }
 
     #[test]
@@ -794,8 +804,14 @@ mod tests {
         let new = serde_json::json!({"features": ["a", "b", "c"]});
 
         let diff = RevisionService::compute_diff(&old, &new).unwrap();
-        assert_eq!(diff["changed"]["features"]["old"], serde_json::json!(["a", "b"]));
-        assert_eq!(diff["changed"]["features"]["new"], serde_json::json!(["a", "b", "c"]));
+        assert_eq!(
+            diff["changed"]["features"]["old"],
+            serde_json::json!(["a", "b"])
+        );
+        assert_eq!(
+            diff["changed"]["features"]["new"],
+            serde_json::json!(["a", "b", "c"])
+        );
     }
 
     #[test]

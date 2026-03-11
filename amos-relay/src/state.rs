@@ -34,7 +34,7 @@ impl RelayState {
             .max_connections(config.database.pool_size)
             .connect(config.database.url.expose_secret())
             .await
-            .map_err(|e| AmosError::Database(e.into()))?;
+            .map_err(AmosError::Database)?;
         info!("PostgreSQL connection pool established");
 
         // Connect to Redis
@@ -47,19 +47,17 @@ impl RelayState {
         info!("Redis connection established");
 
         // Initialize Solana client (optional, may fail in dev)
-        let solana = match SolanaClient::new(
-            &config.solana.rpc_url,
-            &config.solana.bounty_program_id,
-        ) {
-            Ok(client) => {
-                info!("Solana client initialized: {}", config.solana.rpc_url);
-                Some(Arc::new(client))
-            }
-            Err(e) => {
-                warn!("Solana client initialization failed (optional): {}", e);
-                None
-            }
-        };
+        let solana =
+            match SolanaClient::new(&config.solana.rpc_url, &config.solana.bounty_program_id) {
+                Ok(client) => {
+                    info!("Solana client initialized: {}", config.solana.rpc_url);
+                    Some(Arc::new(client))
+                }
+                Err(e) => {
+                    warn!("Solana client initialization failed (optional): {}", e);
+                    None
+                }
+            };
 
         Ok(Self {
             db,
@@ -86,7 +84,7 @@ impl RelayState {
         sqlx::query("SELECT 1")
             .execute(&self.db)
             .await
-            .map_err(|e| AmosError::Database(e.into()))?;
+            .map_err(AmosError::Database)?;
 
         // Check Redis
         use redis::AsyncCommands;
