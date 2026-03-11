@@ -2,7 +2,6 @@
 members = [
     "amos-core",
     "amos-harness",
-    "amos-platform",
     "amos-relay",
     "amos-cli",
     "amos-agent",

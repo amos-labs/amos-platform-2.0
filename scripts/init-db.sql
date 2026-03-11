@@ -13,16 +13,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 SELECT 'CREATE DATABASE amos_harness_dev'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'amos_harness_dev')\gexec
 
--- Create the platform database (if it doesn't already exist)
-SELECT 'CREATE DATABASE amos_platform_dev'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'amos_platform_dev')\gexec
-
 -- Enable pgvector on the harness database
 \c amos_harness_dev
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- Enable pgvector on the platform database
-\c amos_platform_dev
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Create the relay database (if it doesn't already exist)
