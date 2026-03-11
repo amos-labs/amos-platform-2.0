@@ -7,28 +7,28 @@ AMOS provides a per-customer AI harness (the "operating system") that hosts tool
 ## Architecture
 
 ```
-amos-automate/
+amos-automate/               (this repo)
 ├── amos-core       Shared types, config, errors, token economics
 ├── amos-harness    Per-customer OS (tools, canvas engine, schemas, sites, agent registry)
 ├── amos-agent      Default autonomous agent (Bedrock, model registry, task consumer)
 ├── amos-relay      Network relay (bounty marketplace, agent directory, reputation oracle)
-├── amos-platform   Multi-tenant control plane (provisioning, billing, governance)
-├── amos-cli        Command-line interface for both harness and platform
+├── amos-cli        Command-line interface
 ├── amos-solana/    On-chain programs (treasury, bounties, governance) -- built via Anchor
-├── docker/         Production Dockerfiles (harness, platform, agent, relay)
+├── docker/         Production Dockerfiles (harness, agent, relay)
 └── docs/           Whitepaper, token economics
 ```
 
-### 4-Layer Architecture
+> **Note:** The managed hosting platform (`amos-platform`) has been extracted to its own repository: [amos-labs/amos-managed-platform](https://github.com/amos-labs/amos-managed-platform). It is a separate product with its own deployment lifecycle.
+
+### 3-Layer Open Architecture + Platform
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Layer 4: amos-platform                   │
-│              (multi-tenant control plane)                    │
-│      provisioning · billing · governance · sync API          │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ HTTP (heartbeat, config, usage)
-┌───────────────────────▼─────────────────────────────────────┐
+┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+  Layer 4: amos-platform  (separate repo)
+│ provisioning · billing · governance · sync API               │
+└ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┬ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+                          │ HTTP (heartbeat, config, usage)
+┌─────────────────────────▼───────────────────────────────────┐
 │                     Layer 3: amos-relay                      │
 │            (network marketplace - monetized layer)           │
 │   bounty marketplace · agent directory · reputation oracle   │
@@ -88,11 +88,11 @@ amos-automate/
 - Fee split: 70% staked token holders / 20% treasury (governance-controlled) / 10% ops+burn
 - Optional layer -- harnesses run standalone without relay
 
-**Layer 4: Platform** (managed hosting)
+**Layer 4: Platform** (managed hosting -- [separate repo](https://github.com/amos-labs/amos-managed-platform))
 - Multi-tenant provisioning and orchestration
 - Billing infrastructure
 - Governance and compliance
-- Separate business model from relay tokenomics
+- Separate deployment lifecycle and business model from the open-source layers
 
 ## Quick Start
 
@@ -109,46 +109,39 @@ amos-automate/
 # Build the workspace
 cargo build
 
-# Run tests (~300 tests)
+# Run tests
 cargo test --workspace
 
 # Run the harness (terminal 1)
 AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_dev \
   cargo run --bin amos-harness
-# → http://localhost:3000
+# -> http://localhost:3000
 
 # Run the relay (terminal 2)
 AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_relay_dev \
   AMOS__SERVER__PORT=4100 \
   cargo run --bin amos-relay
-# → http://localhost:4100
+# -> http://localhost:4100
 
-# Run the platform (terminal 3)
-AMOS__DATABASE__URL=postgres://user@localhost:5432/amos_platform_dev \
-  AMOS__SERVER__PORT=4000 \
-  cargo run --bin amos-platform
-# → http://localhost:4000
-
-# Run the agent (terminal 4)
+# Run the agent (terminal 3)
 cargo run --bin amos-agent
-# → Interactive mode, type messages to chat
+# -> Interactive mode, type messages to chat
 
 # Or in service mode (HTTP API + task consumer):
 AMOS_SERVE=true cargo run --bin amos-agent
-# → http://localhost:3100 (auto-registers with harness)
+# -> http://localhost:3100 (auto-registers with harness)
 ```
 
 ### Docker Development
 
 ```bash
-# Start everything (postgres, redis, localstack, platform, relay, harness, agent)
+# Start everything (postgres, redis, localstack, harness, relay, agent)
 docker compose up --build
 
 # Check services:
-# - Platform: http://localhost:4000/health
-# - Relay: http://localhost:4100/health
 # - Harness: http://localhost:3000/health
-# - Agent: http://localhost:3100/health
+# - Relay:   http://localhost:4100/health
+# - Agent:   http://localhost:3100/health
 
 # Or just infrastructure
 docker compose up postgres redis -d
@@ -223,7 +216,7 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 
 ## Deployment Modes
 
-**Managed** (default): AMOS provisions and manages harness containers. Relay integration enabled by default for bounty marketplace access. Protocol fees (3%) on bounty payouts fund the token economy.
+**Managed** (default): Harnesses are provisioned and managed by the [AMOS Platform](https://github.com/amos-labs/amos-managed-platform). Relay integration enabled by default for bounty marketplace access. Protocol fees (3%) on bounty payouts fund the token economy.
 
 **Self-Hosted**: Customers run AMOS on their own infrastructure with their own models. No compute costs to AMOS. Supports air-gapped operation. Relay integration is optional.
 
@@ -236,6 +229,12 @@ The harness (Layer 2) and default agent (Layer 1) are 100% open source (Apache-2
 AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixed supply.
 
 See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full specification.
+
+## Related Repositories
+
+| Repository | Description |
+|------------|-------------|
+| [amos-labs/amos-managed-platform](https://github.com/amos-labs/amos-managed-platform) | Managed hosting platform (billing, governance, provisioning) |
 
 ## License
 

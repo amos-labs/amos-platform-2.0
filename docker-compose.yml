@@ -271,7 +271,7 @@ networks:
 # - SOLANA_NETWORK=devnet
 # - CUSTOMER_ID=dev-customer-001
 # - CUSTOMER_NAME=Development Customer
-# - PLATFORM_API_KEY=dev_api_key_change_in_prod
+# - RELAY_API_KEY=dev_relay_key_change_in_prod
 #
 # Usage:
 # ======
@@ -280,11 +280,9 @@ networks:
 # 3. Set Solana program IDs (or deploy test programs)
 # 4. Run: docker compose up -d
 # 5. Check services:
-#    - Platform: http://localhost:4000/health
 #    - Harness: http://localhost:3000/health
 #    - Agent: http://localhost:3100/health
 #    - Relay: http://localhost:4100/health
-#    - Platform gRPC: localhost:4001
 # 6. View logs: docker compose logs -f
 # 7. Stop: docker compose down
 #
@@ -292,16 +290,15 @@ networks:
 # ==========
 # cargo run --bin amos health
 # cargo run --bin amos harness status
-# cargo run --bin amos platform status
-# cargo run --bin amos platform token stats
+# cargo run --bin amos relay status
 # cargo run --bin amos config show
 #
 # Production Notes:
 # =================
 # - This setup is NOT for production
-# - In production, deploy harness and platform separately
+# - In production, deploy harness, relay, and agent separately
 # - Each customer harness gets its own postgres/redis
-# - Platform has its own postgres/redis
+# - Platform is a separate repo (amos-managed-platform)
 # - Use managed databases (RDS, ElastiCache)
 # - Set strong passwords and proper secrets
 # - Enable TLS/SSL
