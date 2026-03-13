@@ -507,6 +507,17 @@ pub fn create_provider(
     api_key: Option<&str>,
 ) -> Result<Box<dyn ModelProvider>> {
     match provider_type {
+        "anthropic" => {
+            let base = api_base.unwrap_or("https://api.anthropic.com/v1");
+            let key = api_key.ok_or_else(|| {
+                AmosError::Config("Anthropic provider requires an API key".to_string())
+            })?;
+            Ok(Box::new(crate::anthropic::AnthropicProvider::new(
+                base.to_string(),
+                key.to_string(),
+                model_id.to_string(),
+            )?))
+        }
         "openai" | "ollama" | "vllm" => {
             let base = api_base.unwrap_or("https://api.openai.com/v1");
             Ok(Box::new(OpenAiProvider::new(
@@ -517,7 +528,7 @@ pub fn create_provider(
         }
         "bedrock" => Ok(Box::new(crate::bedrock::BedrockProvider::from_env()?)),
         _ => Err(AmosError::Config(format!(
-            "Unknown model provider: '{}'. Supported: openai, ollama, vllm, bedrock",
+            "Unknown model provider: '{}'. Supported: anthropic, openai, ollama, vllm, bedrock",
             provider_type
         ))),
     }

@@ -1,10 +1,12 @@
 //! HTTP routes and WebSocket handlers
 
+pub mod agent_proxy;
 pub mod bots;
 pub mod canvas;
 pub mod credentials;
 pub mod health;
 pub mod integrations;
+pub mod llm_providers;
 pub mod revisions;
 pub mod sites;
 pub mod uploads;
@@ -29,6 +31,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .route("/c/{slug}", get(canvas::serve_public_canvas))
         // OpenClaw agent management routes
         .nest("/api/v1/agents", bots::routes(state.clone()))
+        // Agent proxy routes (forward chat to agent sidecar service)
+        .nest("/api/v1/agent", agent_proxy::routes(state.clone()))
         // Upload routes (25 MB body limit for file uploads)
         .nest(
             "/api/v1/uploads",
@@ -38,6 +42,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/integrations", integrations::routes(state.clone()))
         // Credential vault routes (Secure Input Canvas target)
         .nest("/api/v1/credentials", credentials::routes(state.clone()))
+        // LLM Provider routes (BYOK - Bring Your Own Key)
+        .nest("/api/v1/llm-providers", llm_providers::routes(state.clone()))
         // Revision and template routes
         .nest("/api/v1", revisions::routes(state.clone()))
         // Site management routes

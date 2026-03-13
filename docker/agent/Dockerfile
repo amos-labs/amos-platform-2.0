@@ -12,13 +12,12 @@ COPY Cargo.toml Cargo.lock ./
 # Copy all workspace crate sources (cargo requires all members for workspace resolution)
 COPY amos-core ./amos-core
 COPY amos-harness ./amos-harness
-COPY amos-platform ./amos-platform
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay
 
 # Build only the agent binary
-RUN cargo build --release --bin amos-agent
+RUN SQLX_OFFLINE=true cargo build --release --bin amos-agent
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
@@ -49,5 +48,5 @@ EXPOSE 3100
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3100/health || exit 1
 
-# Run the agent
-CMD ["amos-agent"]
+# Run the agent in service mode (HTTP API + task consumer)
+CMD ["amos-agent", "--serve"]

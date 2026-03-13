@@ -55,6 +55,13 @@ impl BedrockProvider {
             return Ok(Self::new(region, access_key, secret_key, session_token));
         }
 
+        // Try ECS container credentials (task role) via the metadata endpoint
+        if let Ok(relative_uri) = std::env::var("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") {
+            if let Ok(creds) = load_ecs_container_credentials(&relative_uri) {
+                return Ok(Self::new(region, creds.0, creds.1, creds.2));
+            }
+        }
+
         // Try loading from ~/.aws/credentials
         let profile = std::env::var("AWS_PROFILE").unwrap_or_else(|_| "default".to_string());
         if let Ok(credentials) = load_credentials_from_file(&profile) {
@@ -67,7 +74,7 @@ impl BedrockProvider {
         }
 
         Err(AmosError::Config(
-            "AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or configure ~/.aws/credentials".to_string()
+            "AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, configure ~/.aws/credentials, or run in ECS with a task role".to_string()
         ))
     }
 
@@ -408,12 +415,19 @@ impl ModelProvider for BedrockProvider {
     ) -> Result<mpsc::Receiver<StreamEvent>> {
         let (tx, rx) = mpsc::channel(100);
 
-        // Percent-encode the model ID for URL
+        // Percent-encode the model ID for the URL path
         let encoded_model_id = percent_encode(model_id);
-        let canonical_uri = format!("/model/{}/converse-stream", encoded_model_id);
+        // The URL we send to reqwest — use percent-encoded model ID
         let url = format!(
-            "https://bedrock-runtime.{}.amazonaws.com{}",
-            self.region, canonical_uri
+            "https://bedrock-runtime.{}.amazonaws.com/model/{}/converse-stream",
+            self.region, encoded_model_id
+        );
+        // For SigV4, the canonical URI must be URI-normalized.
+        // AWS re-encodes percent-encoded chars in the canonical URI, so %3A becomes %253A.
+        // We need the canonical URI to match what AWS will compute.
+        let canonical_uri = format!(
+            "/model/{}/converse-stream",
+            percent_encode(&encoded_model_id)
         );
 
         // Build request body
@@ -699,6 +713,49 @@ fn parse_headers(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
     }
 
     Ok(headers)
+}
+
+/// Load credentials from ECS container metadata endpoint (task role).
+/// ECS Fargate sets AWS_CONTAINER_CREDENTIALS_RELATIVE_URI automatically.
+fn load_ecs_container_credentials(
+    relative_uri: &str,
+) -> Result<(String, String, Option<String>)> {
+    let url = format!("http://169.254.170.2{}", relative_uri);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| AmosError::Internal(format!("HTTP client error: {}", e)))?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .map_err(|e| AmosError::Internal(format!("ECS metadata request failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AmosError::Internal(format!(
+            "ECS metadata returned status {}",
+            resp.status()
+        )));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .map_err(|e| AmosError::Internal(format!("ECS metadata parse error: {}", e)))?;
+
+    let access_key = body["AccessKeyId"]
+        .as_str()
+        .ok_or_else(|| AmosError::Internal("Missing AccessKeyId in ECS metadata".to_string()))?
+        .to_string();
+    let secret_key = body["SecretAccessKey"]
+        .as_str()
+        .ok_or_else(|| {
+            AmosError::Internal("Missing SecretAccessKey in ECS metadata".to_string())
+        })?
+        .to_string();
+    let session_token = body["Token"].as_str().map(|s| s.to_string());
+
+    tracing::info!("Loaded AWS credentials from ECS task role");
+    Ok((access_key, secret_key, session_token))
 }
 
 fn load_credentials_from_file(profile: &str) -> Result<(String, String, Option<String>)> {

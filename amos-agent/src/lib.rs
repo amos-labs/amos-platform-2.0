@@ -31,6 +31,7 @@
 
 pub mod agent_card;
 pub mod agent_loop;
+pub mod anthropic;
 pub mod bedrock;
 pub mod config;
 pub mod harness_client;

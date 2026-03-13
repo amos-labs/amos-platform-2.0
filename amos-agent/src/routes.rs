@@ -44,6 +44,18 @@ pub struct ChatRequest {
     pub message: String,
     #[serde(default)]
     pub session_id: Option<String>,
+    /// BYOK: provider type override (e.g. "anthropic", "openai")
+    #[serde(default)]
+    pub provider_type: Option<String>,
+    /// BYOK: API base URL override
+    #[serde(default)]
+    pub api_base: Option<String>,
+    /// BYOK: API key override
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// BYOK: model ID override
+    #[serde(default)]
+    pub model_id: Option<String>,
 }
 
 /// Chat response for non-streaming mode.
@@ -78,15 +90,42 @@ async fn chat_sse(
     State(state): State<AgentState>,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, axum::Error>>>, StatusCode> {
-    info!(message_len = req.message.len(), "Chat request received");
+    info!(message_len = req.message.len(), provider = ?req.provider_type, "Chat request received");
 
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<AgentEvent>(100);
 
-    // Clone what we need for the spawned task
-    let provider = state.provider.clone();
+    // If BYOK provider config is supplied, create a per-request provider.
+    // Otherwise fall back to the default provider from startup config.
+    let provider: Arc<dyn crate::provider::ModelProvider> =
+        if let Some(ref provider_type) = req.provider_type {
+            match crate::provider::create_provider(
+                provider_type,
+                req.model_id.as_deref().unwrap_or(""),
+                req.api_base.as_deref(),
+                req.api_key.as_deref(),
+            ) {
+                Ok(p) => {
+                    info!(provider = %provider_type, "Using BYOK provider for this request");
+                    Arc::from(p)
+                }
+                Err(e) => {
+                    error!("Failed to create BYOK provider: {e}");
+                    // Fall back to default
+                    state.provider.clone()
+                }
+            }
+        } else {
+            state.provider.clone()
+        };
+
+    // Override model_id in loop config if provided
+    let mut loop_config = state.loop_config.clone();
+    if let Some(ref model_id) = req.model_id {
+        loop_config.model_id = model_id.clone();
+    }
+
     let tool_ctx = state.tool_ctx.clone();
     let harness = state.harness.clone();
-    let loop_config = state.loop_config.clone();
     let message = req.message.clone();
 
     // Run the agent loop in a background task
