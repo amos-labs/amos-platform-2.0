@@ -122,11 +122,10 @@ async fn create_provider(
     let provider_id = Uuid::new_v4();
 
     // Check if there are any existing providers - if not, auto-activate this one
-    let existing_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM llm_providers")
-            .fetch_one(&state.db_pool)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let existing_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM llm_providers")
+        .fetch_one(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let should_activate = existing_count.0 == 0;
 
     sqlx::query(
@@ -149,13 +148,11 @@ async fn create_provider(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let row = sqlx::query_as::<_, LlmProviderRow>(
-        "SELECT * FROM llm_providers WHERE id = $1",
-    )
-    .bind(provider_id)
-    .fetch_one(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row = sqlx::query_as::<_, LlmProviderRow>("SELECT * FROM llm_providers WHERE id = $1")
+        .bind(provider_id)
+        .fetch_one(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     tracing::info!(
         provider = %body.name,
@@ -176,14 +173,13 @@ async fn update_provider(
     // If a new API key is provided, update the credential vault
     if let Some(ref api_key) = body.api_key {
         // Get current provider to find its name and credential_id
-        let current: (String, Option<Uuid>) = sqlx::query_as(
-            "SELECT name, credential_id FROM llm_providers WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_optional(&state.db_pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        let current: (String, Option<Uuid>) =
+            sqlx::query_as("SELECT name, credential_id FROM llm_providers WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&state.db_pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .ok_or(StatusCode::NOT_FOUND)?;
 
         let (name, old_cred_id) = current;
 
@@ -265,13 +261,11 @@ async fn update_provider(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
-    let row = sqlx::query_as::<_, LlmProviderRow>(
-        "SELECT * FROM llm_providers WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_one(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    let row = sqlx::query_as::<_, LlmProviderRow>("SELECT * FROM llm_providers WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok(Json(row))
 }
@@ -316,13 +310,11 @@ async fn activate_provider(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let row = sqlx::query_as::<_, LlmProviderRow>(
-        "SELECT * FROM llm_providers WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_one(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    let row = sqlx::query_as::<_, LlmProviderRow>("SELECT * FROM llm_providers WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     tracing::info!(provider = %row.name, model = %row.default_model, "LLM provider activated");
 
@@ -335,16 +327,16 @@ async fn test_provider(
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Get provider config and decrypt the API key
-    let provider = sqlx::query_as::<_, LlmProviderRow>(
-        "SELECT * FROM llm_providers WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let provider = sqlx::query_as::<_, LlmProviderRow>("SELECT * FROM llm_providers WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
-    let credential_id = provider.credential_id.ok_or(StatusCode::UNPROCESSABLE_ENTITY)?;
+    let credential_id = provider
+        .credential_id
+        .ok_or(StatusCode::UNPROCESSABLE_ENTITY)?;
     let api_key = credentials::decrypt_credential(&state.db_pool, &state.vault, credential_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -354,7 +346,10 @@ async fn test_provider(
     let test_result = match provider.name.as_str() {
         "anthropic" => {
             let resp = client
-                .post(format!("{}/messages", provider.api_base.trim_end_matches('/')))
+                .post(format!(
+                    "{}/messages",
+                    provider.api_base.trim_end_matches('/')
+                ))
                 .header("x-api-key", &api_key)
                 .header("anthropic-version", "2023-06-01")
                 .header("content-type", "application/json")
@@ -447,13 +442,12 @@ async fn delete_provider(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     // Revoke associated credential
-    let cred_id: Option<(Option<Uuid>,)> = sqlx::query_as(
-        "SELECT credential_id FROM llm_providers WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let cred_id: Option<(Option<Uuid>,)> =
+        sqlx::query_as("SELECT credential_id FROM llm_providers WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some((Some(cred_id),)) = cred_id {
         let _ = sqlx::query(
@@ -507,8 +501,8 @@ pub async fn get_active_provider(
         .credential_id
         .ok_or(StatusCode::UNPROCESSABLE_ENTITY)?;
 
-    let api_key = credentials::decrypt_credential(&state.db_pool, &state.vault, credential_id)
-        .await?;
+    let api_key =
+        credentials::decrypt_credential(&state.db_pool, &state.vault, credential_id).await?;
 
     Ok(Json(ActiveProviderResponse {
         provider_type: provider.name,

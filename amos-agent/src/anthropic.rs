@@ -269,10 +269,7 @@ impl ModelProvider for AnthropicProvider {
             stream: true,
         };
 
-        let endpoint = format!(
-            "{}/messages",
-            self.api_base.trim_end_matches('/')
-        );
+        let endpoint = format!("{}/messages", self.api_base.trim_end_matches('/'));
 
         let response = self
             .http_client
@@ -443,9 +440,7 @@ async fn parse_anthropic_sse(
                                 let input = serde_json::from_str(&current_tool_json)
                                     .unwrap_or(serde_json::json!({}));
                                 current_tool_json.clear();
-                                let _ = tx
-                                    .send(StreamEvent::ToolUse { id, name, input })
-                                    .await;
+                                let _ = tx.send(StreamEvent::ToolUse { id, name, input }).await;
                             }
                         }
                         "message_delta" => {

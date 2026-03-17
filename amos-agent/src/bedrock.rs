@@ -717,9 +717,7 @@ fn parse_headers(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
 
 /// Load credentials from ECS container metadata endpoint (task role).
 /// ECS Fargate sets AWS_CONTAINER_CREDENTIALS_RELATIVE_URI automatically.
-fn load_ecs_container_credentials(
-    relative_uri: &str,
-) -> Result<(String, String, Option<String>)> {
+fn load_ecs_container_credentials(relative_uri: &str) -> Result<(String, String, Option<String>)> {
     let url = format!("http://169.254.170.2{}", relative_uri);
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
@@ -748,9 +746,7 @@ fn load_ecs_container_credentials(
         .to_string();
     let secret_key = body["SecretAccessKey"]
         .as_str()
-        .ok_or_else(|| {
-            AmosError::Internal("Missing SecretAccessKey in ECS metadata".to_string())
-        })?
+        .ok_or_else(|| AmosError::Internal("Missing SecretAccessKey in ECS metadata".to_string()))?
         .to_string();
     let session_token = body["Token"].as_str().map(|s| s.to_string());
 

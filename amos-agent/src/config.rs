@@ -28,11 +28,7 @@ pub struct Cli {
     pub model_provider: String,
 
     /// Model ID to use (e.g. "claude-sonnet-4-6" or "gpt-4o")
-    #[arg(
-        long,
-        env = "AMOS_MODEL_ID",
-        default_value = "claude-sonnet-4-6"
-    )]
+    #[arg(long, env = "AMOS_MODEL_ID", default_value = "claude-sonnet-4-6")]
     pub model_id: String,
 
     /// OpenAI-compatible API base URL (for non-Bedrock providers)

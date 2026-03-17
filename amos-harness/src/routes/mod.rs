@@ -43,7 +43,10 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         // Credential vault routes (Secure Input Canvas target)
         .nest("/api/v1/credentials", credentials::routes(state.clone()))
         // LLM Provider routes (BYOK - Bring Your Own Key)
-        .nest("/api/v1/llm-providers", llm_providers::routes(state.clone()))
+        .nest(
+            "/api/v1/llm-providers",
+            llm_providers::routes(state.clone()),
+        )
         // Revision and template routes
         .nest("/api/v1", revisions::routes(state.clone()))
         // Site management routes

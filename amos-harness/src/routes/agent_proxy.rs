@@ -170,10 +170,7 @@ async fn inject_byok_provider(state: &AppState, body: &str) -> Result<String, St
         "api_base".to_string(),
         serde_json::Value::String(provider.api_base.clone()),
     );
-    obj.insert(
-        "api_key".to_string(),
-        serde_json::Value::String(api_key),
-    );
+    obj.insert("api_key".to_string(), serde_json::Value::String(api_key));
     obj.insert(
         "model_id".to_string(),
         serde_json::Value::String(provider.default_model.clone()),
