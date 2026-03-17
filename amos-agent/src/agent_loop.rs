@@ -36,7 +36,7 @@ impl Default for LoopConfig {
         Self {
             max_iterations: 25,
             system_prompt: default_system_prompt(),
-            model_id: "anthropic.claude-sonnet-4-20250514-v1:0".to_string(),
+            model_id: "claude-sonnet-4-6".to_string(),
         }
     }
 }

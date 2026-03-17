@@ -114,9 +114,9 @@ var PROVIDER_DEFAULTS = {
         displayName: "Anthropic (Claude)",
         apiBase: "https://api.anthropic.com/v1",
         models: [
-            "claude-sonnet-4-20250514",
-            "claude-opus-4-20250514",
-            "claude-3-5-haiku-20241022"
+            "claude-sonnet-4-6",
+            "claude-opus-4-6",
+            "claude-haiku-4-5"
         ]
     },
     openai: {
@@ -157,7 +157,7 @@ function renderProviders() {
     var list = document.getElementById("providersList");
 
     if (providers.length === 0) {
-        list.innerHTML = "<div class=\"text-center py-4\"><p class=\"text-muted mb-2\">No LLM providers configured.</p><p class=\"small text-muted\">By default, AMOS uses AWS Bedrock. Add your own API key to use Anthropic or OpenAI directly.</p></div>";
+        list.innerHTML = "<div class=\"text-center py-4\"><p class=\"text-muted mb-2\">No LLM providers configured.</p><p class=\"small text-muted\">Add your Anthropic or OpenAI API key to enable AI chat.</p></div>";
         if (typeof lucide !== "undefined") lucide.createIcons();
         return;
     }
@@ -378,7 +378,7 @@ async function saveProvider() {
                 var errData = await resp.text();
                 throw new Error("HTTP " + resp.status + ": " + errData);
             }
-            succEl.textContent = "Provider created! You can now activate it.";
+            succEl.textContent = "Provider created and activated!";
             succEl.classList.remove("d-none");
             await loadProviders();
             setTimeout(hideForm, 1500);

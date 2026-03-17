@@ -121,10 +121,18 @@ async fn create_provider(
     let available_models = serde_json::to_value(&body.available_models).unwrap_or_default();
     let provider_id = Uuid::new_v4();
 
+    // Check if there are any existing providers - if not, auto-activate this one
+    let existing_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM llm_providers")
+            .fetch_one(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let should_activate = existing_count.0 == 0;
+
     sqlx::query(
         r#"INSERT INTO llm_providers
-           (id, name, display_name, api_base, credential_id, default_model, available_models)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
+           (id, name, display_name, api_base, credential_id, default_model, available_models, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
     )
     .bind(provider_id)
     .bind(&body.name)
@@ -133,6 +141,7 @@ async fn create_provider(
     .bind(credential_id)
     .bind(&body.default_model)
     .bind(&available_models)
+    .bind(should_activate)
     .execute(&state.db_pool)
     .await
     .map_err(|e| {
@@ -151,6 +160,7 @@ async fn create_provider(
     tracing::info!(
         provider = %body.name,
         model = %body.default_model,
+        active = should_activate,
         "LLM provider created"
     );
 
@@ -197,6 +207,23 @@ async fn update_provider(
         .execute(&state.db_pool)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        // Auto-activate: if no provider is currently active and this one now has a key, activate it
+        let active_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM llm_providers WHERE is_active = true")
+                .fetch_one(&state.db_pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if active_count.0 == 0 {
+            sqlx::query(
+                "UPDATE llm_providers SET is_active = true, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&state.db_pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            tracing::info!(provider = %name, "Auto-activated provider (only one with a key)");
+        }
     }
 
     // Update other fields

@@ -23,15 +23,15 @@ pub struct Cli {
     #[arg(long, env = "AMOS_AGENT_PORT", default_value = "3100")]
     pub agent_port: u16,
 
-    /// Model provider: "bedrock" or "openai"
-    #[arg(long, env = "AMOS_MODEL_PROVIDER", default_value = "bedrock")]
+    /// Model provider: "anthropic", "openai", "bedrock", "ollama", "vllm"
+    #[arg(long, env = "AMOS_MODEL_PROVIDER", default_value = "anthropic")]
     pub model_provider: String,
 
-    /// Model ID to use (e.g. "anthropic.claude-sonnet-4-20250514-v1:0" or "gpt-4")
+    /// Model ID to use (e.g. "claude-sonnet-4-6" or "gpt-4o")
     #[arg(
         long,
         env = "AMOS_MODEL_ID",
-        default_value = "anthropic.claude-sonnet-4-20250514-v1:0"
+        default_value = "claude-sonnet-4-6"
     )]
     pub model_id: String,
 
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(config.harness_url, "http://localhost:3000");
         assert_eq!(config.agent_name, "amos-agent");
         assert_eq!(config.agent_port, 3100);
-        assert_eq!(config.model_provider, "bedrock");
+        assert_eq!(config.model_provider, "anthropic");
         assert_eq!(config.max_iterations, 25);
     }
 }

@@ -34,6 +34,38 @@ pub struct ModelRegistry {
 }
 
 impl ModelRegistry {
+    /// Create a new registry with default Anthropic API models.
+    pub fn new_anthropic() -> Self {
+        let models = vec![
+            ModelInfo {
+                model_id: "claude-haiku-4-5".to_string(),
+                tier: ModelTier::Fast,
+                provider: "anthropic".to_string(),
+                display_name: "Claude Haiku 4.5".to_string(),
+                max_tokens: 4096,
+            },
+            ModelInfo {
+                model_id: "claude-sonnet-4-6".to_string(),
+                tier: ModelTier::Default,
+                provider: "anthropic".to_string(),
+                display_name: "Claude Sonnet 4.6".to_string(),
+                max_tokens: 16384,
+            },
+            ModelInfo {
+                model_id: "claude-opus-4-6".to_string(),
+                tier: ModelTier::Complex,
+                provider: "anthropic".to_string(),
+                display_name: "Claude Opus 4.6".to_string(),
+                max_tokens: 16384,
+            },
+        ];
+        let default_model_id = models[1].model_id.clone(); // Sonnet as default
+        Self {
+            models,
+            default_model_id,
+        }
+    }
+
     /// Create a new registry with default Bedrock models.
     pub fn new_bedrock() -> Self {
         let models = vec![
@@ -138,15 +170,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_anthropic_registry() {
+        let reg = ModelRegistry::new_anthropic();
+        assert_eq!(reg.list().len(), 3);
+        assert!(reg.default_model().contains("sonnet"));
+        assert_eq!(reg.list()[0].provider, "anthropic");
+    }
+
+    #[test]
     fn test_bedrock_registry() {
         let reg = ModelRegistry::new_bedrock();
         assert_eq!(reg.list().len(), 3);
         assert!(reg.default_model().contains("sonnet"));
+        assert_eq!(reg.list()[0].provider, "bedrock");
     }
 
     #[test]
     fn test_tier_selection() {
-        let reg = ModelRegistry::new_bedrock();
+        let reg = ModelRegistry::new_anthropic();
         let fast = reg.select_by_tier(ModelTier::Fast);
         assert!(fast.model_id.contains("haiku"));
         let complex = reg.select_by_tier(ModelTier::Complex);
@@ -155,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_message_heuristic() {
-        let reg = ModelRegistry::new_bedrock();
+        let reg = ModelRegistry::new_anthropic();
         let short = reg.select_for_message("hi", 0);
         assert_eq!(short.tier, ModelTier::Fast);
         let normal = reg.select_for_message("Help me build a website for my business", 3);
