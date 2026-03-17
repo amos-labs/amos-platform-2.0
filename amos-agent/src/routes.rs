@@ -137,12 +137,18 @@ async fn chat_sse(
             &tool_ctx,
             Some(&h),
             &message,
-            Some(event_tx),
+            Some(event_tx.clone()),
         )
         .await;
 
-        if let Err(e) = result {
+        if let Err(e) = &result {
             error!("Agent loop error: {e}");
+            // Send error event so the frontend can display it
+            let _ = event_tx
+                .send(agent_loop::AgentEvent::Error {
+                    message: format!("{e}"),
+                })
+                .await;
         }
     });
 

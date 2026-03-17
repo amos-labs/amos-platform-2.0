@@ -112,14 +112,29 @@ pub async fn run_agent_loop(
         debug!(iteration, "Agent loop iteration");
 
         // Call the model
-        let (response, usage) = provider
+        let (response, usage) = match provider
             .converse(
                 &config.model_id,
                 &config.system_prompt,
                 &messages,
                 &all_tool_schemas,
             )
-            .await?;
+            .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                let error_msg = format!("LLM provider error: {e}");
+                tracing::error!("{}", error_msg);
+                emit(
+                    &event_tx,
+                    AgentEvent::Error {
+                        message: error_msg.clone(),
+                    },
+                )
+                .await;
+                return Err(e);
+            }
+        };
 
         total_tokens += usage.total_tokens;
 
