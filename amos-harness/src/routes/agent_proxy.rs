@@ -109,9 +109,7 @@ async fn proxy_chat(
 
     // Stream the SSE response back to the browser.
     // Convert reqwest's byte stream into an axum Body.
-    let stream = agent_response
-        .bytes_stream()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+    let stream = agent_response.bytes_stream().map_err(std::io::Error::other);
 
     let body = Body::from_stream(stream);
 
