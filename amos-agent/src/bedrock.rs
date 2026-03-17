@@ -748,7 +748,7 @@ fn load_ecs_container_credentials(relative_uri: &str) -> Result<(String, String,
         .as_str()
         .ok_or_else(|| AmosError::Internal("Missing SecretAccessKey in ECS metadata".to_string()))?
         .to_string();
-    let session_token = body["Token"].as_str().map(|s| s.to_string());
+    let session_token = body["Token"].as_str().map(|s: &str| s.to_string());
 
     tracing::info!("Loaded AWS credentials from ECS task role");
     Ok((access_key, secret_key, session_token))
