@@ -499,6 +499,44 @@ async fn parse_sse_stream(
     Ok(())
 }
 
+/// No-op provider used as a placeholder when no default API key is configured.
+/// Returns an error if called directly — BYOK per-request providers should be
+/// used instead.
+pub struct NoOpProvider;
+
+#[async_trait]
+impl ModelProvider for NoOpProvider {
+    async fn converse_stream(
+        &self,
+        _model_id: &str,
+        _system_prompt: &str,
+        _messages: &[amos_core::types::Message],
+        _tools: &[serde_json::Value],
+    ) -> Result<tokio::sync::mpsc::Receiver<StreamEvent>> {
+        Err(AmosError::Config(
+            "No default LLM provider configured. Please configure a provider in Settings → LLM Providers."
+                .to_string(),
+        ))
+    }
+
+    async fn converse(
+        &self,
+        _model_id: &str,
+        _system_prompt: &str,
+        _messages: &[amos_core::types::Message],
+        _tools: &[serde_json::Value],
+    ) -> Result<(amos_core::types::Message, TokenUsage)> {
+        Err(AmosError::Config(
+            "No default LLM provider configured. Please configure a provider in Settings → LLM Providers."
+                .to_string(),
+        ))
+    }
+
+    fn provider_name(&self) -> &str {
+        "none"
+    }
+}
+
 /// Create a provider from config.
 pub fn create_provider(
     provider_type: &str,

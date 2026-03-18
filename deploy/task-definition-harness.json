@@ -30,12 +30,6 @@
         { "name": "AMOS__DATABASE__URL", "value": "postgres://swarm_user:3uIR9dRgqizLQlLpz81Oz40Y6@swarm-infrastructure-postgres.cf22y8w4aisi.us-east-1.rds.amazonaws.com:5432/amos_harness" },
         { "name": "AMOS__REDIS__URL", "value": "redis://swa-re-1tqjpkv13ucc7.pl68bo.0001.use1.cache.amazonaws.com:6379/2" }
       ],
-      "dependsOn": [
-        {
-          "containerName": "amos-agent",
-          "condition": "HEALTHY"
-        }
-      ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {

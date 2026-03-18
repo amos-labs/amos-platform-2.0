@@ -82,13 +82,23 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Create the model provider
-    let model_provider: Arc<dyn provider::ModelProvider> = Arc::from(provider::create_provider(
+    // Create the default model provider.
+    // In serve/BYOK mode, a missing API key is non-fatal: per-request BYOK
+    // providers will be created for each chat request. The default provider
+    // is only used as a fallback if no BYOK config is supplied.
+    let model_provider: Arc<dyn provider::ModelProvider> = match provider::create_provider(
         &config.model_provider,
         &config.model_id,
         config.api_base.as_deref(),
         config.api_key.as_deref(),
-    )?);
+    ) {
+        Ok(p) => Arc::from(p),
+        Err(e) if config.serve => {
+            warn!("Default provider not available ({e}). BYOK per-request providers will be used.");
+            Arc::new(provider::NoOpProvider)
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     let loop_config = LoopConfig {
         max_iterations: config.max_iterations,
