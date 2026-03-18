@@ -48,6 +48,7 @@ pub enum AgentEvent {
     TurnStart {
         iteration: usize,
     },
+    #[serde(rename = "message_delta")]
     TextDelta {
         content: String,
     },
@@ -64,6 +65,7 @@ pub enum AgentEvent {
         iteration: usize,
         tokens_used: u64,
     },
+    #[serde(rename = "agent_end")]
     Done {
         total_iterations: usize,
         total_tokens: u64,
