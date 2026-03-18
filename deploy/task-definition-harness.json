@@ -1,0 +1,83 @@
+{
+  "family": "amos-harness-amos-labs",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::637423327454:role/swarm-infrastructure-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::637423327454:role/swarm-infrastructure-rails-task-role",
+  "containerDefinitions": [
+    {
+      "name": "amos-harness",
+      "image": "637423327454.dkr.ecr.us-east-1.amazonaws.com/amos-harness:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "AMOS__SERVER__HOST", "value": "0.0.0.0" },
+        { "name": "AMOS__SERVER__PORT", "value": "3000" },
+        { "name": "AMOS_ENV", "value": "production" },
+        { "name": "RUST_LOG", "value": "info,amos_harness=debug" },
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "CUSTOMER_ID", "value": "426b4297-73f3-45df-936a-dee3c263fa1b" },
+        { "name": "AGENT_URL", "value": "http://localhost:3100" },
+        { "name": "AMOS__PLATFORM__URL", "value": "https://app.amoslabs.com" },
+        { "name": "AMOS__DATABASE__URL", "value": "postgres://swarm_user:3uIR9dRgqizLQlLpz81Oz40Y6@swarm-infrastructure-postgres.cf22y8w4aisi.us-east-1.rds.amazonaws.com:5432/amos_harness" },
+        { "name": "AMOS__REDIS__URL", "value": "redis://swa-re-1tqjpkv13ucc7.pl68bo.0001.use1.cache.amazonaws.com:6379/2" }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "amos-agent",
+          "condition": "HEALTHY"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/amos-harness",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "amos-labs"
+        }
+      }
+    },
+    {
+      "name": "amos-agent",
+      "image": "637423327454.dkr.ecr.us-east-1.amazonaws.com/amos-agent:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3100,
+          "hostPort": 3100,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "RUST_LOG", "value": "info,amos_agent=debug" },
+        { "name": "RUST_BACKTRACE", "value": "1" },
+        { "name": "AMOS_MODEL_PROVIDER", "value": "anthropic" },
+        { "name": "AMOS_MODEL_ID", "value": "claude-sonnet-4-6" },
+        { "name": "HARNESS_URL", "value": "http://localhost:3000" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:3100/health || exit 1"],
+        "interval": 15,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/amos-harness",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "amos-agent"
+        }
+      }
+    }
+  ]
+}

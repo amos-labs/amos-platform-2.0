@@ -10,6 +10,8 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   SQLX_OFFLINE: true
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 637423327454.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
   # ============================================================================
@@ -54,3 +56,93 @@ jobs:
       - name: Security audit dependencies
         run: cargo audit
         continue-on-error: true  # Advisory-only for now
+
+  # ============================================================================
+  # GATE 2: Build Docker images, push to ECR, deploy to ECS
+  # Only runs on push to main (not PRs) after checks pass
+  # ============================================================================
+  deploy:
+    name: Build & Deploy
+    needs: check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::637423327454:role/github-actions-amos-deploy
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: vars
+        run: echo "IMAGE_TAG=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push amos-harness
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/harness/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/amos-harness:${{ steps.vars.outputs.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/amos-harness:latest
+
+      - name: Build and push amos-agent
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/agent/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/amos-agent:${{ steps.vars.outputs.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/amos-agent:latest
+
+      - name: Register new harness task definition
+        id: task-def
+        run: |
+          # Update images in task definition to the new tag
+          TASK_DEF=$(cat deploy/task-definition-harness.json \
+            | jq --arg IMG_TAG "${{ steps.vars.outputs.IMAGE_TAG }}" \
+                  --arg REGISTRY "${{ env.ECR_REGISTRY }}" \
+              '.containerDefinitions[0].image = ($REGISTRY + "/amos-harness:" + $IMG_TAG) |
+               .containerDefinitions[1].image = ($REGISTRY + "/amos-agent:" + $IMG_TAG)')
+
+          # Register the new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered task definition: $NEW_TASK_DEF_ARN"
+
+      - name: Update running harness tasks
+        run: |
+          # Find running harness tasks and stop them so the platform
+          # reprovisions with the new task definition
+          CLUSTER="swarm-infrastructure-cluster"
+          TASK_ARNS=$(aws ecs list-tasks --cluster "$CLUSTER" \
+            --family amos-harness-amos-labs \
+            --query 'taskArns[]' --output text)
+
+          if [ -n "$TASK_ARNS" ]; then
+            for TASK_ARN in $TASK_ARNS; do
+              echo "Stopping task: $TASK_ARN"
+              aws ecs stop-task --cluster "$CLUSTER" --task "$TASK_ARN" \
+                --reason "Redeploying with new image ${{ steps.vars.outputs.IMAGE_TAG }}"
+            done
+            echo "Stopped harness tasks. Platform will reprovision with new task definition."
+          else
+            echo "No running harness tasks found."
+          fi
