@@ -64,21 +64,30 @@ async fn main() -> anyhow::Result<()> {
     // Initialize harness client
     let mut harness = HarnessClient::new(&config.harness_url, config.agent_token.clone());
 
-    // Try to register with the harness
+    // Register with the harness (retry to handle sidecar startup race)
     let card_url = format!(
         "http://localhost:{}/.well-known/agent.json",
         config.agent_port
     );
-    match harness.register(&config.agent_name, Some(&card_url)).await {
-        Ok(()) => {
-            info!(
-                tools = harness.harness_tools.len(),
-                "Connected to harness, {} tools available",
-                harness.harness_tools.len()
-            );
-        }
-        Err(e) => {
-            warn!("Could not connect to harness: {e}. Running in standalone mode.");
+    let max_retries = 10;
+    for attempt in 1..=max_retries {
+        match harness.register(&config.agent_name, Some(&card_url)).await {
+            Ok(()) => {
+                info!(
+                    tools = harness.harness_tools.len(),
+                    "Connected to harness, {} tools available",
+                    harness.harness_tools.len()
+                );
+                break;
+            }
+            Err(e) => {
+                if attempt == max_retries {
+                    warn!("Could not connect to harness after {max_retries} attempts: {e}. Running in standalone mode.");
+                } else {
+                    debug!("Harness not ready (attempt {attempt}/{max_retries}): {e}");
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                }
+            }
         }
     }
 
