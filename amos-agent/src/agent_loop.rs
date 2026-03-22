@@ -240,7 +240,7 @@ pub async fn run_agent_loop(
 
             tool_results.push(ContentBlock::ToolResult {
                 tool_use_id: tool_id.clone(),
-                content: result_content,
+                content: truncate_tool_result(&result_content),
                 is_error,
             });
         }
@@ -265,6 +265,24 @@ pub async fn run_agent_loop(
     .await;
 
     Ok(final_text)
+}
+
+/// Truncate tool result content to prevent context window overflow.
+/// Web search and other tools can return very large results that balloon
+/// the conversation past the LLM's token limit.
+const MAX_TOOL_RESULT_CHARS: usize = 15_000;
+
+fn truncate_tool_result(content: &str) -> String {
+    if content.len() <= MAX_TOOL_RESULT_CHARS {
+        content.to_string()
+    } else {
+        let truncated = &content[..MAX_TOOL_RESULT_CHARS];
+        format!(
+            "{truncated}\n\n[... truncated — result was {} chars, limit is {}]",
+            content.len(),
+            MAX_TOOL_RESULT_CHARS
+        )
+    }
 }
 
 async fn emit(tx: &Option<tokio::sync::mpsc::Sender<AgentEvent>>, event: AgentEvent) {
