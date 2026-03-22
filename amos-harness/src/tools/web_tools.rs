@@ -98,19 +98,62 @@ impl Tool for WebSearchTool {
             .as_str()
             .ok_or_else(|| amos_core::AmosError::Validation("query is required".to_string()))?;
 
-        let _num_results = params
+        let num_results = params
             .get("num_results")
             .and_then(|v| v.as_i64())
-            .unwrap_or(5);
+            .unwrap_or(5)
+            .min(10) as usize;
 
-        // TODO: Integrate with actual search API (Brave, Google, etc.)
-        // For now, return stub results
+        // Read Brave API key from environment
+        let api_key = std::env::var("BRAVE_API_KEY").map_err(|_| {
+            amos_core::AmosError::Internal(
+                "Web search unavailable: BRAVE_API_KEY not configured".to_string(),
+            )
+        })?;
 
-        let results = vec![json!({
-            "title": format!("Search result for: {}", query),
-            "url": "https://example.com/result1",
-            "snippet": "This is a stub search result. Real implementation pending."
-        })];
+        let client = reqwest::Client::new();
+        let response = client
+            .get("https://api.search.brave.com/res/v1/web/search")
+            .header("X-Subscription-Token", &api_key)
+            .header("Accept", "application/json")
+            .query(&[
+                ("q", query),
+                ("count", &num_results.to_string()),
+            ])
+            .send()
+            .await
+            .map_err(|e| {
+                amos_core::AmosError::Internal(format!("Brave Search request failed: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(amos_core::AmosError::Internal(format!(
+                "Brave Search API error {status}: {body}"
+            )));
+        }
+
+        let search_result: JsonValue = response.json().await.map_err(|e| {
+            amos_core::AmosError::Internal(format!("Failed to parse Brave Search response: {e}"))
+        })?;
+
+        let results: Vec<JsonValue> = search_result
+            .get("web")
+            .and_then(|w| w.get("results"))
+            .and_then(|r| r.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .map(|r| {
+                        json!({
+                            "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                            "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                            "snippet": r.get("description").and_then(|d| d.as_str()).unwrap_or(""),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
         Ok(ToolResult::success(json!({
             "query": query,
