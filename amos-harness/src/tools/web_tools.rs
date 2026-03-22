@@ -116,10 +116,7 @@ impl Tool for WebSearchTool {
             .get("https://api.search.brave.com/res/v1/web/search")
             .header("X-Subscription-Token", &api_key)
             .header("Accept", "application/json")
-            .query(&[
-                ("q", query),
-                ("count", &num_results.to_string()),
-            ])
+            .query(&[("q", query), ("count", &num_results.to_string())])
             .send()
             .await
             .map_err(|e| {
