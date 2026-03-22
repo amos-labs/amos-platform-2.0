@@ -258,7 +258,9 @@ impl ToolRegistry {
         )));
 
         // Register web tools
-        registry.register(Arc::new(web_tools::WebSearchTool::new(config.clone())));
+        // NOTE: WebSearchTool is intentionally NOT registered here — web search
+        // is an agent-only tool (uses Brave API with separate billing). The agent
+        // has its own local web_search tool with BRAVE_API_KEY.
         registry.register(Arc::new(web_tools::ViewWebPageTool::new()));
 
         // Register system tools
