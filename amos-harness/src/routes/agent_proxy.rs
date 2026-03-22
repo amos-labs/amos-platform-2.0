@@ -80,16 +80,27 @@ async fn proxy_chat(
     info!(url = %agent_url, byok = enriched_body.contains("provider_type"), "Proxying chat request to agent");
 
     let client = reqwest::Client::new();
-    let agent_response = client
+    let agent_response = match client
         .post(&agent_url)
         .header("Content-Type", "application/json")
         .body(enriched_body)
         .send()
         .await
-        .map_err(|e| {
+    {
+        Ok(resp) => resp,
+        Err(e) => {
             error!("Failed to connect to agent service at {}: {}", agent_url, e);
-            StatusCode::BAD_GATEWAY
-        })?;
+            // Return an SSE error event so the frontend shows a proper message
+            // instead of a raw 502.
+            let error_event = "event: error\ndata: {\"type\":\"error\",\"message\":\"Agent service is not available. Please try again shortly or contact support.\"}\n\n".to_string();
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .header(header::CACHE_CONTROL, "no-cache")
+                .body(Body::from(error_event))
+                .unwrap());
+        }
+    };
 
     let status = agent_response.status();
 
