@@ -68,7 +68,10 @@ pub async fn execute(input: &serde_json::Value, api_key: Option<&str>) -> Result
          Set the BRAVE_API_KEY environment variable to enable web search.",
     )?;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
     let response = client
         .get("https://api.search.brave.com/res/v1/web/search")
         .header("X-Subscription-Token", api_key)

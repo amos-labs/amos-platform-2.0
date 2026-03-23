@@ -111,7 +111,12 @@ impl Tool for WebSearchTool {
             )
         })?;
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .map_err(|e| {
+                amos_core::AmosError::Internal(format!("Failed to build HTTP client: {e}"))
+            })?;
         let response = client
             .get("https://api.search.brave.com/res/v1/web/search")
             .header("X-Subscription-Token", &api_key)
@@ -232,6 +237,7 @@ impl Tool for ViewWebPageTool {
 
         // Fetch the web page (no redirects to prevent redirect-based SSRF bypass)
         let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| {
