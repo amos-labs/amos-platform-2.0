@@ -4,6 +4,7 @@ use crate::{
     bedrock::BedrockClient,
     canvas::CanvasEngine,
     documents::DocumentProcessor,
+    embeddings::EmbeddingService,
     geo::GeoLocator,
     image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
@@ -68,6 +69,26 @@ pub async fn create_server(
     let api_executor = Arc::new(ApiExecutor::with_vault(db_pool.clone(), vault.clone()));
     let etl_pipeline = Arc::new(EtlPipeline::new(db_pool.clone()));
 
+    // Initialize embedding service (for semantic search in memory/knowledge base)
+    let embedding_service = {
+        use secrecy::ExposeSecret;
+        config.embedding.api_key.as_ref().map(|key| {
+            let svc = EmbeddingService::new(
+                key.expose_secret().to_string(),
+                config.embedding.api_base.clone(),
+                config.embedding.model.clone(),
+            );
+            tracing::info!(
+                model = %config.embedding.model,
+                "Embedding service initialized (semantic search enabled)"
+            );
+            Arc::new(svc)
+        })
+    };
+    if embedding_service.is_none() {
+        tracing::info!("Embedding service disabled (AMOS__EMBEDDING__API_KEY not set)");
+    }
+
     let tool_registry = Arc::new(ToolRegistry::default_registry(
         db_pool.clone(),
         config.clone(),
@@ -75,6 +96,7 @@ pub async fn create_server(
         bedrock,
         api_executor.clone(),
         etl_pipeline.clone(),
+        embedding_service.clone(),
     ));
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 
@@ -115,6 +137,7 @@ pub async fn create_server(
         etl_pipeline,
         vault,
         geo_locator,
+        embedding_service,
     });
 
     // Build router with all routes

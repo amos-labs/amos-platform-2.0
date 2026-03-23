@@ -3,6 +3,7 @@
 use crate::{
     canvas::CanvasEngine,
     documents::DocumentProcessor,
+    embeddings::EmbeddingService,
     geo::GeoLocator,
     image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
@@ -63,6 +64,10 @@ pub struct AppState {
 
     /// IP geolocation service (cached lookups)
     pub geo_locator: Arc<GeoLocator>,
+
+    /// Embedding service for semantic search (OpenAI-compatible API).
+    /// `None` if `AMOS__EMBEDDING__API_KEY` is not set.
+    pub embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 impl AppState {

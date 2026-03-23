@@ -117,6 +117,9 @@ askama_web = { version = "0.15", features = ["axum-0.8"] }
 # Email
 lettre = { version = "0.11", features = ["tokio1-rustls-tls"] }
 
+# Vector embeddings (pgvector)
+pgvector = { version = "0.4", features = ["sqlx"] }
+
 # Document processing (extract + export)
 pdf-extract = "0.10"
 docx-rs = "0.4"

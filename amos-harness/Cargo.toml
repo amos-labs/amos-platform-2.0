@@ -77,6 +77,9 @@ sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 
+# Vector embeddings (pgvector)
+pgvector = { workspace = true }
+
 # Document processing (extract + export)
 pdf-extract = { workspace = true }
 lopdf = "0.38"

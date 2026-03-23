@@ -46,6 +46,9 @@ pub struct AppConfig {
     /// Relay connection settings (harness→relay communication).
     #[serde(default)]
     pub relay: RelayConfig,
+    /// Embedding service settings (OpenAI-compatible API for vector embeddings).
+    #[serde(default)]
+    pub embedding: EmbeddingConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -339,6 +342,32 @@ impl Default for RelayConfig {
     }
 }
 
+/// Embedding service configuration (OpenAI-compatible API).
+///
+/// Used for semantic search in memory/knowledge base. AMOS owns the API key
+/// and passes cost to customers. Users don't configure anything.
+#[derive(Debug, Deserialize, Clone)]
+pub struct EmbeddingConfig {
+    /// API key for the embedding service. If not set, embeddings are disabled.
+    pub api_key: Option<SecretString>,
+    /// Model to use for embeddings.
+    #[serde(default = "default_embedding_model")]
+    pub model: String,
+    /// Base URL for the OpenAI-compatible API.
+    #[serde(default = "default_embedding_api_base")]
+    pub api_base: String,
+}
+
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            api_key: None,
+            model: default_embedding_model(),
+            api_base: default_embedding_api_base(),
+        }
+    }
+}
+
 // ── Defaults ─────────────────────────────────────────────────────────────
 
 fn default_host() -> String {
@@ -448,6 +477,12 @@ fn default_relay_bounty_sync_interval() -> u64 {
 }
 fn default_relay_reputation_interval() -> u64 {
     300
+}
+fn default_embedding_model() -> String {
+    "text-embedding-3-small".into()
+}
+fn default_embedding_api_base() -> String {
+    "https://api.openai.com/v1".into()
 }
 
 impl AppConfig {

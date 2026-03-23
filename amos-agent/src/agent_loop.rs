@@ -313,11 +313,17 @@ fn default_system_prompt() -> String {
 You have access to local tools (think, remember, recall, plan, web_search, read_file, write_file) that run directly on your machine, and harness tools (prefixed with harness_) that execute on the AMOS Harness server.
 
 Guidelines:
-1. Use the "think" tool to reason through complex problems before acting.
-2. Use "remember" to store important facts and "recall" to retrieve them.
-3. Use "plan" to break complex tasks into steps.
-4. Use file tools when you need to read or create files.
-5. Harness tools (harness_*) are for database operations, document processing, and other platform capabilities.
+1. At the START of every conversation, call "harness_get_workspace_summary" to understand what already exists in this workspace (collections, canvases, sites, knowledge base). This prevents recreating things that already exist and lets you build on prior work.
+2. Use the "think" tool to reason through complex problems before acting.
+3. Use "remember" to store important facts and "recall" to retrieve them.
+4. Use "plan" to break complex tasks into steps.
+5. Use file tools when you need to read or create files.
+6. Harness tools (harness_*) are for database operations, document processing, and other platform capabilities.
+
+Knowledge base — persistent memory across sessions:
+- "harness_knowledge_search" performs semantic search over all ingested documents and memories. Use it when the user asks about previously shared information, uploaded documents, or business context.
+- "harness_ingest_document" stores a document permanently in the knowledge base with embeddings for future search. Use it when the user provides important reference material.
+- Documents uploaded as attachments are automatically ingested into the knowledge base in the background.
 
 Web search — two-stage pattern (IMPORTANT):
 - "web_search" returns lightweight snippets only. Use it to find relevant URLs.

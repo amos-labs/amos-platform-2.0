@@ -1,4 +1,4 @@
-//! Working memory tools
+//! Working memory tools with optional semantic embedding support
 
 use super::{Tool, ToolCategory, ToolResult};
 use amos_core::Result;
@@ -6,15 +6,23 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::{json, Value as JsonValue};
 use sqlx::{PgPool, Row};
+use std::sync::Arc;
+use uuid::Uuid;
+
+use crate::embeddings::EmbeddingService;
 
 /// Save something to working memory
 pub struct RememberThisTool {
     db_pool: PgPool,
+    embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 impl RememberThisTool {
-    pub fn new(db_pool: PgPool) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: PgPool, embedding_service: Option<Arc<EmbeddingService>>) -> Self {
+        Self {
+            db_pool,
+            embedding_service,
+        }
     }
 }
 
@@ -25,7 +33,7 @@ impl Tool for RememberThisTool {
     }
 
     fn description(&self) -> &str {
-        "Save important information to working memory for future reference"
+        "Save important information to working memory for future reference. Supports semantic search if embeddings are enabled."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -73,7 +81,7 @@ impl Tool for RememberThisTool {
         // Store in memory table
         let result = sqlx::query(
             r#"
-            INSERT INTO working_memory (content, category, salience, metadata, created_at, last_accessed)
+            INSERT INTO memory_entries (content, category, salience, metadata, created_at, last_accessed_at)
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
             "#,
@@ -89,10 +97,42 @@ impl Tool for RememberThisTool {
 
         match result {
             Ok(row) => {
-                let id: i32 = row.get(0);
+                let id: Uuid = row.get(0);
+
+                // Generate and store embedding in the background if service is available
+                if let Some(ref embedding_svc) = self.embedding_service {
+                    let svc = embedding_svc.clone();
+                    let pool = self.db_pool.clone();
+                    let text = content.to_string();
+                    tokio::spawn(async move {
+                        match svc.embed(&text).await {
+                            Ok(embedding) => {
+                                let embedding_json = serde_json::to_value(&embedding).ok();
+                                if let Some(emb_val) = embedding_json {
+                                    let _ = sqlx::query(
+                                        "UPDATE memory_entries SET embedding = $1::vector WHERE id = $2",
+                                    )
+                                    .bind(emb_val.to_string())
+                                    .bind(id)
+                                    .execute(&pool)
+                                    .await;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to generate embedding for memory {}: {}",
+                                    id,
+                                    e
+                                );
+                            }
+                        }
+                    });
+                }
+
                 Ok(ToolResult::success(json!({
-                    "memory_id": id,
+                    "memory_id": id.to_string(),
                     "saved": true,
+                    "has_embedding": self.embedding_service.is_some(),
                     "message": "Memory saved successfully"
                 })))
             }
@@ -108,11 +148,15 @@ impl Tool for RememberThisTool {
 /// Search working memory
 pub struct SearchMemoryTool {
     db_pool: PgPool,
+    embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 impl SearchMemoryTool {
-    pub fn new(db_pool: PgPool) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: PgPool, embedding_service: Option<Arc<EmbeddingService>>) -> Self {
+        Self {
+            db_pool,
+            embedding_service,
+        }
     }
 }
 
@@ -123,7 +167,7 @@ impl Tool for SearchMemoryTool {
     }
 
     fn description(&self) -> &str {
-        "Search working memory for previously saved information"
+        "Search working memory for previously saved information. Uses semantic search when embeddings are available, falls back to text matching."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -156,63 +200,131 @@ impl Tool for SearchMemoryTool {
         let category = params.get("category").and_then(|v| v.as_str());
         let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
 
-        // Search memory using text search
-        let sql = if let Some(_cat) = category {
-            r#"
-                SELECT id, content, category, salience, created_at
-                FROM working_memory
-                WHERE category = $1 AND content ILIKE $2
-                ORDER BY salience DESC, last_accessed DESC
-                LIMIT $3
-                "#
-            .to_string()
-        } else {
-            r#"
-                SELECT id, content, category, salience, created_at
-                FROM working_memory
-                WHERE content ILIKE $1
-                ORDER BY salience DESC, last_accessed DESC
-                LIMIT $2
-                "#
-            .to_string()
-        };
+        // Try semantic search first if embedding service is available
+        if let Some(ref embedding_svc) = self.embedding_service {
+            if let Ok(query_embedding) = embedding_svc.embed(query).await {
+                let embedding_str = serde_json::to_string(&query_embedding).unwrap_or_default();
+                let rows = if let Some(cat) = category {
+                    sqlx::query(
+                        r#"
+                        SELECT id, content, category, salience,
+                               1 - (embedding <=> $1::vector) AS similarity
+                        FROM memory_entries
+                        WHERE embedding IS NOT NULL AND category = $2
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $3
+                        "#,
+                    )
+                    .bind(&embedding_str)
+                    .bind(cat)
+                    .bind(limit)
+                    .fetch_all(&self.db_pool)
+                    .await
+                } else {
+                    sqlx::query(
+                        r#"
+                        SELECT id, content, category, salience,
+                               1 - (embedding <=> $1::vector) AS similarity
+                        FROM memory_entries
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> $1::vector
+                        LIMIT $2
+                        "#,
+                    )
+                    .bind(&embedding_str)
+                    .bind(limit)
+                    .fetch_all(&self.db_pool)
+                    .await
+                };
 
+                if let Ok(rows) = rows {
+                    let mut results = Vec::new();
+                    for row in &rows {
+                        let id: Uuid = row.get("id");
+                        let content: String = row.get("content");
+                        let cat: String = row.get("category");
+                        let salience: f64 = row.get("salience");
+                        let similarity: f64 = row.get("similarity");
+
+                        results.push(json!({
+                            "id": id.to_string(),
+                            "content": content,
+                            "category": cat,
+                            "salience": salience,
+                            "similarity": similarity
+                        }));
+
+                        // Reinforce accessed memory
+                        let _ = sqlx::query(
+                            "UPDATE memory_entries SET last_accessed_at = $1, access_count = access_count + 1 WHERE id = $2"
+                        )
+                        .bind(Utc::now())
+                        .bind(id)
+                        .execute(&self.db_pool)
+                        .await;
+                    }
+
+                    return Ok(ToolResult::success(json!({
+                        "results": results,
+                        "count": results.len(),
+                        "search_type": "semantic"
+                    })));
+                }
+            }
+        }
+
+        // Fallback: text search using ILIKE
         let search_pattern = format!("%{}%", query);
-
         let rows = if let Some(cat) = category {
-            sqlx::query(&sql)
-                .bind(cat)
-                .bind(&search_pattern)
-                .bind(limit)
-                .fetch_all(&self.db_pool)
-                .await
+            sqlx::query(
+                r#"
+                SELECT id, content, category, salience, created_at
+                FROM memory_entries
+                WHERE category = $1 AND content ILIKE $2
+                ORDER BY salience DESC, last_accessed_at DESC
+                LIMIT $3
+                "#,
+            )
+            .bind(cat)
+            .bind(&search_pattern)
+            .bind(limit)
+            .fetch_all(&self.db_pool)
+            .await
         } else {
-            sqlx::query(&sql)
-                .bind(&search_pattern)
-                .bind(limit)
-                .fetch_all(&self.db_pool)
-                .await
+            sqlx::query(
+                r#"
+                SELECT id, content, category, salience, created_at
+                FROM memory_entries
+                WHERE content ILIKE $1
+                ORDER BY salience DESC, last_accessed_at DESC
+                LIMIT $2
+                "#,
+            )
+            .bind(&search_pattern)
+            .bind(limit)
+            .fetch_all(&self.db_pool)
+            .await
         };
 
         match rows {
             Ok(rows) => {
                 let mut results = Vec::new();
-                for row in rows {
-                    let id: i32 = row.get(0);
-                    let content: String = row.get(1);
-                    let category: String = row.get(2);
-                    let salience: f64 = row.get(3);
+                for row in &rows {
+                    let id: Uuid = row.get("id");
+                    let content: String = row.get("content");
+                    let cat: String = row.get("category");
+                    let salience: f64 = row.get("salience");
 
                     results.push(json!({
-                        "id": id,
+                        "id": id.to_string(),
                         "content": content,
-                        "category": category,
+                        "category": cat,
                         "salience": salience
                     }));
 
                     // Update last_accessed to reinforce the memory
                     let _ = sqlx::query(
-                        "UPDATE working_memory SET last_accessed = $1, access_count = access_count + 1 WHERE id = $2"
+                        "UPDATE memory_entries SET last_accessed_at = $1, access_count = access_count + 1 WHERE id = $2",
                     )
                     .bind(Utc::now())
                     .bind(id)
@@ -222,7 +334,8 @@ impl Tool for SearchMemoryTool {
 
                 Ok(ToolResult::success(json!({
                     "results": results,
-                    "count": results.len()
+                    "count": results.len(),
+                    "search_type": "text"
                 })))
             }
             Err(e) => Ok(ToolResult::error(format!("Memory search failed: {}", e))),

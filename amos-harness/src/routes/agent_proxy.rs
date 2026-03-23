@@ -21,6 +21,7 @@ use crate::documents::ExtractionResult;
 use crate::routes::credentials;
 use crate::routes::uploads;
 use crate::state::AppState;
+use crate::tools::knowledge_tools;
 use amos_core::types::{ContentBlock, DocumentSource, ImageSource};
 use axum::{
     body::Body,
@@ -304,6 +305,23 @@ async fn process_attachments(state: &AppState, body: &str) -> Result<String, Str
             match extract_result {
                 Ok(ExtractionResult::Text(text)) => {
                     info!(%filename, chars = text.len(), "Extracted text from document");
+                    // Background-ingest into knowledge base for RAG
+                    if let Some(ref emb_svc) = state.embedding_service {
+                        let pool = state.db_pool.clone();
+                        let svc = emb_svc.clone();
+                        let title = filename.clone();
+                        let doc_text = text.clone();
+                        tokio::spawn(async move {
+                            knowledge_tools::background_ingest(
+                                pool,
+                                svc,
+                                title,
+                                doc_text,
+                                "upload".to_string(),
+                            )
+                            .await;
+                        });
+                    }
                     ContentBlock::Text {
                         text: format!("[Document: {}]\n\n{}", filename, text),
                     }
@@ -315,6 +333,23 @@ async fn process_attachments(state: &AppState, body: &str) -> Result<String, Str
                         .collect::<Vec<_>>()
                         .join("\n\n");
                     info!(%filename, pages = pages.len(), "Extracted pages from document");
+                    // Background-ingest into knowledge base for RAG
+                    if let Some(ref emb_svc) = state.embedding_service {
+                        let pool = state.db_pool.clone();
+                        let svc = emb_svc.clone();
+                        let title = filename.clone();
+                        let doc_text = combined.clone();
+                        tokio::spawn(async move {
+                            knowledge_tools::background_ingest(
+                                pool,
+                                svc,
+                                title,
+                                doc_text,
+                                "upload".to_string(),
+                            )
+                            .await;
+                        });
+                    }
                     ContentBlock::Text {
                         text: format!("[Document: {}]\n\n{}", filename, combined),
                     }

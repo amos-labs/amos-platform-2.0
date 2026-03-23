@@ -7,6 +7,7 @@ pub mod credential_tools;
 pub mod document_tools;
 pub mod image_gen_tools;
 pub mod integration_tools;
+pub mod knowledge_tools;
 pub mod memory_tools;
 pub mod openclaw_tools;
 // orchestration_tools removed — external agent work delegation is now handled
@@ -18,7 +19,9 @@ pub mod site_tools;
 pub mod system_tools;
 pub mod task_tools;
 pub mod web_tools;
+pub mod workspace_tools;
 
+use crate::embeddings::EmbeddingService;
 use crate::integrations::{etl::EtlPipeline, executor::ApiExecutor};
 use crate::task_queue::TaskQueue;
 use amos_core::{AmosError, AppConfig, Result};
@@ -105,6 +108,7 @@ pub enum ToolCategory {
     Web,
     System,
     Memory,
+    Knowledge,
     OpenClaw,
     Integration,
     Schema,
@@ -122,6 +126,7 @@ impl ToolCategory {
             ToolCategory::Web => "web",
             ToolCategory::System => "system",
             ToolCategory::Memory => "memory",
+            ToolCategory::Knowledge => "knowledge",
             ToolCategory::OpenClaw => "openclaw",
             ToolCategory::Integration => "integration",
             ToolCategory::Schema => "schema",
@@ -224,6 +229,7 @@ impl ToolRegistry {
         bedrock: Option<Arc<crate::bedrock::BedrockClient>>,
         api_executor: Arc<ApiExecutor>,
         etl_pipeline: Arc<EtlPipeline>,
+        embedding_service: Option<Arc<EmbeddingService>>,
     ) -> Self {
         let mut registry = Self::new(db_pool.clone(), config.clone());
 
@@ -267,11 +273,28 @@ impl ToolRegistry {
         registry.register(Arc::new(system_tools::ReadFileTool::new()));
         registry.register(Arc::new(system_tools::BashTool::new()));
 
-        // Register memory tools
+        // Register memory tools (with optional embedding support)
         registry.register(Arc::new(memory_tools::RememberThisTool::new(
             db_pool.clone(),
+            embedding_service.clone(),
         )));
         registry.register(Arc::new(memory_tools::SearchMemoryTool::new(
+            db_pool.clone(),
+            embedding_service.clone(),
+        )));
+
+        // Register knowledge base tools (RAG: ingest + semantic search)
+        registry.register(Arc::new(knowledge_tools::IngestDocumentTool::new(
+            db_pool.clone(),
+            embedding_service.clone(),
+        )));
+        registry.register(Arc::new(knowledge_tools::KnowledgeSearchTool::new(
+            db_pool.clone(),
+            embedding_service.clone(),
+        )));
+
+        // Register workspace awareness tools
+        registry.register(Arc::new(workspace_tools::GetWorkspaceSummaryTool::new(
             db_pool.clone(),
         )));
 
@@ -471,6 +494,7 @@ mod tests {
         assert_eq!(ToolCategory::Web.as_str(), "web");
         assert_eq!(ToolCategory::System.as_str(), "system");
         assert_eq!(ToolCategory::Memory.as_str(), "memory");
+        assert_eq!(ToolCategory::Knowledge.as_str(), "knowledge");
         assert_eq!(ToolCategory::OpenClaw.as_str(), "openclaw");
         assert_eq!(ToolCategory::Integration.as_str(), "integration");
         assert_eq!(ToolCategory::Schema.as_str(), "schema");
