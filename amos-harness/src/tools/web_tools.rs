@@ -142,10 +142,13 @@ impl Tool for WebSearchTool {
             .map(|arr| {
                 arr.iter()
                     .map(|r| {
+                        let snippet = r.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                        // Truncate snippets to keep search results lightweight
+                        let snippet = if snippet.len() > 300 { &snippet[..300] } else { snippet };
                         json!({
                             "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
                             "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
-                            "snippet": r.get("description").and_then(|d| d.as_str()).unwrap_or(""),
+                            "snippet": snippet,
                         })
                     })
                     .collect()
@@ -251,6 +254,21 @@ impl Tool for ViewWebPageTool {
                 // Extract text
                 strip_html_tags(&html)
             }
+        };
+
+        // Cap content at 12,000 chars to prevent context window overflow.
+        // The agent loop has a 15K backstop, but we truncate here so the
+        // tool itself is well-behaved and the LLM gets a clean message.
+        const MAX_PAGE_CHARS: usize = 12_000;
+        let content = if content.len() > MAX_PAGE_CHARS {
+            format!(
+                "{}\n\n[... content truncated — page was {} chars, showing first {}]",
+                &content[..MAX_PAGE_CHARS],
+                content.len(),
+                MAX_PAGE_CHARS
+            )
+        } else {
+            content
         };
 
         Ok(ToolResult::success(json!({

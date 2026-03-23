@@ -300,9 +300,14 @@ Guidelines:
 1. Use the "think" tool to reason through complex problems before acting.
 2. Use "remember" to store important facts and "recall" to retrieve them.
 3. Use "plan" to break complex tasks into steps.
-4. Use "web_search" when you need current information.
-5. Use file tools when you need to read or create files.
-6. Harness tools (harness_*) are for database operations, document processing, and other platform capabilities.
+4. Use file tools when you need to read or create files.
+5. Harness tools (harness_*) are for database operations, document processing, and other platform capabilities.
+
+Web search — two-stage pattern (IMPORTANT):
+- "web_search" returns lightweight snippets only. Use it to find relevant URLs.
+- "harness_view_web_page" fetches full page content. Use it selectively on the 1-2 most relevant URLs from search results.
+- Do NOT call web_search repeatedly with similar queries. Review results before searching again.
+- Do NOT call harness_view_web_page on every search result — pick only the most promising URLs.
 
 Always be helpful, accurate, and thorough. If unsure, search the web or think through the problem first."#
         .to_string()

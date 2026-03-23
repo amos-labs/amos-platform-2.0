@@ -97,10 +97,13 @@ pub async fn execute(input: &serde_json::Value, api_key: Option<&str>) -> Result
     let formatted: Vec<serde_json::Value> = results
         .iter()
         .map(|r| {
+            let desc = r.description.as_deref().unwrap_or("");
+            // Truncate descriptions to keep total output small (~5-10KB)
+            let desc = if desc.len() > 300 { &desc[..300] } else { desc };
             json!({
                 "title": r.title,
                 "url": r.url,
-                "description": r.description.as_deref().unwrap_or(""),
+                "description": desc,
             })
         })
         .collect();
