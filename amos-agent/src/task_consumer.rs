@@ -120,6 +120,7 @@ pub async fn run_task_consumer(
                     &tool_ctx,
                     Some(&h_read),
                     &prompt,
+                    None, // no attachments for background tasks
                     None, // no event streaming for background tasks
                 )
                 .await;

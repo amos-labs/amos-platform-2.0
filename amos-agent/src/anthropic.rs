@@ -56,6 +56,12 @@ enum AnthropicBlock {
     Text {
         text: String,
     },
+    Image {
+        source: AnthropicMediaSource,
+    },
+    Document {
+        source: AnthropicMediaSource,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -67,6 +73,15 @@ enum AnthropicBlock {
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         is_error: bool,
     },
+}
+
+/// Base64 source object for Image and Document blocks in the Anthropic API.
+#[derive(Debug, Serialize)]
+struct AnthropicMediaSource {
+    #[serde(rename = "type")]
+    source_type: String,
+    media_type: String,
+    data: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -166,6 +181,29 @@ impl AnthropicProvider {
                         match block {
                             ContentBlock::Text { text } => {
                                 blocks.push(AnthropicBlock::Text { text: text.clone() });
+                            }
+                            ContentBlock::Image { source } => {
+                                blocks.push(AnthropicBlock::Image {
+                                    source: AnthropicMediaSource {
+                                        source_type: "base64".to_string(),
+                                        media_type: source.media_type.clone(),
+                                        data: source.data.clone(),
+                                    },
+                                });
+                            }
+                            ContentBlock::Document { source } => {
+                                // Map format string to MIME type for the API
+                                let media_type = match source.format.as_str() {
+                                    "pdf" => "application/pdf".to_string(),
+                                    other => format!("application/{other}"),
+                                };
+                                blocks.push(AnthropicBlock::Document {
+                                    source: AnthropicMediaSource {
+                                        source_type: "base64".to_string(),
+                                        media_type,
+                                        data: source.data.clone(),
+                                    },
+                                });
                             }
                             ContentBlock::ToolResult {
                                 tool_use_id,

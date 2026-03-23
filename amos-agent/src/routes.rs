@@ -56,6 +56,10 @@ pub struct ChatRequest {
     /// BYOK: model ID override
     #[serde(default)]
     pub model_id: Option<String>,
+    /// Content blocks from processed attachments (images, documents).
+    /// Injected by the harness proxy after processing uploaded files.
+    #[serde(default)]
+    pub content_blocks: Option<Vec<amos_core::types::ContentBlock>>,
 }
 
 /// Chat response for non-streaming mode.
@@ -127,6 +131,7 @@ async fn chat_sse(
     let tool_ctx = state.tool_ctx.clone();
     let harness = state.harness.clone();
     let message = req.message.clone();
+    let content_blocks = req.content_blocks;
 
     // Run the agent loop in a background task
     tokio::spawn(async move {
@@ -137,6 +142,7 @@ async fn chat_sse(
             &tool_ctx,
             Some(&h),
             &message,
+            content_blocks,
             Some(event_tx.clone()),
         )
         .await;

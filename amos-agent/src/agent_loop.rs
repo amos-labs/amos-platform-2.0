@@ -83,6 +83,7 @@ pub async fn run_agent_loop(
     tool_ctx: &ToolContext,
     harness: Option<&HarnessClient>,
     initial_message: &str,
+    content_blocks: Option<Vec<ContentBlock>>,
     event_tx: Option<tokio::sync::mpsc::Sender<AgentEvent>>,
 ) -> Result<String> {
     let mut messages: Vec<Message> = Vec::new();
@@ -96,12 +97,27 @@ pub async fn run_agent_loop(
         all_tool_schemas.extend(h.harness_tool_schemas());
     }
 
-    // Add the initial user message
+    // Add the initial user message.
+    // If content blocks are provided (from attachments), build a multi-block
+    // message with the text first, followed by images/documents.
+    let initial_content = if let Some(mut blocks) = content_blocks {
+        // Prepend the user's text message
+        blocks.insert(
+            0,
+            ContentBlock::Text {
+                text: initial_message.to_string(),
+            },
+        );
+        blocks
+    } else {
+        vec![ContentBlock::Text {
+            text: initial_message.to_string(),
+        }]
+    };
+
     messages.push(Message {
         role: Role::User,
-        content: vec![ContentBlock::Text {
-            text: initial_message.to_string(),
-        }],
+        content: initial_content,
         tool_use_id: None,
         timestamp: Utc::now(),
     });

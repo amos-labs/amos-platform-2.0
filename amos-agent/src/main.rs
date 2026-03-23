@@ -257,6 +257,7 @@ async fn main() -> anyhow::Result<()> {
                         &tool_ctx,
                         Some(&h),
                         &line,
+                        None,
                         Some(event_tx),
                     )
                     .await

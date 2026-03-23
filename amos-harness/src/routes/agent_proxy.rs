@@ -17,8 +17,11 @@
 //!   - `GET  /api/v1/agent/sessions`    → stub (agent doesn't persist sessions yet)
 //!   - `GET  /api/v1/agent/sessions/:id` → stub
 
+use crate::documents::ExtractionResult;
 use crate::routes::credentials;
+use crate::routes::uploads;
 use crate::state::AppState;
+use amos_core::types::{ContentBlock, DocumentSource, ImageSource};
 use axum::{
     body::Body,
     extract::State,
@@ -27,9 +30,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::Engine;
 use futures::TryStreamExt;
 use std::sync::Arc;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 /// Build agent proxy routes.
 ///
@@ -65,6 +70,19 @@ async fn proxy_chat(
     body: String,
 ) -> Result<Response, StatusCode> {
     let agent_url = format!("{}/api/v1/chat", agent_base_url());
+
+    // Process attachments: load uploaded files, extract content, and inject
+    // as content_blocks into the request JSON before forwarding.
+    let body = match process_attachments(&state, &body).await {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(
+                "Attachment processing failed ({}), forwarding original body",
+                e
+            );
+            body
+        }
+    };
 
     // Try to inject BYOK provider config into the request body
     let enriched_body = match inject_byok_provider(&state, &body).await {
@@ -192,6 +210,202 @@ async fn inject_byok_provider(state: &AppState, body: &str) -> Result<String, St
     );
 
     serde_json::to_string(&json).map_err(|e| format!("JSON serialize: {e}"))
+}
+
+/// Process attachments from the chat request body.
+///
+/// Extracts the `attachments` array (list of upload UUIDs), loads each file,
+/// converts it to a `ContentBlock`, and injects the blocks as a `content_blocks`
+/// JSON array on the request body. Removes `attachments` before forwarding.
+async fn process_attachments(state: &AppState, body: &str) -> Result<String, String> {
+    let mut json: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("invalid JSON: {e}"))?;
+
+    let attachments = match json.get("attachments").and_then(|v| v.as_array()) {
+        Some(arr) if !arr.is_empty() => arr.clone(),
+        _ => return Ok(body.to_string()), // No attachments — pass through unchanged
+    };
+
+    info!(count = attachments.len(), "Processing chat attachments");
+
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let mut content_blocks: Vec<ContentBlock> = Vec::new();
+
+    for att_val in &attachments {
+        let id_str = att_val
+            .as_str()
+            .ok_or_else(|| "attachment ID is not a string".to_string())?;
+        let upload_id =
+            Uuid::parse_str(id_str).map_err(|e| format!("invalid attachment UUID: {e}"))?;
+
+        // Load the file data with a 30s timeout
+        let load_result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            uploads::load_upload_data(&state.db_pool, &state.storage, upload_id),
+        )
+        .await;
+
+        let (content_type, filename, data) = match load_result {
+            Ok(Ok(tuple)) => tuple,
+            Ok(Err(status)) => {
+                warn!(%upload_id, status = %status, "Failed to load attachment");
+                content_blocks.push(ContentBlock::Text {
+                    text: format!(
+                        "[Attachment {} could not be loaded]",
+                        filename_or_id(id_str)
+                    ),
+                });
+                continue;
+            }
+            Err(_) => {
+                warn!(%upload_id, "Attachment load timed out (30s)");
+                content_blocks.push(ContentBlock::Text {
+                    text: format!(
+                        "[Attachment {} timed out during loading]",
+                        filename_or_id(id_str)
+                    ),
+                });
+                continue;
+            }
+        };
+
+        info!(%upload_id, %content_type, %filename, size = data.len(), "Processing attachment");
+
+        // Route by content type
+        let block = if content_type.starts_with("image/") {
+            // Direct image — send as base64 Image block
+            ContentBlock::Image {
+                source: ImageSource {
+                    source_type: "base64".to_string(),
+                    media_type: content_type.clone(),
+                    data: b64.encode(&data),
+                },
+            }
+        } else if content_type == "application/pdf"
+            || content_type
+                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            || content_type == "application/msword"
+            || content_type == "text/html"
+            || content_type == "application/xhtml+xml"
+            || filename.to_lowercase().ends_with(".pdf")
+            || filename.to_lowercase().ends_with(".docx")
+            || filename.to_lowercase().ends_with(".html")
+            || filename.to_lowercase().ends_with(".htm")
+        {
+            // Document — run extraction pipeline
+            let extract_result = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                state
+                    .document_processor
+                    .extract(&data, &filename, &content_type),
+            )
+            .await;
+
+            match extract_result {
+                Ok(ExtractionResult::Text(text)) => {
+                    info!(%filename, chars = text.len(), "Extracted text from document");
+                    ContentBlock::Text {
+                        text: format!("[Document: {}]\n\n{}", filename, text),
+                    }
+                }
+                Ok(ExtractionResult::Pages(pages)) => {
+                    let combined: String = pages
+                        .iter()
+                        .map(|p| format!("--- Page {} ---\n{}", p.page_number, p.text))
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    info!(%filename, pages = pages.len(), "Extracted pages from document");
+                    ContentBlock::Text {
+                        text: format!("[Document: {}]\n\n{}", filename, combined),
+                    }
+                }
+                Ok(ExtractionResult::RawDocument(format, name, raw_bytes)) => {
+                    info!(%filename, format, "Sending raw document for vision analysis");
+                    ContentBlock::Document {
+                        source: DocumentSource {
+                            format,
+                            name,
+                            data: b64.encode(&raw_bytes),
+                        },
+                    }
+                }
+                Ok(ExtractionResult::RenderedPages(pages)) => {
+                    // Each rendered page is an image — send the first few
+                    info!(%filename, pages = pages.len(), "Document rendered to page images");
+                    let mut first = true;
+                    for (media_type, img_bytes) in pages.into_iter().take(10) {
+                        if !first {
+                            content_blocks.push(ContentBlock::Image {
+                                source: ImageSource {
+                                    source_type: "base64".to_string(),
+                                    media_type,
+                                    data: b64.encode(&img_bytes),
+                                },
+                            });
+                        } else {
+                            first = false;
+                            content_blocks.push(ContentBlock::Image {
+                                source: ImageSource {
+                                    source_type: "base64".to_string(),
+                                    media_type,
+                                    data: b64.encode(&img_bytes),
+                                },
+                            });
+                        }
+                    }
+                    continue; // Already pushed blocks
+                }
+                Ok(ExtractionResult::Unsupported) => {
+                    warn!(%filename, %content_type, "Document extraction unsupported");
+                    ContentBlock::Text {
+                        text: format!(
+                            "[Document '{}' ({}): format not supported for text extraction]",
+                            filename, content_type
+                        ),
+                    }
+                }
+                Err(_) => {
+                    warn!(%filename, "Document extraction timed out (30s)");
+                    ContentBlock::Text {
+                        text: format!("[Document '{}': processing timed out]", filename),
+                    }
+                }
+            }
+        } else {
+            // Unsupported file type
+            ContentBlock::Text {
+                text: format!(
+                    "[Attachment '{}' ({}): file type not supported for inline viewing]",
+                    filename, content_type
+                ),
+            }
+        };
+
+        content_blocks.push(block);
+    }
+
+    // Inject content_blocks and remove attachments from the JSON body
+    let obj = json
+        .as_object_mut()
+        .ok_or_else(|| "body is not a JSON object".to_string())?;
+    obj.remove("attachments");
+
+    if !content_blocks.is_empty() {
+        let blocks_json = serde_json::to_value(&content_blocks)
+            .map_err(|e| format!("failed to serialize content blocks: {e}"))?;
+        obj.insert("content_blocks".to_string(), blocks_json);
+        info!(
+            blocks = content_blocks.len(),
+            "Injected content blocks into chat request"
+        );
+    }
+
+    serde_json::to_string(&json).map_err(|e| format!("JSON serialize: {e}"))
+}
+
+/// Helper: return filename if parseable, otherwise the raw ID string.
+fn filename_or_id(id: &str) -> &str {
+    id
 }
 
 /// Stub for `POST /api/v1/agent/chat/cancel`.
