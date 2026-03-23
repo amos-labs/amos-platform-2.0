@@ -144,7 +144,11 @@ impl Tool for WebSearchTool {
                     .map(|r| {
                         let snippet = r.get("description").and_then(|d| d.as_str()).unwrap_or("");
                         // Truncate snippets to keep search results lightweight
-                        let snippet = if snippet.len() > 300 { &snippet[..300] } else { snippet };
+                        let snippet = if snippet.len() > 300 {
+                            &snippet[..300]
+                        } else {
+                            snippet
+                        };
                         json!({
                             "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
                             "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
