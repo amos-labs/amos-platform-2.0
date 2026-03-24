@@ -105,11 +105,69 @@ Rules:
 - Make everything responsive and mobile-friendly
 - Use semantic HTML5 with proper accessibility attributes
 - All interactive elements must have working event handlers
-- Use Tera template syntax for dynamic data: {{ variable }}, {% for item in items %}, etc.
 - Communicate with parent window using postMessage:
   window.parent.postMessage({ type: 'canvas-action', action: 'name', data: {} }, '*');
 - Do NOT include <html>, <head>, or <body> tags — only the inner content
 - Do NOT include Bootstrap or Lucide <script>/<link> tags — they are already loaded
+
+## PREFERRED: AMOS Component Library
+
+The `AMOS` component library is pre-loaded in every canvas. Use it instead of writing raw HTML tables, forms, charts, etc. Components auto-fetch data from the `/api/v1/data/{collection}` REST API.
+
+### Available Components
+
+**AMOS.MetricCard(el, opts)** — Single stat card
+  Options: collection, label, aggregate ('count'|'sum'|'avg'|'min'|'max'), field, filters, format ('number'|'currency'|'percent'), icon (Lucide name), color (Bootstrap color)
+
+**AMOS.DataTable(el, opts)** — Sortable, paginated table with CRUD
+  Options: collection, columns (array of field names or {field, label, sortable}), actions (['edit','delete','view']), searchable (bool), sortable (bool), pageSize (default 25), filters, createButton (bool or label string)
+
+**AMOS.FormBuilder(el, opts)** — Auto-generated form from collection schema
+  Options: collection, recordId (for edit mode), fields (subset array), layout ('vertical'|'horizontal'|'two-column'), onSubmit (callback), onCancel (callback)
+
+**AMOS.Chart(el, opts)** — Chart.js wrapper (Chart.js 4 is pre-loaded)
+  Options: collection, type ('bar'|'line'|'pie'|'doughnut'), labelField, valueField, aggregate ('count'|'sum'|'avg'), title, data ({labels,values} static override), colors, filters
+
+**AMOS.KanbanBoard(el, opts)** — Drag-and-drop board grouped by enum field
+  Options: collection, groupBy, cardTitle, cardSubtitle, cardFields (array of extra fields), filters
+
+**AMOS.FilterBar(el, opts)** — Filter controls driving other components
+  Options: collection, fields (array of field names), targets (array of component instances)
+
+### Data Helpers
+
+- `AMOS.fetchData(collection, {filters, sort_by, sort_dir, limit, offset, search})` — fetch records
+- `AMOS.fetchSchema(collection)` — fetch collection schema
+- `AMOS.createRecord(collection, data)` / `AMOS.updateRecord(collection, id, data)` / `AMOS.deleteRecord(collection, id)`
+
+### Example: Dashboard with metrics + chart + table (~15 lines)
+
+```html
+<div class="container-fluid py-3">
+  <div class="row g-3 mb-3" id="metrics"></div>
+  <div class="row g-3">
+    <div class="col-md-5"><div id="chart" style="height:300px"></div></div>
+    <div class="col-md-7" id="table"></div>
+  </div>
+</div>
+```
+
+```javascript
+// Metrics row
+const metricsEl = document.getElementById('metrics');
+['count', 'sum', 'avg'].forEach((agg, i) => {
+  const col = document.createElement('div');
+  col.className = 'col-md-4';
+  metricsEl.appendChild(col);
+  new AMOS.MetricCard(col, { collection: 'orders', label: agg === 'count' ? 'Total Orders' : agg === 'sum' ? 'Revenue' : 'Avg Value', aggregate: agg, field: 'amount', format: agg === 'count' ? 'number' : 'currency', icon: 'shopping-cart', color: ['primary','success','info'][i] });
+});
+// Chart
+new AMOS.Chart(document.getElementById('chart'), { collection: 'orders', type: 'bar', labelField: 'status', valueField: 'amount', aggregate: 'sum', title: 'Revenue by Status' });
+// Table
+new AMOS.DataTable(document.getElementById('table'), { collection: 'orders', searchable: true, actions: ['edit', 'delete'], createButton: 'New Order' });
+```
+
+Use AMOS components whenever the canvas involves collection data. Fall back to raw HTML only for purely static or non-data content.
 
 Output your response in exactly this format with markdown code blocks:
 

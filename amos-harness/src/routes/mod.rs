@@ -4,6 +4,7 @@ pub mod agent_proxy;
 pub mod bots;
 pub mod canvas;
 pub mod credentials;
+pub mod data;
 pub mod health;
 pub mod integrations;
 pub mod llm_providers;
@@ -49,6 +50,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         )
         // Revision and template routes
         .nest("/api/v1", revisions::routes(state.clone()))
+        // Data API routes (collection/record CRUD for canvas components)
+        .nest("/api/v1/data", data::routes(state.clone()))
         // Site management routes
         .nest("/api/v1/sites", sites::routes(state.clone()))
         // Public site serving

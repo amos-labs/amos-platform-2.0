@@ -1036,6 +1036,7 @@ function buildCanvasDocument(title, html, css, js) {
     <title>${title}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         ${css}
@@ -1044,6 +1045,7 @@ function buildCanvasDocument(title, html, css, js) {
 <body>
     ${html}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"><\/script>
+    <script src="/js/amos-components.js"><\/script>
     <script>
         // Initialize Lucide icons inside canvas
         if (typeof lucide !== 'undefined') { lucide.createIcons(); }
