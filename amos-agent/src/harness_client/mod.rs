@@ -62,6 +62,9 @@ pub struct ToolExecutionResponse {
     pub content: String,
     pub is_error: bool,
     pub duration_ms: u64,
+    /// Optional metadata from the tool (e.g. canvas actions, site preview info)
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// Task result report.

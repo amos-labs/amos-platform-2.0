@@ -66,6 +66,9 @@ pub enum AgentEvent {
         /// Brief result summary for progress display
         #[serde(skip_serializing_if = "Option::is_none")]
         result_summary: Option<String>,
+        /// Optional metadata from the tool (e.g. canvas actions, site preview info)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metadata: Option<serde_json::Value>,
     },
     TurnEnd {
         iteration: usize,
@@ -227,27 +230,28 @@ pub async fn run_agent_loop(
 
             let start = std::time::Instant::now();
 
-            let (result_content, is_error) = if is_local {
+            let (result_content, is_error, tool_metadata) = if is_local {
                 // Execute locally
                 match tools::execute_local_tool(tool_name, input, tool_ctx).await {
-                    Ok(content) => (content, false),
-                    Err(e) => (format!("Tool error: {e}"), true),
+                    Ok(content) => (content, false, None),
+                    Err(e) => (format!("Tool error: {e}"), true, None),
                 }
             } else if let Some(harness_name) = tool_name.strip_prefix("harness_") {
                 // Execute on the harness
                 if let Some(h) = harness {
                     match h.execute_tool(harness_name, input.clone(), None).await {
-                        Ok(resp) => (resp.content, resp.is_error),
-                        Err(e) => (format!("Harness tool error: {e}"), true),
+                        Ok(resp) => (resp.content, resp.is_error, resp.metadata),
+                        Err(e) => (format!("Harness tool error: {e}"), true, None),
                     }
                 } else {
                     (
                         format!("Harness not connected - cannot execute {tool_name}"),
                         true,
+                        None,
                     )
                 }
             } else {
-                (format!("Unknown tool: {tool_name}"), true)
+                (format!("Unknown tool: {tool_name}"), true, None)
             };
 
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -260,6 +264,7 @@ pub async fn run_agent_loop(
                     duration_ms,
                     is_error,
                     result_summary,
+                    metadata: tool_metadata,
                 },
             )
             .await;

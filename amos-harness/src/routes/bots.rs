@@ -74,6 +74,8 @@ pub struct EapToolExecuteResponse {
     pub content: String,
     pub is_error: bool,
     pub duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
@@ -254,6 +256,7 @@ async fn eap_tool_execute(
                 content,
                 is_error: !result.success,
                 duration_ms,
+                metadata: result.metadata,
             }))
         }
         Err(e) => {
@@ -262,6 +265,7 @@ async fn eap_tool_execute(
                 content: format!("Tool execution error: {e}"),
                 is_error: true,
                 duration_ms,
+                metadata: None,
             }))
         }
     }

@@ -200,14 +200,30 @@ impl Tool for CreatePageTool {
             )
             .await?;
 
-        Ok(ToolResult::success(json!({
-            "page_id": page.id.to_string(),
-            "site_slug": site_slug,
-            "path": page.path,
-            "url": format!("/s/{}{}", site_slug, if page.path == "/" { "".to_string() } else { page.path.clone() }),
-            "form_collection": page.form_collection,
-            "message": format!("Page '{}' created at /s/{}{}", page.title, site_slug, page.path)
-        })))
+        let page_url = format!(
+            "/s/{}{}",
+            site_slug,
+            if page.path == "/" {
+                "".to_string()
+            } else {
+                page.path.clone()
+            }
+        );
+        Ok(ToolResult::success_with_metadata(
+            json!({
+                "page_id": page.id.to_string(),
+                "site_slug": site_slug,
+                "path": page.path,
+                "url": page_url,
+                "form_collection": page.form_collection,
+                "message": format!("Page '{}' created at /s/{}{}", page.title, site_slug, page.path)
+            }),
+            json!({
+                "__canvas_action": "preview_site",
+                "site_slug": site_slug,
+                "url": page_url
+            }),
+        ))
     }
 
     fn category(&self) -> ToolCategory {
@@ -308,12 +324,28 @@ impl Tool for UpdatePageTool {
             )
             .await?;
 
-        Ok(ToolResult::success(json!({
-            "page_id": page.id.to_string(),
-            "path": page.path,
-            "url": format!("/s/{}{}", site_slug, if page.path == "/" { "".to_string() } else { page.path.clone() }),
-            "message": format!("Page '{}' updated", page.title)
-        })))
+        let page_url = format!(
+            "/s/{}{}",
+            site_slug,
+            if page.path == "/" {
+                "".to_string()
+            } else {
+                page.path.clone()
+            }
+        );
+        Ok(ToolResult::success_with_metadata(
+            json!({
+                "page_id": page.id.to_string(),
+                "path": page.path,
+                "url": page_url,
+                "message": format!("Page '{}' updated", page.title)
+            }),
+            json!({
+                "__canvas_action": "preview_site",
+                "site_slug": site_slug,
+                "url": page_url
+            }),
+        ))
     }
 
     fn category(&self) -> ToolCategory {
@@ -368,18 +400,26 @@ impl Tool for PublishSiteTool {
         // Get page count
         let pages = engine.list_pages(site_slug).await?;
 
-        Ok(ToolResult::success(json!({
-            "site_slug": site.slug,
-            "is_published": true,
-            "url": format!("/s/{}", site.slug),
-            "page_count": pages.len(),
-            "pages": pages.iter().map(|p| json!({
-                "path": p.path,
-                "title": p.title,
-                "url": format!("/s/{}{}", site.slug, if p.path == "/" { "".to_string() } else { p.path.clone() })
-            })).collect::<Vec<_>>(),
-            "message": format!("Site '{}' published with {} pages at /s/{}", site.name, pages.len(), site.slug)
-        })))
+        let site_url = format!("/s/{}", site.slug);
+        Ok(ToolResult::success_with_metadata(
+            json!({
+                "site_slug": site.slug,
+                "is_published": true,
+                "url": site_url,
+                "page_count": pages.len(),
+                "pages": pages.iter().map(|p| json!({
+                    "path": p.path,
+                    "title": p.title,
+                    "url": format!("/s/{}{}", site.slug, if p.path == "/" { "".to_string() } else { p.path.clone() })
+                })).collect::<Vec<_>>(),
+                "message": format!("Site '{}' published with {} pages at /s/{}", site.name, pages.len(), site.slug)
+            }),
+            json!({
+                "__canvas_action": "preview_site",
+                "site_slug": site.slug,
+                "url": site_url
+            }),
+        ))
     }
 
     fn category(&self) -> ToolCategory {

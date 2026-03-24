@@ -451,9 +451,11 @@ async function sendMessage() {
                             appendToolActivity(assistantEl, data.tool_name, data.duration_ms, data.is_error, data.result_summary);
 
                             // Check for canvas actions in tool result metadata
-                            const metadata = data.result && data.result.metadata;
+                            const metadata = data.metadata;
                             if (metadata && metadata.__canvas_action === 'secure_input') {
                                 openSecureInputCanvas(metadata);
+                            } else if (metadata && metadata.__canvas_action === 'preview_site') {
+                                openSitePreview(metadata.url, metadata.site_slug);
                             }
                         }
                         // Handle turn_end event
@@ -1117,6 +1119,9 @@ function showCanvas(canvas) {
 
     canvasTitle.textContent = canvas.name || 'Canvas';
 
+    // Clean up any site preview buttons (regular canvas doesn't need them)
+    updateCanvasButtons(false);
+
     // Show canvas panel as right 2/3
     canvasPanel.classList.remove('hidden');
 
@@ -1170,6 +1175,12 @@ function closeCanvas() {
     const footer = document.getElementById('chatFooter');
     if (footer) footer.classList.remove('hidden');
 
+    // Clean up site preview buttons
+    updateCanvasButtons(false);
+
+    // Clear iframe src to stop any running content
+    document.getElementById('canvasFrame').src = 'about:blank';
+
     state.currentCanvas = null;
     state.currentSystemCanvasId = null;
 
@@ -1178,6 +1189,99 @@ function closeCanvas() {
 
     saveState();
     lucide.createIcons();
+}
+
+/**
+ * Open a live site preview in the canvas panel iframe.
+ * Called when site tools (create_page, update_page, publish_site) complete.
+ * Loads the actual site URL directly in the iframe so the user can interact
+ * with their app while continuing to chat with AMOS.
+ */
+function openSitePreview(url, siteSlug) {
+    const canvasPanel = document.getElementById('canvasPanel');
+    const chatColumn = document.getElementById('chatColumn');
+    const canvasFrame = document.getElementById('canvasFrame');
+    const canvasTitle = document.getElementById('canvasTitle');
+
+    // Store site preview state
+    state.currentCanvas = { type: 'site_preview', slug: siteSlug, url: url };
+    state.currentSystemCanvasId = null;
+
+    // Set title with site slug
+    canvasTitle.textContent = siteSlug ? `Site: ${siteSlug}` : 'Site Preview';
+
+    // Show refresh and open-in-tab buttons
+    updateCanvasButtons(true);
+
+    // Load the site URL directly in the iframe
+    canvasFrame.src = url;
+
+    // Show canvas panel
+    canvasPanel.classList.remove('hidden');
+
+    // Constrain chat to 1/3 width
+    chatColumn.style.flex = '0 0 33.333%';
+    chatColumn.style.maxWidth = '33.333%';
+
+    // Hide footer in compact mode
+    const footer = document.getElementById('chatFooter');
+    if (footer) footer.classList.add('hidden');
+
+    // Close sidebar if open
+    closeSidebar();
+
+    lucide.createIcons();
+}
+
+/**
+ * Refresh the site preview iframe (reload current URL).
+ */
+function refreshSitePreview() {
+    const canvasFrame = document.getElementById('canvasFrame');
+    if (state.currentCanvas && state.currentCanvas.type === 'site_preview') {
+        canvasFrame.src = canvasFrame.src; // Force reload
+    }
+}
+
+/**
+ * Open the site preview in a new browser tab.
+ */
+function openSiteInNewTab() {
+    if (state.currentCanvas && state.currentCanvas.type === 'site_preview') {
+        window.open(state.currentCanvas.url, '_blank');
+    }
+}
+
+/**
+ * Update canvas panel header buttons based on content type.
+ * Site previews get refresh + open-in-tab buttons.
+ */
+function updateCanvasButtons(isSitePreview) {
+    const btnContainer = document.querySelector('#canvasPanel .flex-shrink-0 .flex.items-center');
+    if (!btnContainer) return;
+
+    // Remove any existing site preview buttons
+    btnContainer.querySelectorAll('.site-preview-btn').forEach(el => el.remove());
+
+    if (isSitePreview) {
+        // Add refresh button
+        const refreshBtn = document.createElement('button');
+        refreshBtn.className = 'site-preview-btn p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700';
+        refreshBtn.title = 'Refresh preview';
+        refreshBtn.onclick = refreshSitePreview;
+        refreshBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>';
+
+        // Add open-in-tab button
+        const openBtn = document.createElement('button');
+        openBtn.className = 'site-preview-btn p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700';
+        openBtn.title = 'Open in new tab';
+        openBtn.onclick = openSiteInNewTab;
+        openBtn.innerHTML = '<i data-lucide="external-link" class="w-4 h-4"></i>';
+
+        // Insert before expand and close buttons
+        btnContainer.prepend(openBtn);
+        btnContainer.prepend(refreshBtn);
+    }
 }
 
 function openSidebar() {

@@ -242,6 +242,7 @@ async fn main() -> anyhow::Result<()> {
                                     duration_ms,
                                     is_error,
                                     result_summary,
+                                    metadata: _,
                                 } => {
                                     if is_error {
                                         let msg = result_summary
