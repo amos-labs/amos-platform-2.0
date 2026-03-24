@@ -32,7 +32,7 @@ use axum::{
     Json, Router,
 };
 use base64::Engine;
-use futures::TryStreamExt;
+use bytes::Bytes;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -137,9 +137,11 @@ async fn proxy_chat(
             .unwrap());
     }
 
-    // Stream the SSE response back to the browser.
-    // Convert reqwest's byte stream into an axum Body.
-    let stream = agent_response.bytes_stream().map_err(std::io::Error::other);
+    // Stream the SSE response back to the browser with keepalive comments.
+    // SSE comments (lines starting with `:`) are ignored by EventSource clients
+    // but keep the TCP connection alive through ALB/proxy idle timeouts.
+    let data_stream = agent_response.bytes_stream();
+    let stream = sse_with_keepalive(data_stream);
 
     let body = Body::from_stream(stream);
 
@@ -476,6 +478,54 @@ async fn get_session() -> impl IntoResponse {
             "message": "Session persistence is not yet implemented"
         })),
     )
+}
+
+/// Wrap an SSE byte stream with periodic keepalive comments.
+///
+/// Emits `:keepalive\n\n` every 15 seconds when the upstream hasn't sent
+/// any data. SSE comments (lines starting with `:`) are silently ignored by
+/// `EventSource` clients but keep the TCP connection alive through the ALB
+/// idle timeout (which we've set to 300s).
+fn sse_with_keepalive(
+    upstream: impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+) -> impl futures::Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static {
+    use futures::StreamExt;
+
+    // Channel-based approach: spawn a task that reads upstream and injects
+    // keepalive comments during idle periods.
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(32);
+
+    tokio::spawn(async move {
+        let mut upstream = std::pin::pin!(upstream);
+        let keepalive_interval = std::time::Duration::from_secs(15);
+
+        loop {
+            match tokio::time::timeout(keepalive_interval, upstream.next()).await {
+                Ok(Some(Ok(bytes))) => {
+                    if tx.send(Ok(bytes)).await.is_err() {
+                        break;
+                    }
+                }
+                Ok(Some(Err(e))) => {
+                    let _ = tx.send(Err(std::io::Error::other(e))).await;
+                    break;
+                }
+                Ok(None) => break,
+                Err(_) => {
+                    // Timeout — send keepalive comment
+                    if tx
+                        .send(Ok(Bytes::from_static(b":keepalive\n\n")))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    tokio_stream::wrappers::ReceiverStream::new(rx)
 }
 
 #[cfg(test)]

@@ -228,17 +228,25 @@ async fn main() -> anyhow::Result<()> {
                                 agent_loop::AgentEvent::ToolStart {
                                     tool_name,
                                     is_local,
+                                    input_summary,
                                 } => {
                                     let loc = if is_local { "local" } else { "harness" };
-                                    eprintln!("\n[{loc}] {tool_name}...");
+                                    if let Some(summary) = input_summary {
+                                        eprintln!("\n[{loc}] {summary}...");
+                                    } else {
+                                        eprintln!("\n[{loc}] {tool_name}...");
+                                    }
                                 }
                                 agent_loop::AgentEvent::ToolEnd {
                                     tool_name,
                                     duration_ms,
                                     is_error,
+                                    result_summary,
                                 } => {
                                     if is_error {
-                                        eprintln!("[error] {tool_name} failed ({duration_ms}ms)");
+                                        let msg = result_summary
+                                            .unwrap_or_else(|| format!("{tool_name} failed"));
+                                        eprintln!("[error] {msg} ({duration_ms}ms)");
                                     }
                                 }
                                 agent_loop::AgentEvent::Error { message } => {

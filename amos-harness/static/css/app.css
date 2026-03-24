@@ -82,6 +82,26 @@
 }
 .dark .tool-indicator { background: #451a03; color: #fbbf24; }
 
+/* Tool activity log */
+.tool-activity-log {
+    margin: 0.5rem 0; padding: 0.5rem 0;
+    border-top: 1px solid #e5e7eb;
+    font-size: 0.78rem; line-height: 1.6;
+}
+.dark .tool-activity-log { border-top-color: #374151; }
+.activity-item {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.1rem 0; color: #6b7280;
+}
+.dark .activity-item { color: #9ca3af; }
+.activity-icon { font-weight: 600; flex-shrink: 0; }
+.activity-item:not(.activity-error) .activity-icon { color: #10b981; }
+.activity-error .activity-icon { color: #ef4444; }
+.activity-error .activity-text { color: #ef4444; }
+.dark .activity-error .activity-text { color: #f87171; }
+.activity-duration { color: #9ca3af; font-size: 0.72rem; margin-left: auto; }
+.dark .activity-duration { color: #6b7280; }
+
 /* Canvas cards */
 .canvas-card { transition: transform 0.2s, box-shadow 0.2s; }
 .canvas-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }

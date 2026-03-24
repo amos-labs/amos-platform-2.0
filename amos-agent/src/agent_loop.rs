@@ -55,11 +55,17 @@ pub enum AgentEvent {
     ToolStart {
         tool_name: String,
         is_local: bool,
+        /// Summary of tool input for progress display (e.g. collection name, page title)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input_summary: Option<String>,
     },
     ToolEnd {
         tool_name: String,
         duration_ms: u64,
         is_error: bool,
+        /// Brief result summary for progress display
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result_summary: Option<String>,
     },
     TurnEnd {
         iteration: usize,
@@ -208,11 +214,13 @@ pub async fn run_agent_loop(
 
         for (tool_id, tool_name, input) in &tool_calls {
             let is_local = local_tool_names.contains(tool_name);
+            let input_summary = summarize_tool_input(tool_name, input);
             emit(
                 &event_tx,
                 AgentEvent::ToolStart {
                     tool_name: tool_name.clone(),
                     is_local,
+                    input_summary,
                 },
             )
             .await;
@@ -243,6 +251,7 @@ pub async fn run_agent_loop(
             };
 
             let duration_ms = start.elapsed().as_millis() as u64;
+            let result_summary = summarize_tool_result(tool_name, &result_content, is_error);
 
             emit(
                 &event_tx,
@@ -250,6 +259,7 @@ pub async fn run_agent_loop(
                     tool_name: tool_name.clone(),
                     duration_ms,
                     is_error,
+                    result_summary,
                 },
             )
             .await;
@@ -304,6 +314,138 @@ fn truncate_tool_result(content: &str) -> String {
 async fn emit(tx: &Option<tokio::sync::mpsc::Sender<AgentEvent>>, event: AgentEvent) {
     if let Some(tx) = tx {
         let _ = tx.send(event).await;
+    }
+}
+
+/// Extract a human-readable summary from tool input for progress display.
+fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> Option<String> {
+    // Strip the harness_ prefix for matching
+    let base_name = tool_name.strip_prefix("harness_").unwrap_or(tool_name);
+
+    match base_name {
+        "define_collection" => {
+            let name = input.get("name").and_then(|v| v.as_str())?;
+            let field_count = input
+                .get("fields")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            Some(format!("Defining '{}' ({} fields)", name, field_count))
+        }
+        "create_record" => {
+            let coll = input.get("collection").and_then(|v| v.as_str())?;
+            Some(format!("Creating record in '{}'", coll))
+        }
+        "update_record" => {
+            let id = input
+                .get("record_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("...");
+            Some(format!("Updating record {}", &id[..8.min(id.len())]))
+        }
+        "query_records" | "list_records" => {
+            let coll = input.get("collection").and_then(|v| v.as_str())?;
+            Some(format!("Querying '{}'", coll))
+        }
+        "create_canvas" => {
+            let title = input.get("title").and_then(|v| v.as_str())?;
+            Some(format!("Creating canvas '{}'", title))
+        }
+        "update_canvas" => {
+            let title = input
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("canvas");
+            Some(format!("Updating canvas '{}'", title))
+        }
+        "create_site" => {
+            let name = input.get("name").and_then(|v| v.as_str()).unwrap_or("site");
+            Some(format!("Creating site '{}'", name))
+        }
+        "create_page" => {
+            let title = input
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("page");
+            Some(format!("Building page '{}'", title))
+        }
+        "publish_site" => Some("Publishing site".to_string()),
+        "create_automation" => {
+            let name = input
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("automation");
+            Some(format!("Creating automation '{}'", name))
+        }
+        "ingest_document" => {
+            let title = input
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("document");
+            Some(format!("Ingesting '{}'", title))
+        }
+        "search_knowledge" | "semantic_search" => {
+            let q = input.get("query").and_then(|v| v.as_str())?;
+            let truncated = if q.len() > 50 { &q[..50] } else { q };
+            Some(format!("Searching: {}", truncated))
+        }
+        "web_search" => {
+            let q = input.get("query").and_then(|v| v.as_str())?;
+            let truncated = if q.len() > 50 { &q[..50] } else { q };
+            Some(format!("Searching web: {}", truncated))
+        }
+        "get_workspace_summary" => Some("Loading workspace context".to_string()),
+        "delete_record" => Some("Deleting record".to_string()),
+        "delete_collection" => {
+            let name = input.get("name").and_then(|v| v.as_str())?;
+            Some(format!("Deleting collection '{}'", name))
+        }
+        _ => None,
+    }
+}
+
+/// Extract a brief summary from tool result for progress display.
+fn summarize_tool_result(tool_name: &str, result: &str, is_error: bool) -> Option<String> {
+    if is_error {
+        // Truncate error message for display
+        let msg = if result.len() > 100 {
+            format!("{}...", &result[..100])
+        } else {
+            result.to_string()
+        };
+        return Some(format!("Error: {}", msg));
+    }
+
+    let base_name = tool_name.strip_prefix("harness_").unwrap_or(tool_name);
+
+    // Try to parse as JSON for structured results
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(result) {
+        match base_name {
+            "define_collection" => {
+                let name = json.get("name").and_then(|v| v.as_str())?;
+                Some(format!("Collection '{}' ready", name))
+            }
+            "create_record" => {
+                let id = json.get("id").and_then(|v| v.as_str()).unwrap_or("ok");
+                Some(format!("Record created ({})", &id[..8.min(id.len())]))
+            }
+            "create_site" => {
+                let slug = json.get("slug").and_then(|v| v.as_str())?;
+                Some(format!("Site created at /s/{}", slug))
+            }
+            "create_page" => {
+                let title = json.get("title").and_then(|v| v.as_str())?;
+                Some(format!("Page '{}' created", title))
+            }
+            "publish_site" => Some("Site published".to_string()),
+            "query_records" | "list_records" => {
+                let count = json.get("total").and_then(|v| v.as_u64())?;
+                Some(format!("{} records found", count))
+            }
+            _ => None,
+        }
+    } else {
+        None
     }
 }
 

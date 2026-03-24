@@ -438,15 +438,17 @@ async function sendMessage() {
                         }
                         // Handle tool_start event - show tool indicator
                         else if (data.type === 'tool_start') {
-                            currentToolIndicator = showToolIndicator(assistantEl, data.tool_name, data.tool_input);
+                            currentToolIndicator = showToolIndicator(assistantEl, data.tool_name, data.tool_input, data.input_summary);
                         }
-                        // Handle tool_end event - remove tool indicator
+                        // Handle tool_end event - remove tool indicator, show completion
                         else if (data.type === 'tool_end') {
                             if (currentToolIndicator) {
                                 currentToolIndicator.remove();
                                 currentToolIndicator = null;
                             }
                             console.log('Tool completed:', data.tool_name, 'Duration:', data.duration_ms, 'ms');
+                            // Show completed step in activity log
+                            appendToolActivity(assistantEl, data.tool_name, data.duration_ms, data.is_error, data.result_summary);
 
                             // Check for canvas actions in tool result metadata
                             const metadata = data.result && data.result.metadata;
@@ -746,13 +748,13 @@ function appendMessage(role, content) {
     const container = document.getElementById('chatMessages');
     const div = document.createElement('div');
     div.className = `message-${role} p-4 ${role === 'user' ? 'ml-auto' : ''}`;
-    div.innerHTML = `<div class="message-content">${content ? formatMarkdown(content) : ''}</div>`;
+    div.innerHTML = `<div class="tool-activity-log" style="display:none"><div class="activity-items"></div></div><div class="message-content">${content ? formatMarkdown(content) : ''}</div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return div;
 }
 
-function showToolIndicator(messageEl, toolName, toolInput) {
+function showToolIndicator(messageEl, toolName, toolInput, inputSummary) {
     const content = messageEl.querySelector('.message-content');
     const indicator = document.createElement('div');
     indicator.className = 'tool-indicator';
@@ -766,17 +768,68 @@ function showToolIndicator(messageEl, toolName, toolInput) {
         'run_code': 'Running code',
         'collect_credential': 'Preparing secure input',
         'list_vault_credentials': 'Checking stored credentials',
+        'define_collection': 'Defining collection',
+        'create_record': 'Creating record',
+        'update_record': 'Updating record',
+        'delete_record': 'Deleting record',
+        'query_records': 'Querying records',
+        'create_site': 'Creating site',
+        'create_page': 'Building page',
+        'update_page': 'Updating page',
+        'publish_site': 'Publishing site',
+        'create_automation': 'Creating automation',
+        'ingest_document': 'Ingesting document',
+        'search_knowledge': 'Searching knowledge base',
+        'web_search': 'Searching the web',
+        'get_workspace_summary': 'Loading workspace',
     };
 
-    const displayName = toolDisplayNames[toolName] || `Using ${toolName}`;
+    // Use input_summary if provided, otherwise fall back to display name map
+    const displayName = inputSummary || toolDisplayNames[toolName] || `Using ${toolName}`;
 
     indicator.innerHTML = `
         <div class="spinner"></div>
-        <span>${displayName}...</span>
+        <span>${escapeHtml(displayName)}...</span>
     `;
 
     content.appendChild(indicator);
     return indicator;
+}
+
+/**
+ * Show a completed tool step in the activity log area within the message.
+ * The activity log is a sibling of .message-content so it persists across
+ * content re-renders from message_delta events.
+ */
+function appendToolActivity(messageEl, toolName, durationMs, isError, resultSummary) {
+    const activityLog = messageEl.querySelector('.tool-activity-log');
+    if (!activityLog) return;
+
+    activityLog.style.display = '';
+    const items = activityLog.querySelector('.activity-items');
+    const item = document.createElement('div');
+    item.className = 'activity-item' + (isError ? ' activity-error' : '');
+
+    const icon = isError ? '✗' : '✓';
+    const summary = resultSummary || formatToolName(toolName);
+    const duration = durationMs > 0 ? `${(durationMs / 1000).toFixed(1)}s` : '';
+
+    item.innerHTML = `<span class="activity-icon">${icon}</span> <span class="activity-text">${escapeHtml(summary)}</span>${duration ? ` <span class="activity-duration">${duration}</span>` : ''}`;
+    items.appendChild(item);
+
+    // Auto-scroll to keep activity visible
+    const container = document.getElementById('chatMessages');
+    if (container) container.scrollTop = container.scrollHeight;
+}
+
+function formatToolName(name) {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 // ============================================================================
