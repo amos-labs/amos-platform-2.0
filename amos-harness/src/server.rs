@@ -1,6 +1,7 @@
 //! Axum server setup and configuration
 
 use crate::{
+    automations::engine::AutomationEngine,
     bedrock::BedrockClient,
     canvas::CanvasEngine,
     documents::DocumentProcessor,
@@ -89,6 +90,17 @@ pub async fn create_server(
         tracing::info!("Embedding service disabled (AMOS__EMBEDDING__API_KEY not set)");
     }
 
+    // Initialize automation engine
+    let automation_http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    let automation_engine = Arc::new(AutomationEngine::new(
+        db_pool.clone(),
+        task_queue.clone(),
+        automation_http_client,
+    ));
+
     let tool_registry = Arc::new(ToolRegistry::default_registry(
         db_pool.clone(),
         config.clone(),
@@ -97,6 +109,7 @@ pub async fn create_server(
         api_executor.clone(),
         etl_pipeline.clone(),
         embedding_service.clone(),
+        automation_engine.clone(),
     ));
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 
@@ -121,6 +134,13 @@ pub async fn create_server(
         tracing::info!("Image generation disabled (GOOGLE_CLOUD_PROJECT not set)");
     }
 
+    // Start the automation cron loop (checks scheduled automations every 60s)
+    automation_engine.clone().start();
+    tracing::info!("Automation engine started (cron scheduler active)");
+
+    // Create event channel for schema → automation decoupling
+    let automation_event_tx = automation_engine.create_event_channel();
+
     // Create application state
     let state = Arc::new(AppState {
         db_pool,
@@ -138,6 +158,8 @@ pub async fn create_server(
         vault,
         geo_locator,
         embedding_service,
+        automation_engine: automation_engine.clone(),
+        automation_event_tx,
     });
 
     // Build router with all routes

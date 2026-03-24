@@ -10,11 +10,13 @@
 //! - **Records** store actual data as JSONB, validated against their collection's fields
 //! - Both are queried via PostgreSQL JSONB operators and GIN indexes
 
+use crate::automations::{TriggerEvent, TriggerType};
 use amos_core::{AmosError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use sqlx::{PgPool, Row};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -98,11 +100,25 @@ pub struct Record {
 /// Engine for CRUD operations on collections and records.
 pub struct SchemaEngine {
     db_pool: PgPool,
+    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
 }
 
 impl SchemaEngine {
     pub fn new(db_pool: PgPool) -> Self {
-        Self { db_pool }
+        Self {
+            db_pool,
+            event_tx: None,
+        }
+    }
+
+    pub fn with_event_sender(
+        db_pool: PgPool,
+        event_tx: mpsc::UnboundedSender<TriggerEvent>,
+    ) -> Self {
+        Self {
+            db_pool,
+            event_tx: Some(event_tx),
+        }
     }
 
     // ─── Collection operations ───────────────────────────────────────
@@ -225,7 +241,19 @@ impl SchemaEngine {
         .await
         .map_err(|e| AmosError::Internal(format!("Failed to create record: {}", e)))?;
 
-        record_from_row(&row, collection_name)
+        let record = record_from_row(&row, collection_name)?;
+
+        // Fire automation event (non-blocking channel send)
+        if let Some(tx) = &self.event_tx {
+            let _ = tx.send(TriggerEvent {
+                event_type: TriggerType::RecordCreated,
+                collection: Some(collection_name.to_string()),
+                record_id: Some(record.id),
+                data: record.data.clone(),
+            });
+        }
+
+        Ok(record)
     }
 
     /// Query records from a collection with JSONB containment filters.
@@ -352,11 +380,44 @@ impl SchemaEngine {
         .await
         .map_err(|e| AmosError::Internal(format!("Failed to update record: {}", e)))?;
 
-        record_from_row(&row, &collection_name)
+        let record = record_from_row(&row, &collection_name)?;
+
+        // Fire automation event (non-blocking channel send)
+        if let Some(tx) = &self.event_tx {
+            let _ = tx.send(TriggerEvent {
+                event_type: TriggerType::RecordUpdated,
+                collection: Some(collection_name.clone()),
+                record_id: Some(record.id),
+                data: record.data.clone(),
+            });
+        }
+
+        Ok(record)
     }
 
     /// Delete a record by ID.
     pub async fn delete_record(&self, record_id: Uuid) -> Result<()> {
+        // Fetch record info before deleting (for automation event)
+        let record_info = if self.event_tx.is_some() {
+            sqlx::query(
+                r#"SELECT r.data, c.name as collection_name
+                   FROM records r JOIN collections c ON r.collection_id = c.id
+                   WHERE r.id = $1"#,
+            )
+            .bind(record_id)
+            .fetch_optional(&self.db_pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|row| {
+                let data: JsonValue = row.get("data");
+                let collection_name: String = row.get("collection_name");
+                (collection_name, data)
+            })
+        } else {
+            None
+        };
+
         let result = sqlx::query("DELETE FROM records WHERE id = $1")
             .bind(record_id)
             .execute(&self.db_pool)
@@ -367,6 +428,16 @@ impl SchemaEngine {
             return Err(AmosError::NotFound {
                 entity: "Record".to_string(),
                 id: record_id.to_string(),
+            });
+        }
+
+        // Fire automation event (non-blocking channel send)
+        if let (Some(tx), Some((collection_name, data))) = (&self.event_tx, record_info) {
+            let _ = tx.send(TriggerEvent {
+                event_type: TriggerType::RecordDeleted,
+                collection: Some(collection_name),
+                record_id: Some(record_id),
+                data,
             });
         }
 

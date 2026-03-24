@@ -4,11 +4,13 @@
 //! then create, query, update, and delete records within them.
 
 use super::{Tool, ToolCategory, ToolResult};
+use crate::automations::TriggerEvent;
 use crate::schema::{FieldDefinition, SchemaEngine};
 use amos_core::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
 use sqlx::PgPool;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 // ── DefineCollection ─────────────────────────────────────────────────────
@@ -265,11 +267,12 @@ impl Tool for GetCollectionTool {
 /// Create a new record in a data collection.
 pub struct CreateRecordTool {
     db_pool: PgPool,
+    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
 }
 
 impl CreateRecordTool {
-    pub fn new(db_pool: PgPool) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>) -> Self {
+        Self { db_pool, event_tx }
     }
 }
 
@@ -310,7 +313,10 @@ impl Tool for CreateRecordTool {
             .cloned()
             .ok_or_else(|| amos_core::AmosError::Validation("data is required".to_string()))?;
 
-        let engine = SchemaEngine::new(self.db_pool.clone());
+        let engine = match &self.event_tx {
+            Some(tx) => SchemaEngine::with_event_sender(self.db_pool.clone(), tx.clone()),
+            None => SchemaEngine::new(self.db_pool.clone()),
+        };
         let record = engine.create_record(collection_name, data).await?;
 
         Ok(ToolResult::success(json!({
@@ -436,11 +442,12 @@ impl Tool for QueryRecordsTool {
 /// Update an existing record (merge semantics — new fields override, existing fields preserved).
 pub struct UpdateRecordTool {
     db_pool: PgPool,
+    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
 }
 
 impl UpdateRecordTool {
-    pub fn new(db_pool: PgPool) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>) -> Self {
+        Self { db_pool, event_tx }
     }
 }
 
@@ -485,7 +492,10 @@ impl Tool for UpdateRecordTool {
             .cloned()
             .ok_or_else(|| amos_core::AmosError::Validation("data is required".to_string()))?;
 
-        let engine = SchemaEngine::new(self.db_pool.clone());
+        let engine = match &self.event_tx {
+            Some(tx) => SchemaEngine::with_event_sender(self.db_pool.clone(), tx.clone()),
+            None => SchemaEngine::new(self.db_pool.clone()),
+        };
         let record = engine.update_record(record_id, data).await?;
 
         Ok(ToolResult::success(json!({
@@ -507,11 +517,12 @@ impl Tool for UpdateRecordTool {
 /// Delete a record by ID.
 pub struct DeleteRecordTool {
     db_pool: PgPool,
+    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
 }
 
 impl DeleteRecordTool {
-    pub fn new(db_pool: PgPool) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>) -> Self {
+        Self { db_pool, event_tx }
     }
 }
 
@@ -547,7 +558,10 @@ impl Tool for DeleteRecordTool {
             amos_core::AmosError::Validation(format!("Invalid UUID: {}", record_id_str))
         })?;
 
-        let engine = SchemaEngine::new(self.db_pool.clone());
+        let engine = match &self.event_tx {
+            Some(tx) => SchemaEngine::with_event_sender(self.db_pool.clone(), tx.clone()),
+            None => SchemaEngine::new(self.db_pool.clone()),
+        };
         engine.delete_record(record_id).await?;
 
         Ok(ToolResult::success(json!({

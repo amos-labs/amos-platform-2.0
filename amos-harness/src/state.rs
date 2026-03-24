@@ -1,6 +1,7 @@
 //! Application state shared across all request handlers
 
 use crate::{
+    automations::{engine::AutomationEngine, TriggerEvent},
     canvas::CanvasEngine,
     documents::DocumentProcessor,
     embeddings::EmbeddingService,
@@ -68,6 +69,12 @@ pub struct AppState {
     /// Embedding service for semantic search (OpenAI-compatible API).
     /// `None` if `AMOS__EMBEDDING__API_KEY` is not set.
     pub embedding_service: Option<Arc<EmbeddingService>>,
+
+    /// Automation engine for event-driven triggers and scheduled actions
+    pub automation_engine: Arc<AutomationEngine>,
+
+    /// Channel for schema CRUD events → automation engine (breaks async type cycle)
+    pub automation_event_tx: tokio::sync::mpsc::UnboundedSender<TriggerEvent>,
 }
 
 impl AppState {

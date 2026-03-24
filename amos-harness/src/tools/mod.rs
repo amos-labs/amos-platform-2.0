@@ -2,6 +2,7 @@
 //!
 //! Tools are the primary way the agent interacts with the world.
 
+pub mod automation_tools;
 pub mod canvas_tools;
 pub mod credential_tools;
 pub mod document_tools;
@@ -21,6 +22,7 @@ pub mod task_tools;
 pub mod web_tools;
 pub mod workspace_tools;
 
+use crate::automations::engine::AutomationEngine;
 use crate::embeddings::EmbeddingService;
 use crate::integrations::{etl::EtlPipeline, executor::ApiExecutor};
 use crate::task_queue::TaskQueue;
@@ -115,6 +117,7 @@ pub enum ToolCategory {
     TaskQueue,
     Document,
     ImageGen,
+    Automation,
     Other,
 }
 
@@ -133,6 +136,7 @@ impl ToolCategory {
             ToolCategory::TaskQueue => "task_queue",
             ToolCategory::Document => "document",
             ToolCategory::ImageGen => "image_gen",
+            ToolCategory::Automation => "automation",
             ToolCategory::Other => "other",
         }
     }
@@ -230,6 +234,7 @@ impl ToolRegistry {
         api_executor: Arc<ApiExecutor>,
         etl_pipeline: Arc<EtlPipeline>,
         embedding_service: Option<Arc<EmbeddingService>>,
+        automation_engine: Arc<AutomationEngine>,
     ) -> Self {
         let mut registry = Self::new(db_pool.clone(), config.clone());
 
@@ -325,17 +330,38 @@ impl ToolRegistry {
         registry.register(Arc::new(schema_tools::GetCollectionTool::new(
             db_pool.clone(),
         )));
+        let event_tx = automation_engine.create_event_channel();
         registry.register(Arc::new(schema_tools::CreateRecordTool::new(
             db_pool.clone(),
+            Some(event_tx.clone()),
         )));
         registry.register(Arc::new(schema_tools::QueryRecordsTool::new(
             db_pool.clone(),
         )));
         registry.register(Arc::new(schema_tools::UpdateRecordTool::new(
             db_pool.clone(),
+            Some(event_tx.clone()),
         )));
         registry.register(Arc::new(schema_tools::DeleteRecordTool::new(
             db_pool.clone(),
+            Some(event_tx),
+        )));
+
+        // Register automation tools
+        registry.register(Arc::new(automation_tools::CreateAutomationTool::new(
+            automation_engine.clone(),
+        )));
+        registry.register(Arc::new(automation_tools::ListAutomationsTool::new(
+            automation_engine.clone(),
+        )));
+        registry.register(Arc::new(automation_tools::UpdateAutomationTool::new(
+            automation_engine.clone(),
+        )));
+        registry.register(Arc::new(automation_tools::DeleteAutomationTool::new(
+            automation_engine.clone(),
+        )));
+        registry.register(Arc::new(automation_tools::TestAutomationTool::new(
+            automation_engine.clone(),
         )));
 
         // Register site tools (websites and landing pages)
@@ -501,6 +527,7 @@ mod tests {
         assert_eq!(ToolCategory::TaskQueue.as_str(), "task_queue");
         assert_eq!(ToolCategory::Document.as_str(), "document");
         assert_eq!(ToolCategory::ImageGen.as_str(), "image_gen");
+        assert_eq!(ToolCategory::Automation.as_str(), "automation");
         assert_eq!(ToolCategory::Other.as_str(), "other");
     }
 

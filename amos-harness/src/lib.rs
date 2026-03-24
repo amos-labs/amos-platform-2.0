@@ -39,6 +39,7 @@
 //! - **Integrations**: Connector framework for third-party services
 //! - **Memory**: Working memory with salience-based attention
 
+pub mod automations;
 pub mod bedrock;
 pub mod canvas;
 pub mod documents;

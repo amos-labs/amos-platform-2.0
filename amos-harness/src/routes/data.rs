@@ -169,7 +169,8 @@ async fn create_record(
     Path(collection): Path<String>,
     Json(data): Json<JsonValue>,
 ) -> Result<(StatusCode, Json<JsonValue>), ApiError> {
-    let engine = SchemaEngine::new(state.db_pool.clone());
+    let engine =
+        SchemaEngine::with_event_sender(state.db_pool.clone(), state.automation_event_tx.clone());
     let record = engine.create_record(&collection, data).await?;
     Ok((StatusCode::CREATED, Json(json!(record))))
 }
@@ -179,7 +180,8 @@ async fn update_record(
     Path((_collection, id)): Path<(String, Uuid)>,
     Json(data): Json<JsonValue>,
 ) -> Result<Json<JsonValue>, ApiError> {
-    let engine = SchemaEngine::new(state.db_pool.clone());
+    let engine =
+        SchemaEngine::with_event_sender(state.db_pool.clone(), state.automation_event_tx.clone());
     let record = engine.update_record(id, data).await?;
     Ok(Json(json!(record)))
 }
@@ -188,7 +190,8 @@ async fn delete_record(
     State(state): State<Arc<AppState>>,
     Path((_collection, id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let engine = SchemaEngine::new(state.db_pool.clone());
+    let engine =
+        SchemaEngine::with_event_sender(state.db_pool.clone(), state.automation_event_tx.clone());
     engine.delete_record(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
