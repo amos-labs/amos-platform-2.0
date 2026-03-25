@@ -139,13 +139,17 @@
                                 <input type="file" id="fileInput" class="hidden" multiple accept="image/*,.pdf,.doc,.docx,.txt,.csv,.json,.xml,.md"
                                     onchange="handleFileSelect(event)">
                                 <div class="flex-1 relative">
+                                    <div id="planModeBadge" class="hidden absolute -top-6 left-2 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded">Plan Mode</div>
                                     <textarea id="chatInput"
                                         placeholder="Ask AMOS anything..."
-                                        class="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-amos-500 focus:border-transparent"
+                                        class="w-full resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-3 pr-20 focus:outline-none focus:ring-2 focus:ring-amos-500 focus:border-transparent"
                                         rows="1"
                                         onkeydown="handleKeyDown(event)"
                                         oninput="autoResize(this)"
                                         onpaste="handlePaste(event)"></textarea>
+                                    <button onclick="togglePlanMode()" id="planModeBtn" class="absolute right-12 bottom-2 p-2 rounded-lg text-gray-400 hover:text-amber-500 transition" title="Plan Mode OFF - Click to enable">
+                                        <i data-lucide="map" class="w-4 h-4"></i>
+                                    </button>
                                     <button onclick="sendMessage()" id="sendBtn" class="absolute right-2 bottom-2 p-2 rounded-lg bg-amos-600 text-white hover:bg-amos-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
                                         <i data-lucide="send" class="w-4 h-4"></i>
                                     </button>

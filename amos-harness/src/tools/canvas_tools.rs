@@ -360,6 +360,7 @@ impl Tool for UpdateCanvasTool {
                 .map(String::from),
             data_sources: params.get("data_sources").cloned(),
             actions: params.get("actions").cloned(),
+            metadata: None,
         };
 
         let canvas = engine.update_canvas(canvas_id, updates).await?;

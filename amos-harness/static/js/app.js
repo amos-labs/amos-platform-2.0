@@ -23,6 +23,7 @@ const state = {
     currentChatId: null,
     abortController: null,
     pendingAttachments: [], // { id, filename, content_type, size_bytes, url, localPreview }
+    planMode: false,
 };
 
 // ============================================================================
@@ -351,6 +352,9 @@ async function sendMessage() {
             message: text || '(see attached files)',
             session_id: state.sessionId,
         };
+        if (state.planMode) {
+            requestBody.plan_mode = true;
+        }
         if (attachments.length > 0) {
             requestBody.attachments = attachments.map(a => a.id);
         }
@@ -456,6 +460,8 @@ async function sendMessage() {
                                 openSecureInputCanvas(metadata);
                             } else if (metadata && metadata.__canvas_action === 'preview_site') {
                                 openSitePreview(metadata.url, metadata.site_slug);
+                            } else if (metadata && metadata.__canvas_action === 'preview_app') {
+                                openAppPreview(metadata.canvas_id, metadata.app_name);
                             }
                         }
                         // Handle turn_end event
@@ -1249,6 +1255,72 @@ function refreshSitePreview() {
 function openSiteInNewTab() {
     if (state.currentCanvas && state.currentCanvas.type === 'site_preview') {
         window.open(state.currentCanvas.url, '_blank');
+    }
+}
+
+/**
+ * Open an app preview in the canvas panel.
+ * Loads the canvas by ID and renders it as a freeform canvas (blob URL).
+ */
+async function openAppPreview(canvasId, appName) {
+    try {
+        const response = await fetch(`${state.apiBase}/api/v1/canvases/${canvasId}`);
+        if (!response.ok) throw new Error('Failed to load app canvas');
+
+        const canvas = await response.json();
+
+        // Try to get rendered content from the API
+        try {
+            const renderResp = await fetch(`${state.apiBase}/api/v1/canvases/${canvasId}/render`);
+            if (renderResp.ok) {
+                const rendered = await renderResp.json();
+                canvas._rendered_html = rendered.content;
+                canvas._rendered_js = rendered.js_content;
+                canvas._rendered_css = rendered.css_content;
+            }
+        } catch (renderErr) {
+            console.warn('App canvas render failed, using raw content:', renderErr);
+        }
+
+        canvas.name = appName || canvas.name;
+        showCanvas(canvas);
+        navigate('chat');
+    } catch (err) {
+        console.error('Error loading app preview:', err);
+    }
+}
+
+// ============================================================================
+// Plan Mode
+// ============================================================================
+
+/**
+ * Toggle plan mode on/off.
+ */
+function togglePlanMode() {
+    state.planMode = !state.planMode;
+    updatePlanModeUI();
+}
+
+/**
+ * Update the plan mode UI indicator.
+ */
+function updatePlanModeUI() {
+    const btn = document.getElementById('planModeBtn');
+    const badge = document.getElementById('planModeBadge');
+    if (btn) {
+        if (state.planMode) {
+            btn.classList.add('text-amber-500');
+            btn.classList.remove('text-gray-400');
+            btn.title = 'Plan Mode ON - Click to disable';
+        } else {
+            btn.classList.remove('text-amber-500');
+            btn.classList.add('text-gray-400');
+            btn.title = 'Plan Mode OFF - Click to enable';
+        }
+    }
+    if (badge) {
+        badge.classList.toggle('hidden', !state.planMode);
     }
 }
 

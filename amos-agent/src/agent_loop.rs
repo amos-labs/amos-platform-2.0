@@ -399,6 +399,22 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> Option<St
             let truncated = if q.len() > 50 { &q[..50] } else { q };
             Some(format!("Searching web: {}", truncated))
         }
+        "create_app" => {
+            let name = input.get("name").and_then(|v| v.as_str()).unwrap_or("app");
+            let view_count = input
+                .get("views")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            Some(format!("Creating app '{}' ({} views)", name, view_count))
+        }
+        "update_app_view" => {
+            let view = input
+                .get("view_slug")
+                .and_then(|v| v.as_str())
+                .unwrap_or("view");
+            Some(format!("Updating app view '{}'", view))
+        }
         "get_workspace_summary" => Some("Loading workspace context".to_string()),
         "delete_record" => Some("Deleting record".to_string()),
         "delete_collection" => {
@@ -433,6 +449,19 @@ fn summarize_tool_result(tool_name: &str, result: &str, is_error: bool) -> Optio
             "create_record" => {
                 let id = json.get("id").and_then(|v| v.as_str()).unwrap_or("ok");
                 Some(format!("Record created ({})", &id[..8.min(id.len())]))
+            }
+            "create_app" => {
+                let name = json.get("name").and_then(|v| v.as_str())?;
+                let views = json.get("view_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                Some(format!("App '{}' created ({} views)", name, views))
+            }
+            "update_app_view" => {
+                let view = json.get("view_slug").and_then(|v| v.as_str())?;
+                let action = json
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("updated");
+                Some(format!("View '{}' {}", view, action))
             }
             "create_site" => {
                 let slug = json.get("slug").and_then(|v| v.as_str())?;
@@ -477,6 +506,11 @@ Web search — two-stage pattern (IMPORTANT):
 - "harness_view_web_page" fetches full page content. Use it selectively on the 1-2 most relevant URLs from search results.
 - Do NOT call web_search repeatedly with similar queries. Review results before searching again.
 - Do NOT call harness_view_web_page on every search result — pick only the most promising URLs.
+
+Building apps vs websites:
+- For interactive applications (CRMs, dashboards, project trackers, admin panels), use "harness_create_app" to create a multi-view app backed by collections. Specify views with component types (data_table, kanban, dashboard, form, chart). The AMOS component library handles data fetching, rendering, and interactivity automatically.
+- For static websites (landing pages, marketing sites, portfolios), use "harness_create_site" and "harness_create_page" with raw HTML/CSS/JS.
+- Always create the underlying collections/schema first, then build the app views on top of them.
 
 Always be helpful, accurate, and thorough. If unsure, search the web or think through the problem first."#
         .to_string()

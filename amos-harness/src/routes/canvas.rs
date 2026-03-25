@@ -122,6 +122,7 @@ async fn update_canvas(
         css_content: req.css_content,
         data_sources: None,
         actions: None,
+        metadata: None,
     };
 
     let canvas = state

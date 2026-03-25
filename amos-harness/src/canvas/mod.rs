@@ -62,15 +62,44 @@ impl CanvasEngine {
         actions: Option<JsonValue>,
         layout_config: Option<JsonValue>,
     ) -> Result<Canvas> {
+        self.create_canvas_with_metadata(
+            name,
+            description,
+            canvas_type,
+            html_content,
+            js_content,
+            css_content,
+            data_sources,
+            actions,
+            layout_config,
+            None,
+        )
+        .await
+    }
+
+    /// Create a new canvas with optional metadata
+    pub async fn create_canvas_with_metadata(
+        &self,
+        name: String,
+        description: Option<String>,
+        canvas_type: CanvasType,
+        html_content: String,
+        js_content: Option<String>,
+        css_content: Option<String>,
+        data_sources: Option<JsonValue>,
+        actions: Option<JsonValue>,
+        layout_config: Option<JsonValue>,
+        metadata: Option<JsonValue>,
+    ) -> Result<Canvas> {
         let slug = generate_slug(&name);
 
         let query = format!(
             r#"
             INSERT INTO canvases (
                 slug, name, description, html_content, js_content, css_content,
-                canvas_type, data_sources, actions, layout_config, version
+                canvas_type, data_sources, actions, layout_config, metadata, version
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1)
             RETURNING {}
             "#,
             CANVAS_COLUMNS
@@ -87,6 +116,7 @@ impl CanvasEngine {
             .bind(data_sources)
             .bind(actions)
             .bind(layout_config)
+            .bind(metadata)
             .fetch_one(&self.db_pool)
             .await
             .map_err(|e| {
@@ -130,6 +160,10 @@ impl CanvasEngine {
             set_parts.push(format!("actions = ${}", bind_idx));
             bind_idx += 1;
         }
+        if updates.metadata.is_some() {
+            set_parts.push(format!("metadata = ${}", bind_idx));
+            bind_idx += 1;
+        }
 
         let query = format!(
             "UPDATE canvases SET {}, updated_at = NOW() WHERE id = ${} RETURNING {}",
@@ -160,6 +194,9 @@ impl CanvasEngine {
         }
         if let Some(actions) = updates.actions {
             query_builder = query_builder.bind(actions);
+        }
+        if let Some(metadata) = updates.metadata {
+            query_builder = query_builder.bind(metadata);
         }
 
         query_builder = query_builder.bind(canvas_id);
@@ -327,6 +364,7 @@ pub struct CanvasUpdate {
     pub css_content: Option<String>,
     pub data_sources: Option<JsonValue>,
     pub actions: Option<JsonValue>,
+    pub metadata: Option<JsonValue>,
 }
 
 /// Generate a URL-safe slug from a name

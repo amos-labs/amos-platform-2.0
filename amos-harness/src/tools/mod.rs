@@ -2,6 +2,7 @@
 //!
 //! Tools are the primary way the agent interacts with the world.
 
+pub mod app_tools;
 pub mod automation_tools;
 pub mod canvas_tools;
 pub mod credential_tools;
@@ -107,6 +108,7 @@ pub trait Tool: Send + Sync {
 pub enum ToolCategory {
     Platform,
     Canvas,
+    Apps,
     Web,
     System,
     Memory,
@@ -126,6 +128,7 @@ impl ToolCategory {
         match self {
             ToolCategory::Platform => "platform",
             ToolCategory::Canvas => "canvas",
+            ToolCategory::Apps => "apps",
             ToolCategory::Web => "web",
             ToolCategory::System => "system",
             ToolCategory::Memory => "memory",
@@ -267,6 +270,10 @@ impl ToolRegistry {
         registry.register(Arc::new(canvas_tools::PublishCanvasTool::new(
             db_pool.clone(),
         )));
+
+        // Register app tools (interactive multi-view applications)
+        registry.register(Arc::new(app_tools::CreateAppTool::new(db_pool.clone())));
+        registry.register(Arc::new(app_tools::UpdateAppViewTool::new(db_pool.clone())));
 
         // Register web tools
         // NOTE: WebSearchTool is intentionally NOT registered here — web search
@@ -517,6 +524,7 @@ mod tests {
     fn tool_category_as_str() {
         assert_eq!(ToolCategory::Platform.as_str(), "platform");
         assert_eq!(ToolCategory::Canvas.as_str(), "canvas");
+        assert_eq!(ToolCategory::Apps.as_str(), "apps");
         assert_eq!(ToolCategory::Web.as_str(), "web");
         assert_eq!(ToolCategory::System.as_str(), "system");
         assert_eq!(ToolCategory::Memory.as_str(), "memory");

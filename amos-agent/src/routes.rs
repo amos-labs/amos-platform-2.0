@@ -60,6 +60,9 @@ pub struct ChatRequest {
     /// Injected by the harness proxy after processing uploaded files.
     #[serde(default)]
     pub content_blocks: Option<Vec<amos_core::types::ContentBlock>>,
+    /// When true, the agent restricts itself to research and planning tools.
+    #[serde(default)]
+    pub plan_mode: Option<bool>,
 }
 
 /// Chat response for non-streaming mode.
@@ -68,6 +71,20 @@ pub struct ChatResponse {
     pub text: String,
     pub session_id: Option<String>,
 }
+
+/// System prompt prepended when plan mode is active.
+const PLAN_MODE_PROMPT: &str = r#"You are in PLAN MODE. The user wants to discuss and plan before you build anything.
+
+Rules:
+1. DO NOT call any tools that create, update, or delete data (no create_app, create_site, define_collection, create_record, create_page, create_automation, update_record, delete_record, etc.)
+2. You MAY use research tools: get_workspace_summary, knowledge_search, query_records, list_collections, think, plan, web_search, list_sites, recall
+3. Analyze what the user wants and present a clear, structured plan:
+   - What collections/schemas will be created (fields, types)
+   - What app views or site pages will be built
+   - What automations or integrations are needed
+   - Estimated number of steps
+4. Ask clarifying questions if requirements are ambiguous
+5. When the user approves the plan, tell them to turn off Plan Mode to begin building."#;
 
 /// Create the agent HTTP router.
 pub fn agent_router(state: AgentState) -> Router {
@@ -126,6 +143,12 @@ async fn chat_sse(
     let mut loop_config = state.loop_config.clone();
     if let Some(ref model_id) = req.model_id {
         loop_config.model_id = model_id.clone();
+    }
+
+    // Prepend plan mode instructions when active
+    if req.plan_mode.unwrap_or(false) {
+        loop_config.system_prompt =
+            format!("{}\n\n{}", PLAN_MODE_PROMPT, loop_config.system_prompt);
     }
 
     let tool_ctx = state.tool_ctx.clone();
@@ -196,5 +219,25 @@ mod tests {
         let json = r#"{"message": "hello", "session_id": "abc-123"}"#;
         let req: ChatRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.session_id, Some("abc-123".to_string()));
+    }
+
+    #[test]
+    fn test_chat_request_with_plan_mode() {
+        let json = r#"{"message": "Build me a CRM", "plan_mode": true}"#;
+        let req: ChatRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.plan_mode, Some(true));
+    }
+
+    #[test]
+    fn test_chat_request_plan_mode_defaults_to_none() {
+        let json = r#"{"message": "hello"}"#;
+        let req: ChatRequest = serde_json::from_str(json).unwrap();
+        assert!(req.plan_mode.is_none());
+    }
+
+    #[test]
+    fn test_plan_mode_prompt_content() {
+        assert!(PLAN_MODE_PROMPT.contains("PLAN MODE"));
+        assert!(PLAN_MODE_PROMPT.contains("DO NOT call"));
     }
 }
