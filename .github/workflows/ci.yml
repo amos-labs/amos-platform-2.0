@@ -189,8 +189,7 @@ jobs:
           if [ -n "$TASK_IP" ] && [ "$TASK_IP" != "None" ]; then
             # Deregister any stale targets and register the new IP
             for TG_ARN in \
-              "arn:aws:elasticloadbalancing:us-east-1:637423327454:targetgroup/harness-amos-labs-8f68/953dd7040569969d" \
-              "arn:aws:elasticloadbalancing:us-east-1:637423327454:targetgroup/harness-amos-labs-912a/ce33fdeb8caf9bb2"; do
+              "arn:aws:elasticloadbalancing:us-east-1:637423327454:targetgroup/harness-amos-labs-51b5/ab8f4fe461c88e15"; do
 
               # Deregister old targets
               OLD_TARGETS=$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
