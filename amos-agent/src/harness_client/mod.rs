@@ -225,15 +225,45 @@ impl HarnessClient {
             task_id: task_id.map(|s| s.to_string()),
         };
 
-        let mut request = self.http.post(&url).json(&req);
-        if let Some(ref token) = self.token {
-            request = request.bearer_auth(token);
-        }
+        // Retry once on connection-level errors (cold-start / keep-alive race).
+        // The first harness call in a conversation sometimes fails at the TCP
+        // level; a single retry with a short delay resolves it transparently.
+        let send_request =
+            |client: &Client, url: &str, token: Option<&str>, req: &ToolExecutionRequest| {
+                let mut builder = client.post(url).json(req);
+                if let Some(t) = token {
+                    builder = builder.bearer_auth(t);
+                }
+                builder
+            };
 
-        let response = request
+        let response = match send_request(&self.http, &url, self.token.as_deref(), &req)
             .send()
             .await
-            .map_err(|e| AmosError::Internal(format!("Tool execution request failed: {e}")))?;
+        {
+            Ok(resp) => resp,
+            Err(e) if e.is_connect() || e.is_timeout() || e.is_request() => {
+                warn!(
+                    tool = tool_name,
+                    error = %e,
+                    "Harness tool request failed on first attempt, retrying in 500ms"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                send_request(&self.http, &url, self.token.as_deref(), &req)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AmosError::Internal(format!(
+                            "Tool execution request failed after retry: {e}"
+                        ))
+                    })?
+            }
+            Err(e) => {
+                return Err(AmosError::Internal(format!(
+                    "Tool execution request failed: {e}"
+                )));
+            }
+        };
 
         if !response.status().is_success() {
             let status = response.status();

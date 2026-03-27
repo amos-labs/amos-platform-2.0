@@ -343,9 +343,12 @@ async function sendMessage() {
         lucide.createIcons();
     }
 
-    // Create assistant message placeholder
+    // Create assistant message placeholder with thinking indicator
     const assistantEl = appendMessage('assistant', '');
-    assistantEl.classList.add('streaming-cursor');
+    const thinkingEl = document.createElement('div');
+    thinkingEl.className = 'thinking-indicator';
+    thinkingEl.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>';
+    assistantEl.querySelector('.message-content').appendChild(thinkingEl);
 
     try {
         const requestBody = {
@@ -424,6 +427,10 @@ async function sendMessage() {
                         }
                         // Handle message_delta event - append content
                         else if (data.type === 'message_delta' && data.content) {
+                            // Remove thinking indicator on first content
+                            const thinking = assistantEl.querySelector('.thinking-indicator');
+                            if (thinking) thinking.remove();
+
                             // Remove tool indicator if present
                             if (currentToolIndicator) {
                                 currentToolIndicator.remove();
@@ -442,6 +449,9 @@ async function sendMessage() {
                         }
                         // Handle tool_start event - show tool indicator
                         else if (data.type === 'tool_start') {
+                            // Remove thinking indicator when tools start
+                            const thinking = assistantEl.querySelector('.thinking-indicator');
+                            if (thinking) thinking.remove();
                             currentToolIndicator = showToolIndicator(assistantEl, data.tool_name, data.tool_input, data.input_summary);
                         }
                         // Handle tool_end event - remove tool indicator, show completion
@@ -520,7 +530,9 @@ async function sendMessage() {
             }
         }
     } finally {
-        assistantEl.classList.remove('streaming-cursor');
+        // Remove thinking indicator if still present
+        const thinking = assistantEl.querySelector('.thinking-indicator');
+        if (thinking) thinking.remove();
         state.isStreaming = false;
         state.currentChatId = null;
         state.abortController = null;
@@ -755,10 +767,13 @@ function newChat() {
 function appendMessage(role, content) {
     const container = document.getElementById('chatMessages');
     const div = document.createElement('div');
-    div.className = `message-${role} p-4 ${role === 'user' ? 'ml-auto' : ''}`;
-    div.innerHTML = `<div class="tool-activity-log" style="display:none"><div class="activity-items"></div></div><div class="message-content">${content ? formatMarkdown(content) : ''}</div>`;
+    div.className = `message-row message-${role} p-4`;
+
+    const iconName = role === 'user' ? 'user' : 'sparkles';
+    div.innerHTML = `<div class="message-icon"><i data-lucide="${iconName}" class="w-4 h-4"></i></div><div class="message-body"><div class="tool-activity-log" style="display:none"><div class="activity-items"></div></div><div class="message-content">${content ? formatMarkdown(content) : ''}</div></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+    lucide.createIcons({attrs: {}, nameAttr: 'data-lucide'});
     return div;
 }
 
@@ -790,6 +805,8 @@ function showToolIndicator(messageEl, toolName, toolInput, inputSummary) {
         'search_knowledge': 'Searching knowledge base',
         'web_search': 'Searching the web',
         'get_workspace_summary': 'Loading workspace',
+        'create_app': 'Building app',
+        'update_app_view': 'Updating app view',
     };
 
     // Use input_summary if provided, otherwise fall back to display name map
