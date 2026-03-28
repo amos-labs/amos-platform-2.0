@@ -113,19 +113,17 @@ fn export_pdf(content: &DocumentContent) -> Result<Vec<u8>> {
     use genpdf::Alignment;
     use genpdf::Element as _; // bring .styled() method into scope
 
-    // Use the built-in font family (Helvetica-like, always available)
-    let font_family = fonts::from_files("", "LiberationSans", None).unwrap_or_else(|_| {
-        // Fallback: try system fonts or use built-in
-        fonts::from_files(
-            "/usr/share/fonts/truetype/liberation",
-            "LiberationSans",
-            None,
-        )
-        .unwrap_or_else(|_| {
-            fonts::from_files("/System/Library/Fonts/Supplemental", "Arial", None)
-                .expect("No usable font found — install LiberationSans or Arial")
+    // Try font locations in order: current dir, Linux system, macOS system.
+    let font_family = fonts::from_files("", "LiberationSans", None)
+        .or_else(|_| {
+            fonts::from_files(
+                "/usr/share/fonts/truetype/liberation",
+                "LiberationSans",
+                None,
+            )
         })
-    });
+        .or_else(|_| fonts::from_files("/System/Library/Fonts/Supplemental", "Arial", None))
+        .context("No usable font found — install fonts-liberation (Linux) or use macOS")?;
 
     let mut doc = genpdf::Document::new(font_family);
     doc.set_title(content.title.as_deref().unwrap_or("Document"));

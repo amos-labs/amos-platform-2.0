@@ -507,7 +507,15 @@ fn sse_with_keepalive(
                     }
                 }
                 Ok(Some(Err(e))) => {
-                    let _ = tx.send(Err(std::io::Error::other(e))).await;
+                    // Upstream network error — send an SSE error event so the
+                    // client can surface it, then close the stream gracefully
+                    // instead of propagating an IO error that crashes the body.
+                    tracing::warn!("Upstream SSE stream error: {e}");
+                    let error_event = format!(
+                        "event: error\ndata: {{\"error\":\"network error: {}\"}}\n\n",
+                        e.to_string().replace('"', "'")
+                    );
+                    let _ = tx.send(Ok(Bytes::from(error_event))).await;
                     break;
                 }
                 Ok(None) => break,

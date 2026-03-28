@@ -28,6 +28,7 @@ RUN apt-get update && \
     ca-certificates \
     libssl3 \
     curl \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
