@@ -138,28 +138,65 @@ pub async fn run_agent_loop(
         emit(&event_tx, AgentEvent::TurnStart { iteration }).await;
         debug!(iteration, "Agent loop iteration");
 
-        // Call the model
-        let (response, usage) = match provider
-            .converse(
-                &config.model_id,
-                &config.system_prompt,
-                &messages,
-                &all_tool_schemas,
-            )
-            .await
-        {
-            Ok(result) => result,
-            Err(e) => {
-                let error_msg = format!("LLM provider error: {e}");
-                tracing::error!("{}", error_msg);
-                emit(
-                    &event_tx,
-                    AgentEvent::Error {
-                        message: error_msg.clone(),
-                    },
-                )
-                .await;
-                return Err(e);
+        // Call the model with retry-on-rate-limit.
+        // Anthropic (and other providers) return 429 when the rate limit is
+        // exceeded.  We retry up to 3 times with exponential backoff (5s, 15s, 30s)
+        // so transient rate-limit hits don't immediately kill the conversation.
+        let (response, usage) = {
+            let backoffs = [5u64, 15, 30]; // seconds
+            let mut attempt = 0;
+
+            loop {
+                match provider
+                    .converse(
+                        &config.model_id,
+                        &config.system_prompt,
+                        &messages,
+                        &all_tool_schemas,
+                    )
+                    .await
+                {
+                    Ok(result) => break result,
+                    Err(e) => {
+                        let err_str = format!("{e}");
+                        let is_rate_limit = err_str.contains("429")
+                            || err_str.contains("rate_limit")
+                            || err_str.contains("Too Many Requests");
+
+                        if is_rate_limit && attempt < backoffs.len() {
+                            let wait = backoffs[attempt];
+                            tracing::warn!(
+                                attempt = attempt + 1,
+                                wait_secs = wait,
+                                "Rate-limited by provider, backing off"
+                            );
+                            emit(
+                                &event_tx,
+                                AgentEvent::Error {
+                                    message: format!(
+                                        "Rate-limited — waiting {wait}s before retry ({}/3)...",
+                                        attempt + 1
+                                    ),
+                                },
+                            )
+                            .await;
+                            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                            attempt += 1;
+                            continue;
+                        }
+
+                        let error_msg = format!("LLM provider error: {e}");
+                        tracing::error!("{}", error_msg);
+                        emit(
+                            &event_tx,
+                            AgentEvent::Error {
+                                message: error_msg.clone(),
+                            },
+                        )
+                        .await;
+                        return Err(e);
+                    }
+                }
             }
         };
 

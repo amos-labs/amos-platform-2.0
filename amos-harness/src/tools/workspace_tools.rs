@@ -60,9 +60,9 @@ impl Tool for GetWorkspaceSummaryTool {
                 .map(|row| {
                     json!({
                         "name": row.get::<String, _>("name"),
-                        "display_name": row.get::<String, _>("display_name"),
-                        "field_count": row.get::<i64, _>("field_count"),
-                        "record_count": row.get::<i64, _>("record_count"),
+                        "display_name": row.get::<Option<String>, _>("display_name"),
+                        "field_count": row.get::<Option<i64>, _>("field_count").unwrap_or(0),
+                        "record_count": row.get::<Option<i64>, _>("record_count").unwrap_or(0),
                     })
                 })
                 .collect(),
@@ -149,10 +149,10 @@ impl Tool for GetWorkspaceSummaryTool {
         let knowledge_json = match kb_stats {
             Ok(Some(row)) => {
                 json!({
-                    "total_entries": row.get::<i64, _>("total_entries"),
-                    "entries_with_embeddings": row.get::<i64, _>("entries_with_embeddings"),
-                    "category_count": row.get::<i64, _>("category_count"),
-                    "categories": row.get::<JsonValue, _>("categories"),
+                    "total_entries": row.get::<Option<i64>, _>("total_entries").unwrap_or(0),
+                    "entries_with_embeddings": row.get::<Option<i64>, _>("entries_with_embeddings").unwrap_or(0),
+                    "category_count": row.get::<Option<i64>, _>("category_count").unwrap_or(0),
+                    "categories": row.get::<Option<JsonValue>, _>("categories").unwrap_or(json!([])),
                 })
             }
             _ => json!({
