@@ -830,6 +830,14 @@ function appendToolActivity(messageEl, toolName, durationMs, isError, resultSumm
     const activityLog = messageEl.querySelector('.tool-activity-log');
     if (!activityLog) return;
 
+    // Hide errors from internal context-gathering tools — these are not
+    // user-requested and their failure shouldn't clutter the conversation.
+    const internalTools = ['get_workspace_summary', 'get_memory_context'];
+    if (isError && internalTools.includes(toolName)) {
+        console.warn(`Internal tool ${toolName} failed (suppressed):`, resultSummary);
+        return;
+    }
+
     activityLog.style.display = '';
     const items = activityLog.querySelector('.activity-items');
     const item = document.createElement('div');
