@@ -12,10 +12,10 @@
 //! per-request provider instead of its default Bedrock provider.
 //!
 //! Endpoints proxied:
-//!   - `POST /api/v1/agent/chat`       → agent `POST /api/v1/chat` (with BYOK injection)
+//!   - `POST /api/v1/agent/chat`        → agent `POST /api/v1/chat` (with BYOK + session persistence)
 //!   - `POST /api/v1/agent/chat/cancel` → stub (agent doesn't support cancel yet)
-//!   - `GET  /api/v1/agent/sessions`    → stub (agent doesn't persist sessions yet)
-//!   - `GET  /api/v1/agent/sessions/:id` → stub
+//!   - `GET  /api/v1/agent/sessions`    → list recent sessions from DB
+//!   - `GET  /api/v1/agent/sessions/:id` → load session messages from DB
 
 use crate::documents::ExtractionResult;
 use crate::routes::credentials;
@@ -25,7 +25,7 @@ use crate::tools::knowledge_tools;
 use amos_core::types::{ContentBlock, DocumentSource, ImageSource};
 use axum::{
     body::Body,
-    extract::State,
+    extract::{Path, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -33,6 +33,7 @@ use axum::{
 };
 use base64::Engine;
 use bytes::Bytes;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -72,8 +73,64 @@ async fn proxy_chat(
 ) -> Result<Response, StatusCode> {
     let agent_url = format!("{}/api/v1/chat", agent_base_url());
 
-    // Process attachments: load uploaded files, extract content, and inject
-    // as content_blocks into the request JSON before forwarding.
+    // ── Session persistence: parse request, create/continue session ────
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|_| serde_json::json!({}));
+
+    let user_message_text = parsed
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let requested_session_id = parsed
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    // Create or continue a session.
+    let session_id = match requested_session_id {
+        Some(id) => id,
+        None => {
+            // Derive a title from the first ~60 chars of the user message.
+            let title = if user_message_text.len() > 60 {
+                Some(format!("{}...", &user_message_text[..57]))
+            } else if !user_message_text.is_empty() {
+                Some(user_message_text.clone())
+            } else {
+                None
+            };
+            match crate::sessions::create_session(&state.db_pool, title.as_deref()).await {
+                Ok(session) => session.id,
+                Err(e) => {
+                    warn!("Failed to create session: {e}");
+                    Uuid::new_v4() // Fallback: proceed without persistence
+                }
+            }
+        }
+    };
+
+    // Save the user message.
+    if !user_message_text.is_empty() {
+        let seq = crate::sessions::message_count(&state.db_pool, session_id)
+            .await
+            .unwrap_or(0);
+        let user_msg = amos_core::types::Message {
+            role: amos_core::types::Role::User,
+            content: vec![ContentBlock::Text {
+                text: user_message_text,
+            }],
+            tool_use_id: None,
+            timestamp: chrono::Utc::now(),
+        };
+        if let Err(e) =
+            crate::sessions::save_messages(&state.db_pool, session_id, &[user_msg], seq).await
+        {
+            warn!("Failed to save user message: {e}");
+        }
+    }
+
+    // ── Attachment & BYOK processing ──────────────────────────────────
     let body = match process_attachments(&state, &body).await {
         Ok(b) => b,
         Err(e) => {
@@ -85,18 +142,24 @@ async fn proxy_chat(
         }
     };
 
-    // Try to inject BYOK provider config into the request body
     let enriched_body = match inject_byok_provider(&state, &body).await {
         Ok(b) => b,
         Err(e) => {
-            // Non-fatal: if we can't look up the provider, forward the original body.
-            // The agent will fall back to its default provider (Bedrock).
             warn!("BYOK injection skipped ({}), forwarding original body", e);
             body
         }
     };
 
-    info!(url = %agent_url, byok = enriched_body.contains("provider_type"), "Proxying chat request to agent");
+    // Inject session_id into the body so the agent knows about it.
+    let enriched_body = match serde_json::from_str::<serde_json::Value>(&enriched_body) {
+        Ok(mut json) => {
+            json["session_id"] = serde_json::json!(session_id.to_string());
+            serde_json::to_string(&json).unwrap_or(enriched_body)
+        }
+        Err(_) => enriched_body,
+    };
+
+    info!(url = %agent_url, session_id = %session_id, byok = enriched_body.contains("provider_type"), "Proxying chat request to agent");
 
     let client = reqwest::Client::new();
     let agent_response = match client
@@ -109,49 +172,48 @@ async fn proxy_chat(
         Ok(resp) => resp,
         Err(e) => {
             error!("Failed to connect to agent service at {}: {}", agent_url, e);
-            // Return an SSE error event so the frontend shows a proper message
-            // instead of a raw 502.
             let error_event = "event: error\ndata: {\"type\":\"error\",\"message\":\"Agent service is not available. Please try again shortly or contact support.\"}\n\n".to_string();
-            return Ok(Response::builder()
+            return Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "text/event-stream")
                 .header(header::CACHE_CONTROL, "no-cache")
                 .body(Body::from(error_event))
-                .unwrap());
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
 
     let status = agent_response.status();
 
     if !status.is_success() {
-        warn!(
-            status = %status,
-            "Agent returned non-success status"
-        );
-        // Forward the error response as-is
+        warn!(status = %status, "Agent returned non-success status");
         let error_body = agent_response.text().await.unwrap_or_default();
-        return Ok(Response::builder()
+        return Response::builder()
             .status(StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY))
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(error_body))
-            .unwrap());
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    // Stream the SSE response back to the browser with keepalive comments.
-    // SSE comments (lines starting with `:`) are ignored by EventSource clients
-    // but keep the TCP connection alive through ALB/proxy idle timeouts.
+    // ── Stream SSE with keepalive + message collection ────────────────
+    // Prepend a chat_meta event so the frontend learns the session_id.
+    let chat_meta = format!(
+        "event: chat_meta\ndata: {{\"session_id\":\"{}\"}}\n\n",
+        session_id
+    );
+
     let data_stream = agent_response.bytes_stream();
-    let stream = sse_with_keepalive(data_stream);
+    let stream =
+        sse_with_keepalive_and_persist(data_stream, chat_meta, state.db_pool.clone(), session_id);
 
     let body = Body::from_stream(stream);
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/event-stream")
         .header(header::CACHE_CONTROL, "no-cache")
         .header("X-Accel-Buffering", "no")
         .body(body)
-        .unwrap())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 /// Look up the active LLM provider from the database, decrypt its API key,
@@ -457,59 +519,158 @@ async fn cancel_chat() -> impl IntoResponse {
     }))
 }
 
-/// Stub for `GET /api/v1/agent/sessions`.
-///
-/// The agent doesn't persist sessions yet. Return an empty list so the
-/// sidebar renders correctly.
-async fn list_sessions() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "sessions": []
-    }))
+/// List recent sessions for the sidebar.
+async fn list_sessions(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let limit: i64 = params
+        .get("limit")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(15);
+
+    match crate::sessions::list_sessions(&state.db_pool, limit).await {
+        Ok(sessions) => Json(serde_json::json!({ "sessions": sessions })).into_response(),
+        Err(e) => {
+            warn!("Failed to list sessions: {e}");
+            Json(serde_json::json!({ "sessions": [] })).into_response()
+        }
+    }
 }
 
-/// Stub for `GET /api/v1/agent/sessions/:id`.
-///
-/// Return 404 so the frontend clears the stale session ID and starts fresh.
-async fn get_session() -> impl IntoResponse {
-    (
-        StatusCode::NOT_FOUND,
-        Json(serde_json::json!({
-            "error": "Session not found",
-            "message": "Session persistence is not yet implemented"
-        })),
-    )
+/// Load a session and its messages for the frontend to rebuild the conversation.
+async fn get_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let session_id = match Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Invalid session ID" })),
+            )
+                .into_response()
+        }
+    };
+
+    // Verify session exists
+    match crate::sessions::get_session(&state.db_pool, session_id).await {
+        Ok(Some(_session)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "Session not found" })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            warn!("Failed to get session {session_id}: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Failed to load session" })),
+            )
+                .into_response();
+        }
+    };
+
+    // Load messages
+    match crate::sessions::load_messages(&state.db_pool, session_id).await {
+        Ok(messages) => {
+            // Convert to the format the frontend expects: array of {role, content}
+            let formatted: Vec<serde_json::Value> = messages
+                .into_iter()
+                .map(|msg| {
+                    let role = match msg.role {
+                        amos_core::types::Role::User => "user",
+                        amos_core::types::Role::Assistant => "assistant",
+                        amos_core::types::Role::System => "system",
+                        amos_core::types::Role::Tool => "tool",
+                    };
+                    serde_json::json!({
+                        "role": role,
+                        "content": msg.content,
+                    })
+                })
+                .collect();
+
+            Json(serde_json::json!({ "messages": formatted })).into_response()
+        }
+        Err(e) => {
+            warn!("Failed to load messages for session {session_id}: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Failed to load messages" })),
+            )
+                .into_response()
+        }
+    }
 }
 
-/// Wrap an SSE byte stream with periodic keepalive comments.
+/// Wrap an SSE byte stream with keepalive comments, a prepended chat_meta event,
+/// and background persistence of the assistant response.
 ///
 /// Emits `:keepalive\n\n` every 15 seconds when the upstream hasn't sent
-/// any data. SSE comments (lines starting with `:`) are silently ignored by
-/// `EventSource` clients but keep the TCP connection alive through the ALB
-/// idle timeout (which we've set to 300s).
-fn sse_with_keepalive(
+/// any data. Also collects `message_delta` content from the stream and saves
+/// the assistant message to the database when the stream ends.
+fn sse_with_keepalive_and_persist(
     upstream: impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+    chat_meta_event: String,
+    db_pool: sqlx::PgPool,
+    session_id: Uuid,
 ) -> impl futures::Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static {
     use futures::StreamExt;
 
-    // Channel-based approach: spawn a task that reads upstream and injects
-    // keepalive comments during idle periods.
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(32);
 
     tokio::spawn(async move {
+        // Send the chat_meta event first so the frontend learns the session_id.
+        if tx.send(Ok(Bytes::from(chat_meta_event))).await.is_err() {
+            return;
+        }
+
         let mut upstream = std::pin::pin!(upstream);
         let keepalive_interval = std::time::Duration::from_secs(15);
+
+        // Accumulate assistant text from message_delta events.
+        let mut assistant_text = String::new();
+        // Buffer for incomplete SSE lines across chunk boundaries.
+        let mut line_buffer = String::new();
 
         loop {
             match tokio::time::timeout(keepalive_interval, upstream.next()).await {
                 Ok(Some(Ok(bytes))) => {
+                    // Parse SSE lines to collect assistant text for persistence.
+                    if let Ok(chunk) = std::str::from_utf8(&bytes) {
+                        line_buffer.push_str(chunk);
+                        // Process complete lines
+                        while let Some(pos) = line_buffer.find('\n') {
+                            let line = line_buffer[..pos].trim().to_string();
+                            line_buffer = line_buffer[pos + 1..].to_string();
+                            if line.starts_with("data:") {
+                                let json_str = line[5..].trim();
+                                if let Ok(data) =
+                                    serde_json::from_str::<serde_json::Value>(json_str)
+                                {
+                                    if data.get("type").and_then(|t| t.as_str())
+                                        == Some("message_delta")
+                                    {
+                                        if let Some(content) =
+                                            data.get("content").and_then(|c| c.as_str())
+                                        {
+                                            assistant_text.push_str(content);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if tx.send(Ok(bytes)).await.is_err() {
                         break;
                     }
                 }
                 Ok(Some(Err(e))) => {
-                    // Upstream network error — send an SSE error event so the
-                    // client can surface it, then close the stream gracefully
-                    // instead of propagating an IO error that crashes the body.
                     tracing::warn!("Upstream SSE stream error: {e}");
                     let error_event = format!(
                         "event: error\ndata: {{\"error\":\"network error: {}\"}}\n\n",
@@ -520,7 +681,6 @@ fn sse_with_keepalive(
                 }
                 Ok(None) => break,
                 Err(_) => {
-                    // Timeout — send keepalive comment
                     if tx
                         .send(Ok(Bytes::from_static(b":keepalive\n\n")))
                         .await
@@ -530,6 +690,28 @@ fn sse_with_keepalive(
                     }
                 }
             }
+        }
+
+        // Stream ended — save the assistant response if we captured any text.
+        if !assistant_text.is_empty() {
+            let seq = crate::sessions::message_count(&db_pool, session_id)
+                .await
+                .unwrap_or(0);
+            let assistant_msg = amos_core::types::Message {
+                role: amos_core::types::Role::Assistant,
+                content: vec![amos_core::types::ContentBlock::Text {
+                    text: assistant_text,
+                }],
+                tool_use_id: None,
+                timestamp: chrono::Utc::now(),
+            };
+            if let Err(e) =
+                crate::sessions::save_messages(&db_pool, session_id, &[assistant_msg], seq).await
+            {
+                tracing::warn!("Failed to save assistant message: {e}");
+            }
+            // Update session stats.
+            let _ = crate::sessions::touch_session(&db_pool, session_id, 2, 0, 0).await;
         }
     });
 
