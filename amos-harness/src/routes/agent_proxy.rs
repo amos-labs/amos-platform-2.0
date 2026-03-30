@@ -151,7 +151,11 @@ async fn proxy_chat(
     // For new sessions, inject workspace context directly so the agent
     // doesn't need to call harness_get_workspace_summary as its first action.
     if requested_session_id.is_none() {
-        match state.tool_registry.execute("get_workspace_summary", serde_json::json!({})).await {
+        match state
+            .tool_registry
+            .execute("get_workspace_summary", serde_json::json!({}))
+            .await
+        {
             Ok(result) if result.success => {
                 if let Some(data) = result.data {
                     json_body["workspace_context"] = data;

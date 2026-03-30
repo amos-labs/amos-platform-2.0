@@ -106,10 +106,7 @@ pub async fn remember(
         });
         tokio::spawn(async move {
             let h = h.read().await;
-            if let Err(e) = h
-                .execute_tool("remember_this", harness_input, None)
-                .await
-            {
+            if let Err(e) = h.execute_tool("remember_this", harness_input, None).await {
                 tracing::debug!("Harness memory write-through failed (non-fatal): {e}");
             }
         });
@@ -152,7 +149,9 @@ pub async fn recall(
         .ok_or("Missing required field: query")?;
     let limit = input.get("limit").and_then(|l| l.as_u64()).unwrap_or(5) as usize;
 
-    let local_results = store_guard.search(query, limit).map_err(|e| e.to_string())?;
+    let local_results = store_guard
+        .search(query, limit)
+        .map_err(|e| e.to_string())?;
     drop(store_guard); // release lock before potential harness call
 
     // If local results are sparse, also search harness for persistent memories
@@ -207,9 +206,7 @@ pub async fn recall(
     if all_results.is_empty() {
         // Try listing recent as fallback
         let store_guard = store.lock().await;
-        let recent = store_guard
-            .list_recent(limit)
-            .map_err(|e| e.to_string())?;
+        let recent = store_guard.list_recent(limit).map_err(|e| e.to_string())?;
         if recent.is_empty() {
             return Ok(json!({"found": false, "message": "No memories stored yet."}).to_string());
         }

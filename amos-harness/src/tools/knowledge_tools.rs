@@ -176,7 +176,10 @@ impl Tool for IngestDocumentTool {
         }
 
         let note = if has_embeddings && embeddings.is_some() {
-            format!("Document '{}' ingested: {} chunks created with embeddings", title, inserted)
+            format!(
+                "Document '{}' ingested: {} chunks created with embeddings",
+                title, inserted
+            )
         } else {
             format!("Document '{}' ingested: {} chunks stored without embeddings. Set AMOS__EMBEDDING__API_KEY for semantic search.", title, inserted)
         };

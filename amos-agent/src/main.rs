@@ -142,13 +142,8 @@ async fn main() -> anyhow::Result<()> {
                                 .get("content")
                                 .and_then(|c| c.as_str())
                                 .unwrap_or_default();
-                            let id = r
-                                .get("id")
-                                .and_then(|i| i.as_str())
-                                .unwrap_or("unknown");
-                            if !content.is_empty()
-                                && mem.remember(id, content, &[]).is_ok()
-                            {
+                            let id = r.get("id").and_then(|i| i.as_str()).unwrap_or("unknown");
+                            if !content.is_empty() && mem.remember(id, content, &[]).is_ok() {
                                 seeded += 1;
                             }
                         }

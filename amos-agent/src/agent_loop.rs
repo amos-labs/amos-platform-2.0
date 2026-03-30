@@ -124,7 +124,10 @@ pub async fn run_agent_loop(
     if let Some(hist) = history {
         let windowed = window_history(hist, 40);
         messages.extend(windowed);
-        info!(history_messages = messages.len(), "Loaded conversation history");
+        info!(
+            history_messages = messages.len(),
+            "Loaded conversation history"
+        );
     }
 
     // Add the initial user message.
@@ -337,7 +340,11 @@ pub async fn run_agent_loop(
                             // context loading that should not surface to the user.
                             if harness_name == "get_workspace_summary" {
                                 tracing::warn!("Workspace summary unavailable: {e}");
-                                (r#"{"note":"Workspace context not available"}"#.to_string(), false, None)
+                                (
+                                    r#"{"note":"Workspace context not available"}"#.to_string(),
+                                    false,
+                                    None,
+                                )
                             } else {
                                 (format!("Harness tool error: {e}"), true, None)
                             }
@@ -642,9 +649,7 @@ fn window_history(messages: Vec<Message>, max_messages: usize) -> Vec<Message> {
 
         windowed.push(Message {
             role: Role::User,
-            content: vec![ContentBlock::Text {
-                text: summary_text,
-            }],
+            content: vec![ContentBlock::Text { text: summary_text }],
             tool_use_id: None,
             timestamp: Utc::now(),
         });

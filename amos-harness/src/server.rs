@@ -10,8 +10,7 @@ use crate::{
     image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::AgentManager,
-    packages,
-    routes,
+    packages, routes,
     state::AppState,
     storage::{StorageClient, StorageConfig},
     task_queue::TaskQueue,
@@ -181,8 +180,7 @@ pub async fn create_server(
     let state = Arc::new(state_inner);
 
     // Activate packages (bootstrap schemas, canvas templates, seed data)
-    let package_routes = packages::activate_packages(&configured_packages, state.as_ref())
-        .await?;
+    let package_routes = packages::activate_packages(&configured_packages, state.as_ref()).await?;
 
     // Build router with all routes
     let mut api_routes = routes::build_routes(state.clone());
