@@ -1,10 +1,16 @@
 //! Memory tools - remember and recall from persistent local memory.
+//!
+//! The `remember` tool writes through to both local SQLite (fast, in-process)
+//! and the harness PostgreSQL (persistent across container restarts) when a
+//! harness client is available. The `recall` tool searches locally first and
+//! falls back to harness search when local results are sparse.
 
+use crate::harness_client::HarnessClient;
 use crate::memory::MemoryStore;
 use amos_core::types::ToolDefinition;
 use serde_json::json;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 pub fn remember_definition() -> ToolDefinition {
     ToolDefinition {
@@ -66,10 +72,11 @@ pub fn recall_definition() -> ToolDefinition {
     }
 }
 
-/// Store a memory.
+/// Store a memory (write-through: local SQLite + harness PostgreSQL).
 pub async fn remember(
     input: &serde_json::Value,
     store: &Arc<Mutex<MemoryStore>>,
+    harness: Option<&Arc<RwLock<HarnessClient>>>,
 ) -> Result<String, String> {
     let key = input["key"].as_str().ok_or("Missing required field: key")?;
     let content = input["content"]
@@ -80,10 +87,34 @@ pub async fn remember(
         .and_then(|t| serde_json::from_value(t.clone()).ok())
         .unwrap_or_default();
 
-    let store = store.lock().await;
-    let mem = store
-        .remember(key, content, &tags)
-        .map_err(|e| e.to_string())?;
+    // Write to local SQLite (fast, in-process)
+    let mem = {
+        let store = store.lock().await;
+        store
+            .remember(key, content, &tags)
+            .map_err(|e| e.to_string())?
+    };
+
+    // Fire-and-forget write-through to harness PostgreSQL for persistence
+    if let Some(harness) = harness {
+        let h = harness.clone();
+        let harness_input = json!({
+            "content": content,
+            "category": "agent_memory",
+            "key": key,
+            "tags": tags,
+        });
+        tokio::spawn(async move {
+            let h = h.read().await;
+            if let Err(e) = h
+                .execute_tool("remember_this", harness_input, None)
+                .await
+            {
+                tracing::debug!("Harness memory write-through failed (non-fatal): {e}");
+            }
+        });
+    }
+
     Ok(format!(
         "Stored memory '{}': {} ({} chars)",
         mem.key,
@@ -92,17 +123,17 @@ pub async fn remember(
     ))
 }
 
-/// Search/retrieve memories.
+/// Search/retrieve memories (local-first with harness fallback).
 pub async fn recall(
     input: &serde_json::Value,
     store: &Arc<Mutex<MemoryStore>>,
+    harness: Option<&Arc<RwLock<HarnessClient>>>,
 ) -> Result<String, String> {
-    let store = store.lock().await;
+    let store_guard = store.lock().await;
 
     // If an exact key is provided, try direct lookup first
     if let Some(key) = input.get("key").and_then(|k| k.as_str()) {
-        // Fall through to search if not found
-        if let Ok(mem) = store.get(key) {
+        if let Ok(mem) = store_guard.get(key) {
             return Ok(json!({
                 "found": true,
                 "memory": {
@@ -121,11 +152,64 @@ pub async fn recall(
         .ok_or("Missing required field: query")?;
     let limit = input.get("limit").and_then(|l| l.as_u64()).unwrap_or(5) as usize;
 
-    let results = store.search(query, limit).map_err(|e| e.to_string())?;
+    let local_results = store_guard.search(query, limit).map_err(|e| e.to_string())?;
+    drop(store_guard); // release lock before potential harness call
 
-    if results.is_empty() {
+    // If local results are sparse, also search harness for persistent memories
+    let mut all_results: Vec<serde_json::Value> = local_results
+        .iter()
+        .map(|m| {
+            json!({
+                "key": m.key,
+                "content": m.content,
+                "tags": m.tags,
+                "updated_at": m.updated_at,
+                "source": "local",
+            })
+        })
+        .collect();
+
+    if local_results.len() < 2 {
+        if let Some(harness) = harness {
+            let h = harness.read().await;
+            let harness_input = json!({
+                "query": query,
+                "limit": limit,
+                "category": "agent_memory",
+            });
+            if let Ok(resp) = h.execute_tool("search_memory", harness_input, None).await {
+                if !resp.is_error {
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&resp.content) {
+                        if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
+                            // Merge harness results, deduplicating by content
+                            let local_contents: std::collections::HashSet<String> =
+                                local_results.iter().map(|m| m.content.clone()).collect();
+                            for r in results {
+                                let content = r
+                                    .get("content")
+                                    .and_then(|c| c.as_str())
+                                    .unwrap_or_default();
+                                if !local_contents.contains(content) {
+                                    all_results.push(json!({
+                                        "content": content,
+                                        "category": r.get("category").and_then(|c| c.as_str()).unwrap_or(""),
+                                        "source": "harness",
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if all_results.is_empty() {
         // Try listing recent as fallback
-        let recent = store.list_recent(limit).map_err(|e| e.to_string())?;
+        let store_guard = store.lock().await;
+        let recent = store_guard
+            .list_recent(limit)
+            .map_err(|e| e.to_string())?;
         if recent.is_empty() {
             return Ok(json!({"found": false, "message": "No memories stored yet."}).to_string());
         }
@@ -143,13 +227,8 @@ pub async fn recall(
 
     Ok(json!({
         "found": true,
-        "count": results.len(),
-        "memories": results.iter().map(|m| json!({
-            "key": m.key,
-            "content": m.content,
-            "tags": m.tags,
-            "updated_at": m.updated_at,
-        })).collect::<Vec<_>>(),
+        "count": all_results.len(),
+        "memories": all_results,
     })
     .to_string())
 }
@@ -170,7 +249,7 @@ mod tests {
             "content": "The sky is blue",
             "tags": ["fact", "nature"]
         });
-        let result = remember(&input, &store).await.unwrap();
+        let result = remember(&input, &store, None).await.unwrap();
         assert!(result.contains("test_fact"));
         assert!(result.contains("The sky is blue"));
     }
@@ -184,7 +263,7 @@ mod tests {
         }
 
         let input = json!({"query": "name", "key": "user_name"});
-        let result = recall(&input, &store).await.unwrap();
+        let result = recall(&input, &store, None).await.unwrap();
         assert!(result.contains("Alice"));
     }
 
@@ -202,7 +281,7 @@ mod tests {
         }
 
         let input = json!({"query": "language"});
-        let result = recall(&input, &store).await.unwrap();
+        let result = recall(&input, &store, None).await.unwrap();
         assert!(result.contains("Rust"));
     }
 
@@ -210,7 +289,7 @@ mod tests {
     async fn test_recall_empty() {
         let store = test_store();
         let input = json!({"query": "anything"});
-        let result = recall(&input, &store).await.unwrap();
+        let result = recall(&input, &store, None).await.unwrap();
         assert!(result.contains("No memories"));
     }
 }

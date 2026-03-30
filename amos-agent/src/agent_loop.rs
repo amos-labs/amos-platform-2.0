@@ -86,6 +86,7 @@ pub enum AgentEvent {
 }
 
 /// Run the agent loop to completion.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_agent_loop(
     config: &LoopConfig,
     provider: &dyn ModelProvider,
@@ -93,6 +94,8 @@ pub async fn run_agent_loop(
     harness: Option<&HarnessClient>,
     initial_message: &str,
     content_blocks: Option<Vec<ContentBlock>>,
+    history: Option<Vec<Message>>,
+    workspace_context: Option<serde_json::Value>,
     event_tx: Option<tokio::sync::mpsc::Sender<AgentEvent>>,
 ) -> Result<String> {
     let mut messages: Vec<Message> = Vec::new();
@@ -104,6 +107,24 @@ pub async fn run_agent_loop(
 
     if let Some(h) = harness {
         all_tool_schemas.extend(h.harness_tool_schemas());
+    }
+
+    // Build the effective system prompt, injecting workspace context if provided
+    let system_prompt = if let Some(ref ws_ctx) = workspace_context {
+        let ctx_str = serde_json::to_string_pretty(ws_ctx).unwrap_or_default();
+        format!(
+            "{}\n\n## Current Workspace Context\n\n```json\n{}\n```",
+            config.system_prompt, ctx_str
+        )
+    } else {
+        config.system_prompt.clone()
+    };
+
+    // Prepend conversation history if resuming a session
+    if let Some(hist) = history {
+        let windowed = window_history(hist, 40);
+        messages.extend(windowed);
+        info!(history_messages = messages.len(), "Loaded conversation history");
     }
 
     // Add the initial user message.
@@ -131,6 +152,39 @@ pub async fn run_agent_loop(
         timestamp: Utc::now(),
     });
 
+    // Auto-recall: search local memory for context relevant to the user's message
+    // before the first LLM call. This gives the agent background knowledge from
+    // prior conversations without requiring it to call a tool.
+    {
+        let mem_store = tool_ctx.memory.lock().await;
+        if let Ok(memories) = mem_store.search(initial_message, 5) {
+            if !memories.is_empty() {
+                let memory_text = memories
+                    .iter()
+                    .map(|m| format!("- {}: {}", m.key, m.content))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                // Insert before the current user message
+                let insert_pos = messages.len().saturating_sub(1);
+                messages.insert(
+                    insert_pos,
+                    Message {
+                        role: Role::User,
+                        content: vec![ContentBlock::Text {
+                            text: format!(
+                                "[Relevant memories from past conversations:\n{}]",
+                                memory_text
+                            ),
+                        }],
+                        tool_use_id: None,
+                        timestamp: Utc::now(),
+                    },
+                );
+                debug!(count = memories.len(), "Auto-recalled memories for context");
+            }
+        }
+    }
+
     let mut total_tokens: u64 = 0;
     let mut final_text = String::new();
 
@@ -150,7 +204,7 @@ pub async fn run_agent_loop(
                 match provider
                     .converse(
                         &config.model_id,
-                        &config.system_prompt,
+                        &system_prompt,
                         &messages,
                         &all_tool_schemas,
                     )
@@ -278,7 +332,16 @@ pub async fn run_agent_loop(
                 if let Some(h) = harness {
                     match h.execute_tool(harness_name, input.clone(), None).await {
                         Ok(resp) => (resp.content, resp.is_error, resp.metadata),
-                        Err(e) => (format!("Harness tool error: {e}"), true, None),
+                        Err(e) => {
+                            // Suppress errors for workspace summary — it's non-critical
+                            // context loading that should not surface to the user.
+                            if harness_name == "get_workspace_summary" {
+                                tracing::warn!("Workspace summary unavailable: {e}");
+                                (r#"{"note":"Workspace context not available"}"#.to_string(), false, None)
+                            } else {
+                                (format!("Harness tool error: {e}"), true, None)
+                            }
+                        }
                     }
                 } else {
                     (
@@ -520,13 +583,84 @@ fn summarize_tool_result(tool_name: &str, result: &str, is_error: bool) -> Optio
     }
 }
 
+/// Window conversation history to prevent context overflow.
+///
+/// Keeps the first `keep_start` messages (topic establishment) and the last
+/// `keep_end` messages (recent context). Middle messages are summarized as a
+/// brief text note so the agent knows topics were discussed.
+fn window_history(messages: Vec<Message>, max_messages: usize) -> Vec<Message> {
+    if messages.len() <= max_messages {
+        return messages;
+    }
+
+    let keep_start = 2usize;
+    let keep_end = 20usize;
+
+    let first_end = keep_start.min(messages.len());
+    let last_start = messages.len().saturating_sub(keep_end);
+    // Ensure we don't overlap
+    let last_start = last_start.max(first_end);
+
+    let first = &messages[..first_end];
+    let middle = &messages[first_end..last_start];
+    let last = &messages[last_start..];
+
+    let mut windowed: Vec<Message> = first.to_vec();
+
+    if !middle.is_empty() {
+        // Extract text snippets from the middle to form a brief summary
+        let snippets: Vec<&str> = middle
+            .iter()
+            .filter(|m| m.role == Role::User || m.role == Role::Assistant)
+            .filter_map(|m| {
+                m.content.iter().find_map(|b| match b {
+                    ContentBlock::Text { text } => {
+                        let trimmed = text.trim();
+                        if trimmed.is_empty() {
+                            None
+                        } else if trimmed.len() > 80 {
+                            Some(&trimmed[..80])
+                        } else {
+                            Some(trimmed)
+                        }
+                    }
+                    _ => None,
+                })
+            })
+            .take(10)
+            .collect();
+
+        let summary_text = if snippets.is_empty() {
+            format!("[{} earlier messages omitted]", middle.len())
+        } else {
+            format!(
+                "[{} earlier messages omitted. Topics: {}]",
+                middle.len(),
+                snippets.join(" | ")
+            )
+        };
+
+        windowed.push(Message {
+            role: Role::User,
+            content: vec![ContentBlock::Text {
+                text: summary_text,
+            }],
+            tool_use_id: None,
+            timestamp: Utc::now(),
+        });
+    }
+
+    windowed.extend_from_slice(last);
+    windowed
+}
+
 fn default_system_prompt() -> String {
     r#"You are AMOS Agent, an autonomous AI assistant that is part of the AMOS ecosystem.
 
 You have access to local tools (think, remember, recall, plan, web_search, read_file, write_file) that run directly on your machine, and harness tools (prefixed with harness_) that execute on the AMOS Harness server.
 
 Guidelines:
-1. At the START of every conversation, call "harness_get_workspace_summary" to understand what already exists in this workspace (collections, canvases, sites, knowledge base). This prevents recreating things that already exist and lets you build on prior work.
+1. Workspace context is provided automatically at the start of each new conversation. For follow-up questions, conversation history is included automatically. Use "harness_get_workspace_summary" only if you need to refresh workspace state mid-conversation.
 2. Use the "think" tool to reason through complex problems before acting.
 3. Use "remember" to store important facts and "recall" to retrieve them.
 4. Use "plan" to break complex tasks into steps.

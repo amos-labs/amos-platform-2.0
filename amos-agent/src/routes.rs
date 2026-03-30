@@ -63,6 +63,15 @@ pub struct ChatRequest {
     /// When true, the agent restricts itself to research and planning tools.
     #[serde(default)]
     pub plan_mode: Option<bool>,
+    /// Conversation history from prior messages in this session.
+    /// Injected by the harness proxy to give the agent conversational context.
+    #[serde(default)]
+    pub history: Option<Vec<amos_core::types::Message>>,
+    /// Workspace context (collections, canvases, sites, knowledge base).
+    /// Injected by the harness proxy for new sessions so the agent doesn't need
+    /// to call harness_get_workspace_summary on first message.
+    #[serde(default)]
+    pub workspace_context: Option<serde_json::Value>,
 }
 
 /// Chat response for non-streaming mode.
@@ -155,6 +164,8 @@ async fn chat_sse(
     let harness = state.harness.clone();
     let message = req.message.clone();
     let content_blocks = req.content_blocks;
+    let history = req.history;
+    let workspace_context = req.workspace_context;
 
     // Run the agent loop in a background task
     tokio::spawn(async move {
@@ -166,6 +177,8 @@ async fn chat_sse(
             Some(&h),
             &message,
             content_blocks,
+            history,
+            workspace_context,
             Some(event_tx.clone()),
         )
         .await;

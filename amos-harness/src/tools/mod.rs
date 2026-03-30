@@ -120,6 +120,7 @@ pub enum ToolCategory {
     Document,
     ImageGen,
     Automation,
+    Education,
     Other,
 }
 
@@ -140,6 +141,7 @@ impl ToolCategory {
             ToolCategory::Document => "document",
             ToolCategory::ImageGen => "image_gen",
             ToolCategory::Automation => "automation",
+            ToolCategory::Education => "education",
             ToolCategory::Other => "other",
         }
     }

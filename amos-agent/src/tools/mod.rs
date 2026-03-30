@@ -17,11 +17,12 @@ pub mod plan;
 pub mod think;
 pub mod web_search;
 
+use crate::harness_client::HarnessClient;
 use crate::memory::MemoryStore;
 use amos_core::types::ToolDefinition;
 use serde_json::json;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 /// All local tool definitions for the LLM.
 pub fn local_tool_definitions() -> Vec<ToolDefinition> {
@@ -54,6 +55,8 @@ pub struct ToolContext {
     pub memory: Arc<Mutex<MemoryStore>>,
     pub brave_api_key: Option<String>,
     pub work_dir: String,
+    /// Optional harness client for memory write-through and fallback search.
+    pub harness: Option<Arc<RwLock<HarnessClient>>>,
 }
 
 /// Execute a local tool by name with the given input.
@@ -64,10 +67,10 @@ pub async fn execute_local_tool(
 ) -> Result<String, String> {
     match name {
         "think" => Ok(think::execute(input)),
-        "remember" => memory_tools::remember(input, &ctx.memory)
+        "remember" => memory_tools::remember(input, &ctx.memory, ctx.harness.as_ref())
             .await
             .map_err(|e| e.to_string()),
-        "recall" => memory_tools::recall(input, &ctx.memory)
+        "recall" => memory_tools::recall(input, &ctx.memory, ctx.harness.as_ref())
             .await
             .map_err(|e| e.to_string()),
         "plan" => Ok(plan::execute(input)),

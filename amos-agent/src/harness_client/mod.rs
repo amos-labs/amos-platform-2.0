@@ -225,9 +225,11 @@ impl HarnessClient {
             task_id: task_id.map(|s| s.to_string()),
         };
 
-        // Retry once on connection-level errors (cold-start / keep-alive race).
+        // Retry on connection-level errors with exponential backoff.
         // The first harness call in a conversation sometimes fails at the TCP
-        // level; a single retry with a short delay resolves it transparently.
+        // level (cold-start / keep-alive race). We retry up to 3 times.
+        const RETRY_DELAYS_MS: &[u64] = &[500, 1000, 2000];
+
         let send_request =
             |client: &Client, url: &str, token: Option<&str>, req: &ToolExecutionRequest| {
                 let mut builder = client.post(url).json(req);
@@ -237,31 +239,41 @@ impl HarnessClient {
                 builder
             };
 
-        let response = match send_request(&self.http, &url, self.token.as_deref(), &req)
-            .send()
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) if e.is_connect() || e.is_timeout() || e.is_request() => {
-                warn!(
-                    tool = tool_name,
-                    error = %e,
-                    "Harness tool request failed on first attempt, retrying in 500ms"
-                );
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                send_request(&self.http, &url, self.token.as_deref(), &req)
+        // Try the initial request, then retry with exponential backoff on transient errors.
+        let response = {
+            let mut delays_iter = RETRY_DELAYS_MS.iter();
+            let mut attempt = 0u32;
+
+            loop {
+                match send_request(&self.http, &url, self.token.as_deref(), &req)
                     .send()
                     .await
-                    .map_err(|e| {
-                        AmosError::Internal(format!(
-                            "Tool execution request failed after retry: {e}"
-                        ))
-                    })?
-            }
-            Err(e) => {
-                return Err(AmosError::Internal(format!(
-                    "Tool execution request failed: {e}"
-                )));
+                {
+                    Ok(resp) => break resp,
+                    Err(e) if e.is_connect() || e.is_timeout() || e.is_request() => {
+                        if let Some(&delay) = delays_iter.next() {
+                            attempt += 1;
+                            warn!(
+                                tool = tool_name,
+                                error = %e,
+                                attempt,
+                                max_retries = RETRY_DELAYS_MS.len(),
+                                "Harness tool request failed, retrying in {delay}ms"
+                            );
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        } else {
+                            return Err(AmosError::Internal(format!(
+                                "Tool execution request failed after {} retries: {e}",
+                                RETRY_DELAYS_MS.len()
+                            )));
+                        }
+                    }
+                    Err(e) => {
+                        return Err(AmosError::Internal(format!(
+                            "Tool execution request failed: {e}"
+                        )));
+                    }
+                }
             }
         };
 

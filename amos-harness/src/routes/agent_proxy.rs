@@ -130,6 +130,41 @@ async fn proxy_chat(
         }
     }
 
+    // ── Conversation history + workspace context injection ─────────────
+    let mut json_body: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|_| serde_json::json!({}));
+
+    // For continuing sessions, load prior messages as history for the agent
+    if requested_session_id.is_some() {
+        match crate::sessions::load_messages(&state.db_pool, session_id).await {
+            Ok(history) if !history.is_empty() => {
+                if let Ok(hist_val) = serde_json::to_value(&history) {
+                    json_body["history"] = hist_val;
+                    info!(session_id = %session_id, messages = history.len(), "Injected conversation history");
+                }
+            }
+            Ok(_) => {} // empty history, skip
+            Err(e) => warn!("Failed to load session history: {e}"),
+        }
+    }
+
+    // For new sessions, inject workspace context directly so the agent
+    // doesn't need to call harness_get_workspace_summary as its first action.
+    if requested_session_id.is_none() {
+        match state.tool_registry.execute("get_workspace_summary", serde_json::json!({})).await {
+            Ok(result) if result.success => {
+                if let Some(data) = result.data {
+                    json_body["workspace_context"] = data;
+                    info!("Injected workspace context for new session");
+                }
+            }
+            Ok(_) => {} // tool returned error, skip
+            Err(e) => warn!("Failed to load workspace context: {e}"),
+        }
+    }
+
+    let body = serde_json::to_string(&json_body).unwrap_or(body);
+
     // ── Attachment & BYOK processing ──────────────────────────────────
     let body = match process_attachments(&state, &body).await {
         Ok(b) => b,

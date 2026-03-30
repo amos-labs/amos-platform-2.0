@@ -10,6 +10,7 @@ use crate::{
     image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::AgentManager,
+    packages,
     routes,
     state::AppState,
     storage::{StorageClient, StorageConfig},
@@ -101,7 +102,7 @@ pub async fn create_server(
         automation_http_client,
     ));
 
-    let tool_registry = Arc::new(ToolRegistry::default_registry(
+    let mut tool_registry = ToolRegistry::default_registry(
         db_pool.clone(),
         config.clone(),
         task_queue.clone(),
@@ -110,7 +111,11 @@ pub async fn create_server(
         etl_pipeline.clone(),
         embedding_service.clone(),
         automation_engine.clone(),
-    ));
+    );
+
+    // Load configured packages (AMOS_PACKAGES env var)
+    let configured_packages = packages::load_configured_packages();
+
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 
     // Initialize file storage
@@ -141,13 +146,16 @@ pub async fn create_server(
     // Create event channel for schema → automation decoupling
     let automation_event_tx = automation_engine.create_event_channel();
 
-    // Create application state
-    let state = Arc::new(AppState {
+    // Create application state (tool_registry not yet Arc — packages register tools first)
+    let state_inner = AppState {
         db_pool,
         redis: redis_client,
         config: config.clone(),
         canvas_engine,
-        tool_registry,
+        tool_registry: Arc::new(ToolRegistry::new(
+            sqlx::PgPool::connect_lazy("").unwrap_or_else(|_| unreachable!()),
+            config.clone(),
+        )), // placeholder, replaced below
         agent_manager,
         task_queue,
         storage,
@@ -160,10 +168,31 @@ pub async fn create_server(
         embedding_service,
         automation_engine: automation_engine.clone(),
         automation_event_tx,
-    });
+    };
+
+    // Register package tools (needs access to AppState deps like db_pool)
+    for pkg in &configured_packages {
+        pkg.register_tools(&mut tool_registry, &state_inner);
+    }
+
+    // Now wrap registry in Arc and replace the placeholder
+    let mut state_inner = state_inner;
+    state_inner.tool_registry = Arc::new(tool_registry);
+    let state = Arc::new(state_inner);
+
+    // Activate packages (bootstrap schemas, canvas templates, seed data)
+    let package_routes = packages::activate_packages(&configured_packages, state.as_ref())
+        .await?;
 
     // Build router with all routes
-    let api_routes = routes::build_routes(state.clone());
+    let mut api_routes = routes::build_routes(state.clone());
+
+    // Nest package routes under /api/v1/pkg/{package_name}/
+    for (pkg_name, router) in package_routes {
+        let path = format!("/api/v1/pkg/{pkg_name}");
+        tracing::info!("Mounting package routes at {path}");
+        api_routes = api_routes.nest(&path, router);
+    }
 
     // Configure CORS (using permissive settings for now)
     let cors = CorsLayer::new()

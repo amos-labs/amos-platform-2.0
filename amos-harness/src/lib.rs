@@ -50,6 +50,7 @@ pub mod integrations;
 pub mod memory;
 pub mod middleware;
 pub mod openclaw;
+pub mod packages;
 pub mod platform_sync;
 pub mod relay_sync;
 pub mod revisions;
@@ -74,7 +75,10 @@ pub use canvas::{
 };
 
 // Re-export tool types
-pub use tools::{Tool, ToolRegistry, ToolResult};
+pub use tools::{Tool, ToolCategory, ToolRegistry, ToolResult};
+
+// Re-export package types
+pub use packages::AmosPackage;
 
 // Re-export OpenClaw types
 pub use openclaw::{AgentConfig, AgentManager, AgentStatus};

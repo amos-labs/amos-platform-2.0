@@ -79,15 +79,6 @@ impl Tool for IngestDocumentTool {
 
         let source_file = params.get("source_file").and_then(|v| v.as_str());
 
-        let embedding_svc = match &self.embedding_service {
-            Some(svc) => svc,
-            None => {
-                return Ok(ToolResult::error(
-                    "Embedding service not configured. Set AMOS__EMBEDDING__API_KEY to enable document ingestion.".to_string(),
-                ));
-            }
-        };
-
         // Create parent entry (the document record)
         let metadata = json!({
             "title": title,
@@ -114,37 +105,68 @@ impl Tool for IngestDocumentTool {
         // Chunk the document text
         let chunks = chunk_text(content, 2000, 200);
 
-        // Embed all chunks in batch
-        let chunk_refs: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
-        let embeddings = embedding_svc.embed_batch(&chunk_refs).await?;
+        // If embedding service is available, embed and store with vectors.
+        // Otherwise, store chunks as text-only (still searchable via ILIKE).
+        let has_embeddings = self.embedding_service.is_some();
+        let embeddings = if let Some(ref svc) = self.embedding_service {
+            let chunk_refs: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
+            match svc.embed_batch(&chunk_refs).await {
+                Ok(e) => Some(e),
+                Err(err) => {
+                    tracing::warn!("Embedding failed, storing without vectors: {err}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
-        // Insert chunk entries with embeddings
+        // Insert chunk entries (with or without embeddings)
         let mut inserted = 0;
-        for (i, (chunk, embedding)) in chunks.iter().zip(embeddings.iter()).enumerate() {
-            let embedding_str = serde_json::to_string(embedding).unwrap_or_default();
+        for (i, chunk) in chunks.iter().enumerate() {
             let chunk_metadata = json!({
                 "title": title,
                 "chunk_index": i,
                 "total_chunks": chunks.len(),
             });
 
-            let result = sqlx::query(
-                r#"
-                INSERT INTO memory_entries
-                    (content, category, salience, metadata, source, chunk_index, parent_id, embedding, created_at, last_accessed_at)
-                VALUES ($1, $2, 0.7, $3, 'document', $4, $5, $6::vector, $7, $8)
-                "#,
-            )
-            .bind(chunk)
-            .bind(category)
-            .bind(&chunk_metadata)
-            .bind(i as i32)
-            .bind(parent_id)
-            .bind(&embedding_str)
-            .bind(Utc::now())
-            .bind(Utc::now())
-            .execute(&self.db_pool)
-            .await;
+            let result = if let Some(ref embs) = embeddings {
+                let embedding_str = serde_json::to_string(&embs[i]).unwrap_or_default();
+                sqlx::query(
+                    r#"
+                    INSERT INTO memory_entries
+                        (content, category, salience, metadata, source, chunk_index, parent_id, embedding, created_at, last_accessed_at)
+                    VALUES ($1, $2, 0.7, $3, 'document', $4, $5, $6::vector, $7, $8)
+                    "#,
+                )
+                .bind(chunk)
+                .bind(category)
+                .bind(&chunk_metadata)
+                .bind(i as i32)
+                .bind(parent_id)
+                .bind(&embedding_str)
+                .bind(Utc::now())
+                .bind(Utc::now())
+                .execute(&self.db_pool)
+                .await
+            } else {
+                sqlx::query(
+                    r#"
+                    INSERT INTO memory_entries
+                        (content, category, salience, metadata, source, chunk_index, parent_id, created_at, last_accessed_at)
+                    VALUES ($1, $2, 0.7, $3, 'document', $4, $5, $6, $7)
+                    "#,
+                )
+                .bind(chunk)
+                .bind(category)
+                .bind(&chunk_metadata)
+                .bind(i as i32)
+                .bind(parent_id)
+                .bind(Utc::now())
+                .bind(Utc::now())
+                .execute(&self.db_pool)
+                .await
+            };
 
             if let Err(e) = result {
                 tracing::warn!("Failed to insert chunk {}: {}", i, e);
@@ -153,13 +175,20 @@ impl Tool for IngestDocumentTool {
             }
         }
 
+        let note = if has_embeddings && embeddings.is_some() {
+            format!("Document '{}' ingested: {} chunks created with embeddings", title, inserted)
+        } else {
+            format!("Document '{}' ingested: {} chunks stored without embeddings. Set AMOS__EMBEDDING__API_KEY for semantic search.", title, inserted)
+        };
+
         Ok(ToolResult::success(json!({
             "document_id": parent_id.to_string(),
             "title": title,
             "category": category,
             "chunks_created": inserted,
             "total_chunks": chunks.len(),
-            "message": format!("Document '{}' ingested: {} chunks created with embeddings", title, inserted)
+            "has_embeddings": has_embeddings && embeddings.is_some(),
+            "message": note
         })))
     }
 
@@ -228,56 +257,116 @@ impl Tool for KnowledgeSearchTool {
         let source = params.get("source").and_then(|v| v.as_str());
         let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
 
-        let embedding_svc = match &self.embedding_service {
-            Some(svc) => svc,
-            None => {
-                return Ok(ToolResult::error(
-                    "Embedding service not configured. Set AMOS__EMBEDDING__API_KEY to enable knowledge search.".to_string(),
+        // Try semantic search first if embedding service is available
+        if let Some(ref embedding_svc) = self.embedding_service {
+            if let Ok(query_embedding) = embedding_svc.embed(query).await {
+                let embedding_str = serde_json::to_string(&query_embedding).unwrap_or_default();
+
+                // Build query with optional filters
+                let mut sql = String::from(
+                    r#"
+                    SELECT id, content, category, source, salience, metadata,
+                           1 - (embedding <=> $1::vector) AS similarity
+                    FROM memory_entries
+                    WHERE embedding IS NOT NULL
+                    "#,
+                );
+
+                let mut param_idx = 2;
+                let mut bind_values: Vec<String> = Vec::new();
+
+                if let Some(cat) = category {
+                    sql.push_str(&format!(" AND category = ${param_idx}"));
+                    bind_values.push(cat.to_string());
+                    param_idx += 1;
+                }
+
+                if let Some(src) = source {
+                    sql.push_str(&format!(" AND source = ${param_idx}"));
+                    bind_values.push(src.to_string());
+                    param_idx += 1;
+                }
+
+                sql.push_str(&format!(
+                    " ORDER BY embedding <=> $1::vector LIMIT ${param_idx}"
                 ));
+
+                let mut query_builder = sqlx::query(&sql).bind(&embedding_str);
+                for val in &bind_values {
+                    query_builder = query_builder.bind(val);
+                }
+                query_builder = query_builder.bind(limit);
+
+                if let Ok(rows) = query_builder.fetch_all(&self.db_pool).await {
+                    let mut results = Vec::new();
+                    for row in &rows {
+                        let id: Uuid = row.get("id");
+                        let content: String = row.get("content");
+                        let cat: String = row.get("category");
+                        let src: String = row.get("source");
+                        let similarity: f64 = row.get("similarity");
+                        let metadata: JsonValue = row.get("metadata");
+
+                        results.push(json!({
+                            "id": id.to_string(),
+                            "content": content,
+                            "category": cat,
+                            "source": src,
+                            "similarity": similarity,
+                            "title": metadata.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+                        }));
+
+                        let _ = sqlx::query(
+                            "UPDATE memory_entries SET last_accessed_at = $1, access_count = access_count + 1 WHERE id = $2",
+                        )
+                        .bind(Utc::now())
+                        .bind(id)
+                        .execute(&self.db_pool)
+                        .await;
+                    }
+
+                    return Ok(ToolResult::success(json!({
+                        "results": results,
+                        "count": results.len(),
+                        "query": query,
+                        "search_type": "semantic"
+                    })));
+                }
             }
+        }
+
+        // Fallback: text search using ILIKE (same pattern as SearchMemoryTool)
+        let search_pattern = format!("%{}%", query);
+        let rows = if let Some(cat) = category {
+            sqlx::query(
+                r#"
+                SELECT id, content, category, source, salience, metadata
+                FROM memory_entries
+                WHERE source = 'document' AND category = $1 AND content ILIKE $2
+                ORDER BY salience DESC, last_accessed_at DESC
+                LIMIT $3
+                "#,
+            )
+            .bind(cat)
+            .bind(&search_pattern)
+            .bind(limit)
+            .fetch_all(&self.db_pool)
+            .await
+        } else {
+            sqlx::query(
+                r#"
+                SELECT id, content, category, source, salience, metadata
+                FROM memory_entries
+                WHERE source = 'document' AND content ILIKE $1
+                ORDER BY salience DESC, last_accessed_at DESC
+                LIMIT $2
+                "#,
+            )
+            .bind(&search_pattern)
+            .bind(limit)
+            .fetch_all(&self.db_pool)
+            .await
         };
-
-        // Embed the query
-        let query_embedding = embedding_svc.embed(query).await?;
-        let embedding_str = serde_json::to_string(&query_embedding).unwrap_or_default();
-
-        // Build query with optional filters
-        let mut sql = String::from(
-            r#"
-            SELECT id, content, category, source, salience, metadata,
-                   1 - (embedding <=> $1::vector) AS similarity
-            FROM memory_entries
-            WHERE embedding IS NOT NULL
-            "#,
-        );
-
-        let mut param_idx = 2;
-        let mut bind_values: Vec<String> = Vec::new();
-
-        if let Some(cat) = category {
-            sql.push_str(&format!(" AND category = ${param_idx}"));
-            bind_values.push(cat.to_string());
-            param_idx += 1;
-        }
-
-        if let Some(src) = source {
-            sql.push_str(&format!(" AND source = ${param_idx}"));
-            bind_values.push(src.to_string());
-            param_idx += 1;
-        }
-
-        sql.push_str(&format!(
-            " ORDER BY embedding <=> $1::vector LIMIT ${param_idx}"
-        ));
-
-        // Execute with dynamic bindings
-        let mut query_builder = sqlx::query(&sql).bind(&embedding_str);
-        for val in &bind_values {
-            query_builder = query_builder.bind(val);
-        }
-        query_builder = query_builder.bind(limit);
-
-        let rows = query_builder.fetch_all(&self.db_pool).await;
 
         match rows {
             Ok(rows) => {
@@ -287,7 +376,7 @@ impl Tool for KnowledgeSearchTool {
                     let content: String = row.get("content");
                     let cat: String = row.get("category");
                     let src: String = row.get("source");
-                    let similarity: f64 = row.get("similarity");
+                    let salience: f64 = row.get("salience");
                     let metadata: JsonValue = row.get("metadata");
 
                     results.push(json!({
@@ -295,11 +384,10 @@ impl Tool for KnowledgeSearchTool {
                         "content": content,
                         "category": cat,
                         "source": src,
-                        "similarity": similarity,
+                        "salience": salience,
                         "title": metadata.get("title").and_then(|v| v.as_str()).unwrap_or(""),
                     }));
 
-                    // Reinforce accessed entries
                     let _ = sqlx::query(
                         "UPDATE memory_entries SET last_accessed_at = $1, access_count = access_count + 1 WHERE id = $2",
                     )
@@ -312,7 +400,8 @@ impl Tool for KnowledgeSearchTool {
                 Ok(ToolResult::success(json!({
                     "results": results,
                     "count": results.len(),
-                    "query": query
+                    "query": query,
+                    "search_type": "text"
                 })))
             }
             Err(e) => Ok(ToolResult::error(format!("Knowledge search failed: {}", e))),

@@ -54,14 +54,7 @@ async fn main() -> anyhow::Result<()> {
 
     let memory = Arc::new(tokio::sync::Mutex::new(memory_store));
 
-    // Create tool context
-    let tool_ctx = Arc::new(ToolContext {
-        memory: memory.clone(),
-        brave_api_key: config.brave_api_key.clone(),
-        work_dir: config.work_dir.clone(),
-    });
-
-    // Initialize harness client
+    // Initialize harness client (before tool context, since ToolContext needs a reference)
     let mut harness = HarnessClient::new(&config.harness_url, config.agent_token.clone());
 
     // Register with the harness (retry to handle sidecar startup race)
@@ -117,6 +110,59 @@ async fn main() -> anyhow::Result<()> {
 
     // Wrap harness in RwLock for shared access
     let harness = Arc::new(RwLock::new(harness));
+
+    // Create tool context (after harness is wrapped so we can share it)
+    let tool_ctx = Arc::new(ToolContext {
+        memory: memory.clone(),
+        brave_api_key: config.brave_api_key.clone(),
+        work_dir: config.work_dir.clone(),
+        harness: Some(harness.clone()),
+    });
+
+    // Seed local memory from harness if the local store is empty (fresh container).
+    // This ensures agent memories survive container restarts.
+    if mem_count == 0 {
+        info!("Local memory empty, seeding from harness...");
+        let h = harness.read().await;
+        match h
+            .execute_tool(
+                "search_memory",
+                serde_json::json!({"query": "", "limit": 50, "category": "agent_memory"}),
+                None,
+            )
+            .await
+        {
+            Ok(resp) if !resp.is_error => {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&resp.content) {
+                    if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
+                        let mem = memory.lock().await;
+                        let mut seeded = 0;
+                        for r in results {
+                            let content = r
+                                .get("content")
+                                .and_then(|c| c.as_str())
+                                .unwrap_or_default();
+                            let id = r
+                                .get("id")
+                                .and_then(|i| i.as_str())
+                                .unwrap_or("unknown");
+                            if !content.is_empty()
+                                && mem.remember(id, content, &[]).is_ok()
+                            {
+                                seeded += 1;
+                            }
+                        }
+                        if seeded > 0 {
+                            info!(count = seeded, "Seeded local memory from harness");
+                        }
+                    }
+                }
+            }
+            Ok(_) => info!("No memories to seed from harness"),
+            Err(e) => debug!("Could not seed memories from harness: {e}"),
+        }
+        drop(h);
+    }
 
     // Start the Agent Card server in the background
     let agent_card = AgentCard {
@@ -267,6 +313,8 @@ async fn main() -> anyhow::Result<()> {
                         Some(&h),
                         &line,
                         None,
+                        None, // no history in interactive mode
+                        None, // no workspace context in interactive mode
                         Some(event_tx),
                     )
                     .await

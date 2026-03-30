@@ -121,6 +121,8 @@ pub async fn run_task_consumer(
                     Some(&h_read),
                     &prompt,
                     None, // no attachments for background tasks
+                    None, // no history for background tasks
+                    None, // no workspace context for background tasks
                     None, // no event streaming for background tasks
                 )
                 .await;
