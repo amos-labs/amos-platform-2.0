@@ -16,9 +16,10 @@ COPY amos-platform ./amos-platform
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay
+COPY amos-packages ./amos-packages
 
 # Build only the relay binary
-RUN cargo build --release --bin amos-relay
+RUN SQLX_OFFLINE=true cargo build --release --bin amos-relay
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim

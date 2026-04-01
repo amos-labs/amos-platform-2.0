@@ -15,6 +15,7 @@ COPY amos-harness ./amos-harness
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay
+COPY amos-packages ./amos-packages
 
 # Build only the agent binary
 RUN SQLX_OFFLINE=true cargo build --release --bin amos-agent
