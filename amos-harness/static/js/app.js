@@ -827,6 +827,14 @@ function showToolIndicator(messageEl, toolName, toolInput, inputSummary) {
         'get_workspace_summary': 'Loading workspace',
         'create_app': 'Building app',
         'update_app_view': 'Updating app view',
+        'list_available_specialists': 'Checking available specialists',
+        'activate_specialist': 'Setting up specialist',
+        'deactivate_specialist': 'Shutting down specialist',
+        'list_harnesses': 'Checking active specialists',
+        'delegate_to_harness': 'Working with specialist',
+        'submit_task_to_harness': 'Sending task to specialist',
+        'get_harness_status': 'Checking specialist status',
+        'broadcast_to_harnesses': 'Coordinating specialists',
     };
 
     // Use input_summary if provided, otherwise fall back to display name map
@@ -1796,3 +1804,77 @@ function formatTimestamp(dateStr) {
 
     return date.toLocaleDateString();
 }
+
+// ============================================================================
+// Specialist Sidebar
+// ============================================================================
+
+const specialistIcons = {
+    'search': 'search',
+    'graduation-cap': 'graduation-cap',
+    'cpu': 'cpu',
+};
+
+/**
+ * Load specialist status for the sidebar.
+ * Polls GET /api/v1/harness/specialists and updates the specialist section.
+ */
+async function loadSpecialists() {
+    const section = document.getElementById('specialistSection');
+    const container = document.getElementById('specialistList');
+    if (!section || !container) return;
+
+    try {
+        const response = await fetch(`${state.apiBase}/api/v1/harness/specialists`);
+        if (!response.ok) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        const data = await response.json();
+        const active = data.specialists || [];
+        const available = data.available || [];
+
+        if (active.length === 0 && available.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        let html = '';
+
+        // Active specialists
+        for (const spec of active) {
+            const icon = specialistIcons[spec.icon_hint] || 'cpu';
+            const dotColor = spec.healthy
+                ? 'bg-green-500'
+                : (spec.status === 'running' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500');
+
+            html += `<div class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300">
+                <i data-lucide="${icon}" class="w-4 h-4 flex-shrink-0"></i>
+                <span class="truncate flex-1">${escapeHtml(spec.friendly_name)}</span>
+                <span class="w-2 h-2 rounded-full ${dotColor} flex-shrink-0"></span>
+            </div>`;
+        }
+
+        // Available specialists (dimmed)
+        for (const spec of available) {
+            const icon = specialistIcons[spec.icon_hint] || 'cpu';
+            html += `<div class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-400 dark:text-gray-600" title="${escapeHtml(spec.description || '')}">
+                <i data-lucide="${icon}" class="w-4 h-4 flex-shrink-0"></i>
+                <span class="truncate flex-1">${escapeHtml(spec.friendly_name)}</span>
+                <span class="text-xs">available</span>
+            </div>`;
+        }
+
+        container.innerHTML = html;
+        lucide.createIcons();
+    } catch (e) {
+        // Silently hide section if endpoint unavailable
+        section.classList.add('hidden');
+    }
+}
+
+// Start specialist polling (every 30 seconds)
+loadSpecialists();
+setInterval(loadSpecialists, 30000);

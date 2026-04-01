@@ -9,6 +9,7 @@
 //! - **Environment** (dev): parses `AMOS_SIBLING_HARNESSES=name:url,name:url`
 
 pub mod discovery;
+pub mod provisioning_tools;
 pub mod proxy;
 pub mod tools;
 
@@ -31,15 +32,28 @@ impl HarnessOrchestrator {
         Self { proxy }
     }
 
-    /// Register the 5 orchestrator tools into the tool registry.
+    /// Register the 8 orchestrator tools into the tool registry.
     /// Only called on primary harness instances.
     pub fn register_tools(&self, registry: &mut ToolRegistry) {
         let proxy = self.proxy.clone();
+        // Core orchestrator tools
         registry.register(Arc::new(tools::ListHarnessesTool::new(proxy.clone())));
         registry.register(Arc::new(tools::DelegateToHarnessTool::new(proxy.clone())));
         registry.register(Arc::new(tools::SubmitTaskToHarnessTool::new(proxy.clone())));
         registry.register(Arc::new(tools::GetHarnessStatusTool::new(proxy.clone())));
-        registry.register(Arc::new(tools::BroadcastToHarnessesTool::new(proxy)));
+        registry.register(Arc::new(tools::BroadcastToHarnessesTool::new(
+            proxy.clone(),
+        )));
+        // User-friendly provisioning tools
+        registry.register(Arc::new(
+            provisioning_tools::ListAvailableSpecialistsTool::new(proxy.clone()),
+        ));
+        registry.register(Arc::new(provisioning_tools::ActivateSpecialistTool::new(
+            proxy.clone(),
+        )));
+        registry.register(Arc::new(provisioning_tools::DeactivateSpecialistTool::new(
+            proxy,
+        )));
     }
 
     /// Trigger an immediate discovery refresh.

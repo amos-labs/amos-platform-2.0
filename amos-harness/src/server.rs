@@ -133,16 +133,18 @@ pub async fn create_server(
     );
 
     // Register orchestrator tools only on primary harness
-    if harness_role == "primary" {
+    let orchestrator = if harness_role == "primary" {
         let orchestrator = HarnessOrchestrator::new(config.clone());
         orchestrator.register_tools(&mut tool_registry);
         tracing::info!("Orchestrator tools registered (primary harness)");
+        Some(Arc::new(orchestrator))
     } else {
         tracing::info!(
             role = %harness_role,
             "Orchestrator tools skipped (non-primary harness)"
         );
-    }
+        None
+    };
 
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 
@@ -193,6 +195,7 @@ pub async fn create_server(
         embedding_service,
         automation_engine: automation_engine.clone(),
         automation_event_tx,
+        orchestrator,
     });
 
     // Activate packages (bootstrap schemas, collect routes)

@@ -3,6 +3,7 @@
 //! Every harness exposes `/api/v1/harness/info` so the orchestrator on
 //! the primary harness can understand each sibling's capabilities.
 
+use crate::orchestrator::provisioning_tools::{find_catalog_entry, SPECIALIST_CATALOG};
 use crate::state::AppState;
 use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
@@ -21,7 +22,9 @@ struct HarnessInfoResponse {
 
 /// Build harness info routes.
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
-    Router::new().route("/info", get(get_harness_info))
+    Router::new()
+        .route("/info", get(get_harness_info))
+        .route("/specialists", get(get_specialists))
 }
 
 // Track startup time via lazy_static-style approach
@@ -29,6 +32,125 @@ static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
 
 fn get_start_time() -> &'static SystemTime {
     START_TIME.get_or_init(SystemTime::now)
+}
+
+#[derive(Serialize)]
+struct SpecialistInfo {
+    friendly_name: String,
+    slug: String,
+    icon_hint: String,
+    status: String,
+    healthy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    harness_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SpecialistsResponse {
+    specialists: Vec<SpecialistInfo>,
+    available: Vec<SpecialistInfo>,
+}
+
+async fn get_specialists(State(state): State<Arc<AppState>>) -> Json<SpecialistsResponse> {
+    let orchestrator = match &state.orchestrator {
+        Some(o) => o,
+        None => {
+            // No orchestrator — return empty lists with all catalog entries as available
+            let available = SPECIALIST_CATALOG
+                .iter()
+                .map(|e| SpecialistInfo {
+                    friendly_name: e.friendly_name.to_string(),
+                    slug: e.slug.to_string(),
+                    icon_hint: e.icon_hint.to_string(),
+                    status: "available".to_string(),
+                    healthy: false,
+                    harness_id: None,
+                    description: Some(e.description.to_string()),
+                })
+                .collect();
+            return Json(SpecialistsResponse {
+                specialists: vec![],
+                available,
+            });
+        }
+    };
+
+    // Refresh discovery and get current siblings
+    orchestrator.refresh_discovery().await;
+    let siblings = orchestrator.proxy.get_siblings().await;
+
+    let mut specialists = Vec::new();
+    let mut available = Vec::new();
+
+    for entry in SPECIALIST_CATALOG {
+        let running = siblings
+            .iter()
+            .find(|s| s.packages.contains(&entry.slug.to_string()));
+
+        if let Some(sibling) = running {
+            specialists.push(SpecialistInfo {
+                friendly_name: entry.friendly_name.to_string(),
+                slug: entry.slug.to_string(),
+                icon_hint: entry.icon_hint.to_string(),
+                status: sibling.status.clone(),
+                healthy: sibling.healthy.unwrap_or(false),
+                harness_id: Some(sibling.harness_id.clone()),
+                description: None,
+            });
+        } else {
+            available.push(SpecialistInfo {
+                friendly_name: entry.friendly_name.to_string(),
+                slug: entry.slug.to_string(),
+                icon_hint: entry.icon_hint.to_string(),
+                status: "available".to_string(),
+                healthy: false,
+                harness_id: None,
+                description: Some(entry.description.to_string()),
+            });
+        }
+    }
+
+    // Also include any running siblings that aren't in the catalog
+    for sibling in &siblings {
+        let in_catalog = SPECIALIST_CATALOG
+            .iter()
+            .any(|e| sibling.packages.contains(&e.slug.to_string()));
+
+        if !in_catalog {
+            let name = sibling
+                .name
+                .clone()
+                .or_else(|| {
+                    sibling
+                        .packages
+                        .first()
+                        .and_then(|slug| find_catalog_entry(slug))
+                        .map(|e| e.friendly_name.to_string())
+                })
+                .unwrap_or_else(|| sibling.harness_id.clone());
+
+            specialists.push(SpecialistInfo {
+                friendly_name: name,
+                slug: sibling
+                    .packages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| sibling.harness_id.clone()),
+                icon_hint: "cpu".to_string(),
+                status: sibling.status.clone(),
+                healthy: sibling.healthy.unwrap_or(false),
+                harness_id: Some(sibling.harness_id.clone()),
+                description: None,
+            });
+        }
+    }
+
+    Json(SpecialistsResponse {
+        specialists,
+        available,
+    })
 }
 
 async fn get_harness_info(State(state): State<Arc<AppState>>) -> Json<HarnessInfoResponse> {

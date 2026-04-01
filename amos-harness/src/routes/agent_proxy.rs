@@ -167,6 +167,41 @@ async fn proxy_chat(
         }
     }
 
+    // ── Specialist context injection ──────────────────────────────────
+    // For new sessions, inject specialist info so the agent knows what's running
+    // from the first message — no need to call list_available_specialists.
+    if requested_session_id.is_none() {
+        if let Some(ref orchestrator) = state.orchestrator {
+            orchestrator.refresh_discovery().await;
+            let siblings = orchestrator.proxy.get_siblings().await;
+            if !siblings.is_empty() {
+                use crate::orchestrator::provisioning_tools::SPECIALIST_CATALOG;
+
+                let active: Vec<serde_json::Value> = siblings
+                    .iter()
+                    .map(|s| {
+                        let friendly_name = SPECIALIST_CATALOG
+                            .iter()
+                            .find(|e| s.packages.contains(&e.slug.to_string()))
+                            .map(|e| e.friendly_name)
+                            .unwrap_or("Specialist");
+                        serde_json::json!({
+                            "name": friendly_name,
+                            "harness_id": s.harness_id,
+                            "packages": s.packages,
+                            "healthy": s.healthy.unwrap_or(false),
+                        })
+                    })
+                    .collect();
+                json_body["specialists"] = serde_json::json!(active);
+                info!(
+                    count = active.len(),
+                    "Injected specialist context for new session"
+                );
+            }
+        }
+    }
+
     // ── Package system prompt injection ─────────────────────────────────
     // Query enabled packages' system prompts and inject as `package_prompts`
     // array. The agent appends these to the system prompt under a

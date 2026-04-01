@@ -31,7 +31,7 @@ impl Tool for ListHarnessesTool {
     }
 
     fn description(&self) -> &str {
-        "List all specialized harness instances, their packages, available tools, and health status. Use this to discover what capabilities are available across your harness fleet."
+        "List all active specialist assistants, their capabilities, and health status. Use this to check what specialists are currently running."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -114,7 +114,7 @@ impl Tool for DelegateToHarnessTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a specific tool on a named specialist harness. The tool runs synchronously and returns the result. Use list_harnesses first to discover available harnesses and their tools."
+        "Send a task to a specific specialist assistant and get the result back. Use list_harnesses first to see which specialists are available."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -187,7 +187,7 @@ impl Tool for SubmitTaskToHarnessTool {
     }
 
     fn description(&self) -> &str {
-        "Submit an asynchronous task to a specialist harness's agent. Returns a task ID for tracking. Use this for long-running operations that don't need an immediate result."
+        "Submit a long-running task to a specialist assistant. Returns a task ID for tracking progress. Use this when the task doesn't need an immediate result."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -255,7 +255,7 @@ impl Tool for GetHarnessStatusTool {
     }
 
     fn description(&self) -> &str {
-        "Get detailed status of a specialist harness including health, available tools, active packages, and connectivity."
+        "Get detailed status of a specialist assistant including health, available capabilities, and connectivity."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -319,7 +319,7 @@ impl Tool for BroadcastToHarnessesTool {
     }
 
     fn description(&self) -> &str {
-        "Execute the same tool on all harnesses matching a filter (e.g., all with a specific package). Returns results from each harness."
+        "Send the same task to all specialists matching a filter and collect results from each one."
     }
 
     fn parameters_schema(&self) -> JsonValue {

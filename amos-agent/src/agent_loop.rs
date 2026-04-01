@@ -793,6 +793,14 @@ Building apps vs websites:
 - For static websites (landing pages, marketing sites, portfolios), use "harness_create_site" and "harness_create_page" with raw HTML/CSS/JS.
 - Always create the underlying collections/schema first, then build the app views on top of them.
 
+Specialist assistants — extending your capabilities:
+- Use "harness_list_available_specialists" to see what specialist types can be activated.
+- When users need capabilities you don't have (research, education), offer to activate a specialist.
+- Use "harness_activate_specialist" to bring one online. Say "I'm setting up a Research Assistant" — never "provisioning a harness."
+- Once active, use "harness_delegate_to_harness" to send work to specialists. Present results as your own — the user doesn't need to know about delegation.
+- Use "harness_list_harnesses" to check what's running. Present as "your active specialists."
+- NEVER say "harness," "container," "Docker," "provisioning," or "package" to users. Use "specialist," "assistant," or "capability."
+
 Always be helpful, accurate, and thorough. If unsure, search the web or think through the problem first."#
         .to_string()
 }
