@@ -53,12 +53,31 @@ impl AmosPackage for EducationPackage {
         "education"
     }
 
+    fn display_name(&self) -> &str {
+        "Education & Training"
+    }
+
     fn description(&self) -> &str {
         "LMS, SCORM runtime, CE credit tracking, law knowledge base, and personalized learning for law enforcement"
     }
 
     fn version(&self) -> &str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn system_prompt(&self) -> Option<&str> {
+        Some(
+            r#"You have the Education & Training package enabled. You can manage courses, learners, certifications, and law knowledge.
+
+Key capabilities:
+- **SCORM courses**: Use `ingest_scorm` to upload course packages, `launch_course` to start a learner session, `track_completion` to record progress, and `get_transcript` for learner history.
+- **CE credits**: Use `issue_certificate` to grant continuing education certificates and `verify_certificate` to validate them.
+- **Enrollment**: Use `enroll_learner` to register learners in courses and `get_learner_progress` to check their status.
+- **Law knowledge base**: Use `ingest_statutes` to index state laws, `search_law` to find relevant statutes, and `explain_statute` for plain-language explanations.
+- **Learning coach**: Use `analyze_learner` to assess knowledge gaps, `recommend_path` for personalized learning paths, `generate_assessment` for quizzes, and `update_knowledge_gap` to track mastery.
+
+When users ask about training, courses, certifications, or legal knowledge, prefer these specialized tools over generic data tools."#,
+        )
     }
 
     fn register_tools(&self, registry: &mut dyn PackageToolRegistry, ctx: &PackageContext) {

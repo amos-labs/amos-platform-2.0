@@ -77,6 +77,7 @@ pub enum ToolCategory {
     ImageGen,
     Automation,
     Education,
+    Autoresearch,
     Other,
 }
 
@@ -98,6 +99,7 @@ impl ToolCategory {
             ToolCategory::ImageGen => "image_gen",
             ToolCategory::Automation => "automation",
             ToolCategory::Education => "education",
+            ToolCategory::Autoresearch => "autoresearch",
             ToolCategory::Other => "other",
         }
     }

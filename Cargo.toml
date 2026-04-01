@@ -6,6 +6,7 @@ members = [
     "amos-cli",
     "amos-agent",
     "amos-packages/amos-education",
+    "amos-packages/amos-autoresearch",
     # Solana programs are built separately via Anchor (not part of cargo workspace)
 ]
 resolver = "2"

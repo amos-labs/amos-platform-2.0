@@ -12,10 +12,12 @@ path = "src/main.rs"
 [features]
 default = []
 pkg-education = ["amos-education"]
+pkg-autoresearch = ["amos-autoresearch"]
 
 [dependencies]
 # Optional package dependencies (enabled via features)
 amos-education = { path = "../amos-packages/amos-education", optional = true }
+amos-autoresearch = { path = "../amos-packages/amos-autoresearch", optional = true }
 
 amos-core = { path = "../amos-core", features = ["db", "http", "packages"] }
 

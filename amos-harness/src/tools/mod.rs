@@ -49,10 +49,13 @@ struct RegisteredTool {
 ///
 /// Core harness tools are always active. Package tools are only visible to agents
 /// when their package is enabled, preventing tool bloat.
+///
+/// `enabled_packages` is behind an `RwLock` so the package management API can
+/// toggle packages at runtime without restarting the harness.
 pub struct ToolRegistry {
     tools: HashMap<String, RegisteredTool>,
-    /// Set of currently enabled package names
-    enabled_packages: HashSet<String>,
+    /// Set of currently enabled package names (runtime-mutable via API)
+    enabled_packages: parking_lot::RwLock<HashSet<String>>,
     db_pool: PgPool,
     config: Arc<AppConfig>,
 }
@@ -62,7 +65,7 @@ impl ToolRegistry {
     pub fn new(db_pool: PgPool, config: Arc<AppConfig>) -> Self {
         Self {
             tools: HashMap::new(),
-            enabled_packages: HashSet::new(),
+            enabled_packages: parking_lot::RwLock::new(HashSet::new()),
             db_pool,
             config,
         }
@@ -90,33 +93,35 @@ impl ToolRegistry {
         );
     }
 
-    /// Enable a package — its tools become visible to agents
-    pub fn enable_package(&mut self, package: &str) {
-        self.enabled_packages.insert(package.to_string());
+    /// Enable a package — its tools become visible to agents.
+    /// Safe to call from any thread (uses interior RwLock).
+    pub fn enable_package(&self, package: &str) {
+        self.enabled_packages.write().insert(package.to_string());
         tracing::info!(package, "Package enabled — tools now active");
     }
 
-    /// Disable a package — its tools are hidden from agents
-    pub fn disable_package(&mut self, package: &str) {
-        self.enabled_packages.remove(package);
+    /// Disable a package — its tools are hidden from agents.
+    /// Safe to call from any thread (uses interior RwLock).
+    pub fn disable_package(&self, package: &str) {
+        self.enabled_packages.write().remove(package);
         tracing::info!(package, "Package disabled — tools hidden");
     }
 
     /// Check if a package is currently enabled
     pub fn is_package_enabled(&self, package: &str) -> bool {
-        self.enabled_packages.contains(package)
+        self.enabled_packages.read().contains(package)
     }
 
     /// List all enabled package names
     pub fn enabled_packages(&self) -> Vec<String> {
-        self.enabled_packages.iter().cloned().collect()
+        self.enabled_packages.read().iter().cloned().collect()
     }
 
     /// Returns true if the tool is active (core tool or from an enabled package)
     fn is_tool_active(&self, entry: &RegisteredTool) -> bool {
         match &entry.package {
             None => true, // core tools always active
-            Some(pkg) => self.enabled_packages.contains(pkg),
+            Some(pkg) => self.enabled_packages.read().contains(pkg.as_str()),
         }
     }
 
@@ -163,6 +168,15 @@ impl ToolRegistry {
             .values()
             .filter(|e| self.is_tool_active(e) && e.tool.category() == category)
             .map(|e| e.tool.clone())
+            .collect()
+    }
+
+    /// List tool names belonging to a specific package
+    pub fn tools_for_package(&self, package: &str) -> Vec<String> {
+        self.tools
+            .iter()
+            .filter(|(_, e)| e.package.as_deref() == Some(package))
+            .map(|(name, _)| name.clone())
             .collect()
     }
 

@@ -167,6 +167,25 @@ async fn proxy_chat(
         }
     }
 
+    // ── Package system prompt injection ─────────────────────────────────
+    // Query enabled packages' system prompts and inject as `package_prompts`
+    // array. The agent appends these to the system prompt under a
+    // "## Package-Specific Instructions" heading.
+    match sqlx::query_as::<_, (String,)>(
+        "SELECT system_prompt FROM packages WHERE enabled = true AND system_prompt IS NOT NULL",
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    {
+        Ok(rows) if !rows.is_empty() => {
+            let prompts: Vec<String> = rows.into_iter().map(|(p,)| p).collect();
+            json_body["package_prompts"] = serde_json::json!(prompts);
+            info!(count = prompts.len(), "Injected package system prompts");
+        }
+        Ok(_) => {} // no enabled packages with prompts
+        Err(e) => warn!("Failed to load package prompts: {e}"),
+    }
+
     let body = serde_json::to_string(&json_body).unwrap_or(body);
 
     // ── Attachment & BYOK processing ──────────────────────────────────

@@ -72,6 +72,11 @@ pub struct ChatRequest {
     /// to call harness_get_workspace_summary on first message.
     #[serde(default)]
     pub workspace_context: Option<serde_json::Value>,
+    /// System prompts from enabled packages (education, CRM, etc.).
+    /// Injected by the harness proxy. Appended to the system prompt under
+    /// a "## Package-Specific Instructions" heading.
+    #[serde(default)]
+    pub package_prompts: Option<Vec<String>>,
 }
 
 /// Chat response for non-streaming mode.
@@ -158,6 +163,18 @@ async fn chat_sse(
     if req.plan_mode.unwrap_or(false) {
         loop_config.system_prompt =
             format!("{}\n\n{}", PLAN_MODE_PROMPT, loop_config.system_prompt);
+    }
+
+    // Append package-specific instructions to the system prompt
+    if let Some(ref prompts) = req.package_prompts {
+        if !prompts.is_empty() {
+            let combined = prompts.join("\n\n---\n\n");
+            loop_config.system_prompt = format!(
+                "{}\n\n## Package-Specific Instructions\n\n{}",
+                loop_config.system_prompt, combined
+            );
+            info!(count = prompts.len(), "Applied package system prompts");
+        }
     }
 
     let tool_ctx = state.tool_ctx.clone();

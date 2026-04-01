@@ -46,6 +46,19 @@ pub trait AmosPackage: Send + Sync {
     /// Semantic version
     fn version(&self) -> &str;
 
+    /// Human-readable display name (defaults to name)
+    fn display_name(&self) -> &str {
+        self.name()
+    }
+
+    /// Optional system prompt injected into the agent when this package is enabled.
+    ///
+    /// Returns domain-specific instructions that guide the agent's behavior
+    /// when this package is active (e.g., education terminology, CRM workflows).
+    fn system_prompt(&self) -> Option<&str> {
+        None
+    }
+
     /// Register package-specific tools.
     ///
     /// Use `registry.register_package_tool(tool, self.name())` so tools are

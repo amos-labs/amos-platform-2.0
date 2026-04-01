@@ -66,6 +66,18 @@ pub struct Cli {
     /// Run in service mode (HTTP API + task consumer) instead of interactive
     #[arg(long, env = "AMOS_SERVE")]
     pub serve: bool,
+
+    /// Swarm ID this agent belongs to (for autoresearch task attribution)
+    #[arg(long, env = "AMOS_SWARM_ID")]
+    pub swarm_id: Option<String>,
+
+    /// Cost tier: free, cheap, standard, premium
+    #[arg(long, env = "AMOS_COST_TIER", default_value = "standard")]
+    pub cost_tier: String,
+
+    /// Always-on mode: continuously poll for tasks with no idle timeout
+    #[arg(long, env = "AMOS_ALWAYS_ON")]
+    pub always_on: bool,
 }
 
 /// Runtime agent configuration (built from CLI + defaults).
@@ -85,6 +97,9 @@ pub struct AgentConfig {
     pub work_dir: String,
     pub log_level: String,
     pub serve: bool,
+    pub swarm_id: Option<String>,
+    pub cost_tier: String,
+    pub always_on: bool,
 }
 
 impl From<Cli> for AgentConfig {
@@ -104,6 +119,9 @@ impl From<Cli> for AgentConfig {
             work_dir: cli.work_dir,
             log_level: cli.log_level,
             serve: cli.serve,
+            swarm_id: cli.swarm_id,
+            cost_tier: cli.cost_tier,
+            always_on: cli.always_on,
         }
     }
 }

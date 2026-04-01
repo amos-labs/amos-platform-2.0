@@ -29,6 +29,13 @@ pub struct AgentConfig {
     pub capabilities: Vec<String>,
     pub system_prompt: Option<String>,
     pub model: String,
+    // Autoresearch extensions
+    pub provider_type: Option<String>,
+    pub api_base: Option<String>,
+    pub max_concurrent_tasks: Option<i32>,
+    pub always_on: Option<bool>,
+    pub cost_tier: Option<String>,
+    pub task_specializations: Option<JsonValue>,
 }
 
 /// Agent status
@@ -528,6 +535,12 @@ impl AgentManager {
             capabilities,
             system_prompt,
             model,
+            provider_type: None,
+            api_base: None,
+            max_concurrent_tasks: None,
+            always_on: None,
+            cost_tier: None,
+            task_specializations: None,
         })
     }
 
@@ -635,6 +648,12 @@ impl AgentManager {
                 capabilities,
                 system_prompt,
                 model,
+                provider_type: None,
+                api_base: None,
+                max_concurrent_tasks: None,
+                always_on: None,
+                cost_tier: None,
+                task_specializations: None,
             });
         }
 
@@ -722,6 +741,12 @@ impl AgentManager {
             capabilities,
             system_prompt,
             model,
+            provider_type: None,
+            api_base: None,
+            max_concurrent_tasks: None,
+            always_on: None,
+            cost_tier: None,
+            task_specializations: None,
         })
     }
 
@@ -761,6 +786,12 @@ impl AgentManager {
             capabilities,
             system_prompt,
             model,
+            provider_type: None,
+            api_base: None,
+            max_concurrent_tasks: None,
+            always_on: None,
+            cost_tier: None,
+            task_specializations: None,
         })
     }
 
@@ -819,6 +850,12 @@ mod tests {
             capabilities: vec!["web_search".to_string(), "shell".to_string()],
             system_prompt: Some("You are a research agent.".to_string()),
             model: "claude-3-5-sonnet".to_string(),
+            provider_type: None,
+            api_base: None,
+            max_concurrent_tasks: None,
+            always_on: None,
+            cost_tier: None,
+            task_specializations: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -843,6 +880,12 @@ mod tests {
             capabilities: vec![],
             system_prompt: None,
             model: "gpt-4o".to_string(),
+            provider_type: None,
+            api_base: None,
+            max_concurrent_tasks: None,
+            always_on: None,
+            cost_tier: None,
+            task_specializations: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();

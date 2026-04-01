@@ -9,6 +9,7 @@ pub mod health;
 pub mod hooks;
 pub mod integrations;
 pub mod llm_providers;
+pub mod packages;
 pub mod revisions;
 pub mod sites;
 pub mod uploads;
@@ -55,6 +56,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/data", data::routes(state.clone()))
         // Webhook ingress routes (automation triggers)
         .nest("/api/v1/hooks", hooks::routes(state.clone()))
+        // Package management routes
+        .nest("/api/v1/packages", packages::routes(state.clone()))
         // Site management routes
         .nest("/api/v1/sites", sites::routes(state.clone()))
         // Public site serving

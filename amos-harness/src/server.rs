@@ -114,8 +114,10 @@ pub async fn create_server(
 
     // Load configured packages and register their tools (AMOS_PACKAGES env var).
     // Tools are registered now (before Arc wrapping) and tagged with package names.
+    // Also upserts package metadata into the `packages` DB table.
     let configured_packages =
-        packages::load_and_register_packages(&mut tool_registry, db_pool.clone(), config.clone());
+        packages::load_and_register_packages(&mut tool_registry, db_pool.clone(), config.clone())
+            .await;
 
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 
