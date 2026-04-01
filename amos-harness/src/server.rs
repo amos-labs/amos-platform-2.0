@@ -10,6 +10,7 @@ use crate::{
     image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::AgentManager,
+    orchestrator::HarnessOrchestrator,
     packages, routes,
     state::AppState,
     storage::{StorageClient, StorageConfig},
@@ -118,6 +119,30 @@ pub async fn create_server(
     let configured_packages =
         packages::load_and_register_packages(&mut tool_registry, db_pool.clone(), config.clone())
             .await;
+
+    // Harness self-identification: read role and ID from environment
+    let harness_role = std::env::var("AMOS_HARNESS_ROLE").unwrap_or_else(|_| "primary".to_string());
+    let harness_id =
+        std::env::var("AMOS_HARNESS_ID").unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+
+    tracing::info!(
+        role = %harness_role,
+        id = %harness_id,
+        packages = ?std::env::var("AMOS_PACKAGES").unwrap_or_default(),
+        "Harness starting with role"
+    );
+
+    // Register orchestrator tools only on primary harness
+    if harness_role == "primary" {
+        let orchestrator = HarnessOrchestrator::new(config.clone());
+        orchestrator.register_tools(&mut tool_registry);
+        tracing::info!("Orchestrator tools registered (primary harness)");
+    } else {
+        tracing::info!(
+            role = %harness_role,
+            "Orchestrator tools skipped (non-primary harness)"
+        );
+    }
 
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 

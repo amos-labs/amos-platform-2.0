@@ -138,14 +138,53 @@ AMOS_SERVE=true cargo run --bin amos-agent
 # Start everything (postgres, redis, localstack, harness, relay, agent)
 docker compose up --build
 
+# Start with specialist harness (multi-harness mode)
+docker compose --profile specialist up --build
+
 # Check services:
-# - Harness: http://localhost:3000/health
+# - Primary Harness: http://localhost:3000/health
+# - Specialist (autoresearch): http://localhost:3001/health
 # - Relay:   http://localhost:4100/health
 # - Agent:   http://localhost:3100/health
 
 # Or just infrastructure
 docker compose up postgres redis -d
 ```
+
+## Multi-Harness Orchestration
+
+AMOS supports running **specialized harness instances** to keep tool counts manageable per LLM call. Instead of one monolithic harness with all packages enabled (65+ tools), the primary harness stays lightweight (~45 tools) and delegates to specialists.
+
+```
+┌─────────────────────────────────────────────────────┐
+│  PLATFORM CONTROL PLANE                             │
+│  Provisions, tracks, and routes to all harnesses    │
+└────────┬────────────────────────────────┬───────────┘
+         │                                │
+┌────────▼──────────┐   ┌────────────────▼────────────┐
+│ PRIMARY HARNESS   │   │ SPECIALIZED HARNESS(ES)     │
+│ Core tools (~40)  │   │                             │
+│ + Orchestrator (5)│   │ "autoresearch" harness:     │
+│                   │   │   12 tools + Darwinian loop │
+│ Main AMOS agent   │   │                             │
+│ (user-facing chat)│──►│ "education" harness:        │
+│                   │   │   15 tools + SCORM runtime  │
+└───────────────────┘   └─────────────────────────────┘
+```
+
+**Harness Roles:**
+- **primary**: User-facing chat, core tools + 5 orchestrator tools for delegating to specialists
+- **specialist**: Runs specific packages (e.g., autoresearch, education)
+- **worker**: Background processing (no user-facing chat)
+
+**Orchestrator Tools** (primary harness only):
+- `list_harnesses` -- Discover specialist harnesses, their packages, and health
+- `delegate_to_harness` -- Execute a tool on a named specialist (sync)
+- `submit_task_to_harness` -- Submit async work to a specialist
+- `get_harness_status` -- Detailed health and capability check
+- `broadcast_to_harnesses` -- Execute the same tool on all matching harnesses
+
+**Package System:** Packages are the primary pattern for adding AMOS-native capabilities. Each package carries its own tools and can be enabled/disabled at runtime via `AMOS_PACKAGES`. External agents (EAP/OpenClaw) are retained as an integration layer for third-party bots and non-Rust agents.
 
 ## Configuration
 
@@ -160,6 +199,11 @@ All config uses the `AMOS__` prefix with `__` as nested separator:
 | `AMOS__DEPLOYMENT__MODE` | `managed` | `managed` or `self_hosted` |
 | `AMOS__RELAY__URL` | `http://localhost:4100` | Relay connection URL |
 | `AMOS__RELAY__ENABLED` | `false` | Enable relay integration |
+| `AMOS_HARNESS_ROLE` | `primary` | Harness role: `primary`, `specialist`, or `worker` |
+| `AMOS_HARNESS_ID` | (auto-generated) | UUID identifying this harness instance |
+| `AMOS_PACKAGES` | (empty) | Comma-separated package names to enable |
+| `AMOS_SIBLING_HARNESSES` | (empty) | Dev mode: `name:url,name:url` for manual sibling discovery |
+| `AMOS_PLATFORM_URL` | (empty) | Platform URL for production sibling discovery |
 
 AWS credentials for Bedrock are read from the standard AWS credential chain.
 

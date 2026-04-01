@@ -15,9 +15,12 @@ COPY amos-harness ./amos-harness
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay
+COPY amos-packages ./amos-packages
 
-# Build only the harness binary (SQLX_OFFLINE since no live DB in Docker build)
-RUN SQLX_OFFLINE=true cargo build --release --bin amos-harness
+# Build harness with all package features compiled in.
+# Runtime control via AMOS_PACKAGES env var determines which packages are active.
+RUN SQLX_OFFLINE=true cargo build --release --bin amos-harness \
+    --features "pkg-education,pkg-autoresearch"
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim

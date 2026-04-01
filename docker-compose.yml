@@ -81,6 +81,12 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # Harness identity (multi-harness orchestration)
+      AMOS_HARNESS_ROLE: primary
+      AMOS_HARNESS_ID: 00000000-0000-0000-0000-000000000001
+      # In specialist mode, point to siblings:
+      # AMOS_SIBLING_HARNESSES: autoresearch:http://harness-autoresearch:3000
+
       # Server
       AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
       AMOS__SERVER__HOST: 0.0.0.0
@@ -121,6 +127,66 @@ services:
       RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
     volumes:
       - harness_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - amos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # AMOS Specialist Harness - Autoresearch package (optional multi-harness mode)
+  # To use: docker compose --profile specialist up
+  harness-autoresearch:
+    build:
+      context: .
+      dockerfile: docker/harness/Dockerfile
+    container_name: amos_dev_harness_autoresearch
+    profiles: ["specialist"]
+    ports:
+      - "3001:3000"
+    environment:
+      # Harness identity
+      AMOS_HARNESS_ROLE: specialist
+      AMOS_HARNESS_ID: 00000000-0000-0000-0000-000000000002
+      AMOS_PACKAGES: autoresearch
+      AMOS_SIBLING_HARNESSES: ""
+      AMOS_PLATFORM_URL: http://host.docker.internal:4000
+
+      # Server
+      AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
+      AMOS__SERVER__HOST: 0.0.0.0
+      AMOS__SERVER__PORT: 3000
+
+      # Database (shares harness DB for dev)
+      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/amos_harness_dev
+      AMOS__DATABASE__MAX_CONNECTIONS: 10
+
+      # Redis (using db 1 for specialist)
+      AMOS__REDIS__URL: redis://redis:6379/1
+      AMOS__REDIS__POOL_SIZE: 5
+
+      # Customer configuration
+      AMOS__CUSTOMER__ID: ${CUSTOMER_ID:-dev-customer-001}
+      AMOS__CUSTOMER__NAME: ${CUSTOMER_NAME:-Development Customer}
+
+      # AWS Bedrock
+      AMOS__BEDROCK__AWS_REGION: ${AWS_REGION:-us-west-2}
+      AMOS__BEDROCK__AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AMOS__BEDROCK__AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AMOS__BEDROCK__DEFAULT_MODEL: ${DEFAULT_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+
+      # Observability
+      RUST_LOG: ${RUST_LOG:-info,amos_harness=debug}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+    volumes:
+      - harness_autoresearch_data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -243,6 +309,8 @@ volumes:
   agent_data:
     driver: local
   relay_data:
+    driver: local
+  harness_autoresearch_data:
     driver: local
 
 networks:

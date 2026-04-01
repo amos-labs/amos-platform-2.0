@@ -50,6 +50,7 @@ pub mod integrations;
 pub mod memory;
 pub mod middleware;
 pub mod openclaw;
+pub mod orchestrator;
 pub mod packages;
 pub mod platform_sync;
 pub mod relay_sync;

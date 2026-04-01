@@ -78,6 +78,7 @@ pub enum ToolCategory {
     Automation,
     Education,
     Autoresearch,
+    Orchestrator,
     Other,
 }
 
@@ -100,6 +101,7 @@ impl ToolCategory {
             ToolCategory::Automation => "automation",
             ToolCategory::Education => "education",
             ToolCategory::Autoresearch => "autoresearch",
+            ToolCategory::Orchestrator => "orchestrator",
             ToolCategory::Other => "other",
         }
     }

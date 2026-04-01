@@ -5,6 +5,7 @@ pub mod bots;
 pub mod canvas;
 pub mod credentials;
 pub mod data;
+pub mod harness_info;
 pub mod health;
 pub mod hooks;
 pub mod integrations;
@@ -56,6 +57,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/data", data::routes(state.clone()))
         // Webhook ingress routes (automation triggers)
         .nest("/api/v1/hooks", hooks::routes(state.clone()))
+        // Harness info route (multi-harness discovery)
+        .nest("/api/v1/harness", harness_info::routes(state.clone()))
         // Package management routes
         .nest("/api/v1/packages", packages::routes(state.clone()))
         // Site management routes
