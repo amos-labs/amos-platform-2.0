@@ -91,6 +91,9 @@ pub struct ToolDefinition {
     /// Whether this tool requires human confirmation before execution.
     #[serde(default)]
     pub requires_confirmation: bool,
+    /// Minimum permission level required to use this tool.
+    #[serde(default)]
+    pub permission_level: crate::permissions::PermissionLevel,
 }
 
 /// Result returned from tool execution.

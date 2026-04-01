@@ -40,6 +40,7 @@ pub fn remember_definition() -> ToolDefinition {
             "required": ["key", "content"]
         }),
         requires_confirmation: false,
+        permission_level: amos_core::permissions::PermissionLevel::WorkspaceWrite,
     }
 }
 
@@ -69,6 +70,7 @@ pub fn recall_definition() -> ToolDefinition {
             "required": ["query"]
         }),
         requires_confirmation: false,
+        permission_level: amos_core::permissions::PermissionLevel::ReadOnly,
     }
 }
 

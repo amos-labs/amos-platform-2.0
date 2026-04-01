@@ -202,8 +202,11 @@ async fn chat_sse(
                 AgentEvent::TextDelta { .. } => "message_delta",
                 AgentEvent::ToolStart { .. } => "tool_start",
                 AgentEvent::ToolEnd { .. } => "tool_end",
+                AgentEvent::ToolInputDelta { .. } => "tool_input_delta",
                 AgentEvent::TurnEnd { .. } => "turn_end",
                 AgentEvent::Done { .. } => "agent_end",
+                AgentEvent::Compacted { .. } => "compacted",
+                AgentEvent::HookDenied { .. } => "hook_denied",
                 AgentEvent::Error { .. } => "error",
             };
 

@@ -1,53 +1,26 @@
-//! Package system for extending the AMOS Harness
+//! Package loading and activation for the AMOS Harness.
 //!
-//! Packages are self-contained domain extensions (education, CRM, healthcare, etc.)
-//! that register tools, routes, and bootstrap data without modifying core harness code.
+//! This module bridges amos-core's `AmosPackage` trait with the harness runtime.
+//! Packages carry their own tools and can be enabled/disabled at runtime.
+//! Disabled packages' tools are hidden from agents — zero tool bloat.
+//!
+//! Routes are handled via feature-gated code since Axum lives in the harness,
+//! not in amos-core.
 
 use crate::{state::AppState, tools::ToolRegistry};
-use amos_core::Result;
-use async_trait::async_trait;
+use amos_core::{AmosPackage, AppConfig, PackageContext, Result};
 use axum::Router;
+use sqlx::PgPool;
 use std::sync::Arc;
 
-/// Trait that all AMOS packages must implement.
+/// Load all configured packages, register their tools, and enable them.
 ///
-/// Packages extend the harness with domain-specific tools, routes, and data.
-/// The harness loads packages at startup based on the `AMOS_PACKAGES` env var.
-#[async_trait]
-pub trait AmosPackage: Send + Sync {
-    /// Unique package identifier (e.g., "education", "crm")
-    fn name(&self) -> &str;
-
-    /// Human-readable description
-    fn description(&self) -> &str;
-
-    /// Semantic version
-    fn version(&self) -> &str;
-
-    /// Register package-specific tools with the harness tool registry.
-    /// Called during harness startup before the server begins accepting requests.
-    fn register_tools(&self, registry: &mut ToolRegistry, state: &AppState);
-
-    /// Return package-specific Axum routes to be nested under `/api/v1/pkg/{name}/`.
-    /// Return `None` if the package has no custom routes.
-    fn routes(&self, state: Arc<AppState>) -> Option<Router> {
-        let _ = state;
-        None
-    }
-
-    /// Called once after registration to bootstrap schemas, seed data, and canvas templates.
-    /// Runs during harness startup — should be idempotent (safe to call on every boot).
-    async fn on_activate(&self, state: &AppState) -> Result<()> {
-        let _ = state;
-        Ok(())
-    }
-}
-
-/// Load and initialize all configured packages.
-///
-/// Reads `AMOS_PACKAGES` env var (comma-separated list of package names)
-/// and returns the matching package instances.
-pub fn load_configured_packages() -> Vec<Box<dyn AmosPackage>> {
+/// Reads `AMOS_PACKAGES` env var (comma-separated list of package names).
+pub fn load_and_register_packages(
+    registry: &mut ToolRegistry,
+    db_pool: PgPool,
+    config: Arc<AppConfig>,
+) -> Vec<Box<dyn AmosPackage>> {
     let package_list = std::env::var("AMOS_PACKAGES").unwrap_or_default();
     let requested: Vec<&str> = package_list
         .split(',')
@@ -60,14 +33,30 @@ pub fn load_configured_packages() -> Vec<Box<dyn AmosPackage>> {
         return Vec::new();
     }
 
-    #[allow(unused_mut)]
+    let ctx = PackageContext {
+        db_pool: db_pool.clone(),
+        config: config.clone(),
+    };
+
     let mut packages: Vec<Box<dyn AmosPackage>> = Vec::new();
 
     for name in &requested {
-        // Package matching — enable features as package crates are added.
-        // Example: #[cfg(feature = "pkg-education")]
-        // "education" => packages.push(Box::new(amos_education::EducationPackage::new())),
-        tracing::warn!("Unknown package requested: {name} (skipping)");
+        match resolve_package(name) {
+            Some(pkg) => {
+                tracing::info!(
+                    "Loading package: {} v{} — {}",
+                    pkg.name(),
+                    pkg.version(),
+                    pkg.description()
+                );
+                pkg.register_tools(registry, &ctx);
+                registry.enable_package(pkg.name());
+                packages.push(pkg);
+            }
+            None => {
+                tracing::warn!("Unknown package requested: {name} (skipping)");
+            }
+        }
     }
 
     tracing::info!(
@@ -78,25 +67,59 @@ pub fn load_configured_packages() -> Vec<Box<dyn AmosPackage>> {
     packages
 }
 
-/// Register all package tools and collect package routes.
+/// Resolve a package name to its implementation.
 ///
-/// Called from `server.rs` during harness initialization.
-pub async fn activate_packages<'a>(
-    packages: &'a [Box<dyn AmosPackage>],
-    state: &'a AppState,
-) -> Result<Vec<(&'a str, Router)>> {
-    // Phase 1: Run on_activate for each package (bootstrap schemas, seed data)
+/// Add new packages here as feature-gated branches.
+fn resolve_package(name: &str) -> Option<Box<dyn AmosPackage>> {
+    match name {
+        #[cfg(feature = "pkg-education")]
+        "education" => Some(Box::new(amos_education::EducationPackage::new())),
+        _ => None,
+    }
+}
+
+/// Activate packages: run on_activate and collect routes.
+///
+/// Called from `server.rs` after AppState is fully constructed.
+pub async fn activate_packages(
+    packages: &[Box<dyn AmosPackage>],
+    state: Arc<AppState>,
+) -> Result<Vec<(String, Router)>> {
+    let ctx = PackageContext {
+        db_pool: state.db_pool.clone(),
+        config: state.config.clone(),
+    };
+
+    let mut package_routes: Vec<(String, Router)> = Vec::new();
+
     for pkg in packages {
-        tracing::info!(
-            "Activating package: {} v{} — {}",
-            pkg.name(),
-            pkg.version(),
-            pkg.description()
-        );
-        pkg.on_activate(state).await?;
+        tracing::info!("Activating package: {}", pkg.name());
+
+        // Bootstrap schemas, seed data, canvas templates
+        pkg.on_activate(&ctx).await?;
+
+        // Collect package routes (feature-gated per package)
+        if let Some(router) = get_package_routes(pkg.name(), state.clone()) {
+            package_routes.push((pkg.name().to_string(), router));
+        }
     }
 
-    // Note: package routes are collected separately in server.rs where
-    // Arc<AppState> is available (routes() requires Arc<AppState>).
-    Ok(Vec::new())
+    Ok(package_routes)
+}
+
+/// Get Axum routes for a package (feature-gated).
+///
+/// Routes live in the package crate but are collected here because
+/// Axum Router types can't cross the amos-core boundary.
+fn get_package_routes(package_name: &str, #[allow(unused)] state: Arc<AppState>) -> Option<Router> {
+    match package_name {
+        #[cfg(feature = "pkg-education")]
+        "education" => {
+            let scorm_state = Arc::new(amos_education::tools::scorm::ScormState {
+                db_pool: state.db_pool.clone(),
+            });
+            Some(amos_education::routes(scorm_state))
+        }
+        _ => None,
+    }
 }

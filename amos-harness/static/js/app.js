@@ -487,6 +487,26 @@ async function sendMessage() {
                                 currentToolIndicator = null;
                             }
                         }
+                        // Handle tool_input_delta event - streaming tool input
+                        else if (data.type === 'tool_input_delta') {
+                            // Update tool indicator with streaming input preview
+                            if (currentToolIndicator) {
+                                const preview = currentToolIndicator.querySelector('.tool-input-preview');
+                                if (preview) {
+                                    preview.textContent += data.partial_input;
+                                }
+                            }
+                        }
+                        // Handle compacted event - conversation was auto-compacted
+                        else if (data.type === 'compacted') {
+                            console.log('Conversation compacted:', data.removed_messages, 'messages removed,', data.estimated_tokens, 'tokens remaining');
+                            appendToolActivity(assistantEl, 'auto-compact', 0, false, `Compacted ${data.removed_messages} messages to stay within context limit`);
+                        }
+                        // Handle hook_denied event - a hook blocked tool execution
+                        else if (data.type === 'hook_denied') {
+                            console.warn('Hook denied:', data.tool_name, data.hook_message);
+                            appendToolActivity(assistantEl, data.tool_name, 0, true, `Blocked by hook: ${data.hook_message}`);
+                        }
                         // Handle model_escalation event
                         else if (data.type === 'model_escalation') {
                             console.log('Model escalated from', data.from_model, 'to', data.to_model, 'Reason:', data.reason);

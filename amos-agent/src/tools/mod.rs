@@ -12,6 +12,7 @@
 //! - **write_file**: Write content to a local file
 
 pub mod file_tools;
+pub mod git_tools;
 pub mod memory_tools;
 pub mod plan;
 pub mod think;
@@ -34,6 +35,7 @@ pub fn local_tool_definitions() -> Vec<ToolDefinition> {
         web_search::definition(),
         file_tools::read_file_definition(),
         file_tools::write_file_definition(),
+        git_tools::git_status_definition(),
     ]
 }
 
@@ -77,6 +79,7 @@ pub async fn execute_local_tool(
         "web_search" => web_search::execute(input, ctx.brave_api_key.as_deref()).await,
         "read_file" => file_tools::read_file(input, &ctx.work_dir),
         "write_file" => file_tools::write_file(input, &ctx.work_dir),
+        "git_status" => git_tools::execute(input, &ctx.work_dir),
         _ => Err(format!("Unknown local tool: {name}")),
     }
 }

@@ -27,129 +27,32 @@ use crate::automations::engine::AutomationEngine;
 use crate::embeddings::EmbeddingService;
 use crate::integrations::{etl::EtlPipeline, executor::ApiExecutor};
 use crate::task_queue::TaskQueue;
-use amos_core::{AmosError, AppConfig, Result};
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use amos_core::{AmosError, AppConfig, PackageToolRegistry, Result};
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
-/// Result of tool execution
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolResult {
-    /// Whether the tool execution was successful
-    pub success: bool,
+// Re-export core tool types so existing harness code doesn't break
+pub use amos_core::tools::{Tool, ToolCategory, ToolResult};
 
-    /// Result data (if successful)
-    pub data: Option<JsonValue>,
-
-    /// Error message (if failed)
-    pub error: Option<String>,
-
-    /// Additional metadata
-    pub metadata: Option<JsonValue>,
+/// A tool entry in the registry, tagged with its owning package (if any).
+struct RegisteredTool {
+    tool: Arc<dyn Tool>,
+    /// `None` = core harness tool, `Some("education")` = from education package
+    package: Option<String>,
 }
 
-impl ToolResult {
-    /// Create a success result
-    pub fn success(data: JsonValue) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-            metadata: None,
-        }
-    }
-
-    /// Create an error result
-    pub fn error(message: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(message),
-            metadata: None,
-        }
-    }
-
-    /// Create a success result with metadata
-    pub fn success_with_metadata(data: JsonValue, metadata: JsonValue) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-            metadata: Some(metadata),
-        }
-    }
-}
-
-/// Tool trait that all tools must implement
-#[async_trait]
-pub trait Tool: Send + Sync {
-    /// Get the tool name
-    fn name(&self) -> &str;
-
-    /// Get the tool description
-    fn description(&self) -> &str;
-
-    /// Get the JSON schema for tool parameters
-    fn parameters_schema(&self) -> JsonValue;
-
-    /// Execute the tool with the given parameters
-    async fn execute(&self, params: JsonValue) -> Result<ToolResult>;
-
-    /// Get tool category for organization
-    fn category(&self) -> ToolCategory {
-        ToolCategory::Other
-    }
-}
-
-/// Tool category for organization
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ToolCategory {
-    Platform,
-    Canvas,
-    Apps,
-    Web,
-    System,
-    Memory,
-    Knowledge,
-    OpenClaw,
-    Integration,
-    Schema,
-    TaskQueue,
-    Document,
-    ImageGen,
-    Automation,
-    Education,
-    Other,
-}
-
-impl ToolCategory {
-    pub fn as_str(&self) -> &str {
-        match self {
-            ToolCategory::Platform => "platform",
-            ToolCategory::Canvas => "canvas",
-            ToolCategory::Apps => "apps",
-            ToolCategory::Web => "web",
-            ToolCategory::System => "system",
-            ToolCategory::Memory => "memory",
-            ToolCategory::Knowledge => "knowledge",
-            ToolCategory::OpenClaw => "openclaw",
-            ToolCategory::Integration => "integration",
-            ToolCategory::Schema => "schema",
-            ToolCategory::TaskQueue => "task_queue",
-            ToolCategory::Document => "document",
-            ToolCategory::ImageGen => "image_gen",
-            ToolCategory::Automation => "automation",
-            ToolCategory::Education => "education",
-            ToolCategory::Other => "other",
-        }
-    }
-}
-
-/// Tool registry manages all available tools
+/// Tool registry manages all available tools with package-scoped enable/disable.
+///
+/// Core harness tools are always active. Package tools are only visible to agents
+/// when their package is enabled, preventing tool bloat.
 pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn Tool>>,
+    tools: HashMap<String, RegisteredTool>,
+    /// Set of currently enabled package names
+    enabled_packages: HashSet<String>,
     db_pool: PgPool,
     config: Arc<AppConfig>,
 }
@@ -159,19 +62,67 @@ impl ToolRegistry {
     pub fn new(db_pool: PgPool, config: Arc<AppConfig>) -> Self {
         Self {
             tools: HashMap::new(),
+            enabled_packages: HashSet::new(),
             db_pool,
             config,
         }
     }
 
-    /// Register a tool
+    /// Register a core harness tool (always active)
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
-        self.tools.insert(tool.name().to_string(), tool);
+        self.tools.insert(
+            tool.name().to_string(),
+            RegisteredTool {
+                tool,
+                package: None,
+            },
+        );
     }
 
-    /// Execute a tool by name
+    /// Register a tool owned by a package. Only visible when the package is enabled.
+    pub fn register_package_tool(&mut self, tool: Arc<dyn Tool>, package: &str) {
+        self.tools.insert(
+            tool.name().to_string(),
+            RegisteredTool {
+                tool,
+                package: Some(package.to_string()),
+            },
+        );
+    }
+
+    /// Enable a package — its tools become visible to agents
+    pub fn enable_package(&mut self, package: &str) {
+        self.enabled_packages.insert(package.to_string());
+        tracing::info!(package, "Package enabled — tools now active");
+    }
+
+    /// Disable a package — its tools are hidden from agents
+    pub fn disable_package(&mut self, package: &str) {
+        self.enabled_packages.remove(package);
+        tracing::info!(package, "Package disabled — tools hidden");
+    }
+
+    /// Check if a package is currently enabled
+    pub fn is_package_enabled(&self, package: &str) -> bool {
+        self.enabled_packages.contains(package)
+    }
+
+    /// List all enabled package names
+    pub fn enabled_packages(&self) -> Vec<String> {
+        self.enabled_packages.iter().cloned().collect()
+    }
+
+    /// Returns true if the tool is active (core tool or from an enabled package)
+    fn is_tool_active(&self, entry: &RegisteredTool) -> bool {
+        match &entry.package {
+            None => true, // core tools always active
+            Some(pkg) => self.enabled_packages.contains(pkg),
+        }
+    }
+
+    /// Execute a tool by name (only if it's active)
     pub async fn execute(&self, tool_name: &str, params: JsonValue) -> Result<ToolResult> {
-        let tool = self
+        let entry = self
             .tools
             .get(tool_name)
             .ok_or_else(|| AmosError::NotFound {
@@ -179,38 +130,54 @@ impl ToolRegistry {
                 id: tool_name.to_string(),
             })?;
 
-        tool.execute(params).await
+        if !self.is_tool_active(entry) {
+            return Err(AmosError::NotFound {
+                entity: "Tool".to_string(),
+                id: tool_name.to_string(),
+            });
+        }
+
+        entry.tool.execute(params).await
     }
 
-    /// Get a tool by name
+    /// Get a tool by name (only if active)
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.get(name).cloned()
+        self.tools
+            .get(name)
+            .filter(|e| self.is_tool_active(e))
+            .map(|e| e.tool.clone())
     }
 
-    /// List all tool names
+    /// List all active tool names
     pub fn list_tools(&self) -> Vec<String> {
-        self.tools.keys().cloned().collect()
+        self.tools
+            .iter()
+            .filter(|(_, e)| self.is_tool_active(e))
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
-    /// Get tools by category
+    /// Get active tools by category
     pub fn get_by_category(&self, category: ToolCategory) -> Vec<Arc<dyn Tool>> {
         self.tools
             .values()
-            .filter(|tool| tool.category() == category)
-            .cloned()
+            .filter(|e| self.is_tool_active(e) && e.tool.category() == category)
+            .map(|e| e.tool.clone())
             .collect()
     }
 
     /// Get tool schemas for LLM (Bedrock ConverseStream format)
     ///
+    /// Only returns schemas for active tools (core + enabled packages).
     /// Bedrock expects camelCase keys: `name`, `description`, `inputSchema`
     pub fn get_tool_schemas(&self) -> Vec<JsonValue> {
         self.tools
             .values()
-            .map(|tool| {
+            .filter(|e| self.is_tool_active(e))
+            .map(|e| {
+                let tool = &e.tool;
                 let mut schema = tool.parameters_schema();
                 // Ensure inputSchema is never null — Bedrock requires it.
-                // If a tool returns no schema, provide a minimal empty-object schema.
                 if schema.is_null() {
                     schema = serde_json::json!({
                         "json": {
@@ -459,6 +426,14 @@ impl ToolRegistry {
     }
 }
 
+/// Implement the amos-core PackageToolRegistry trait so packages
+/// can register tools without depending on amos-harness.
+impl PackageToolRegistry for ToolRegistry {
+    fn register_package_tool(&mut self, tool: Arc<dyn Tool>, package: &str) {
+        ToolRegistry::register_package_tool(self, tool, package);
+    }
+}
+
 /// Helper macro to define tool parameter schema
 #[macro_export]
 macro_rules! tool_schema {
@@ -538,6 +513,7 @@ mod tests {
         assert_eq!(ToolCategory::Document.as_str(), "document");
         assert_eq!(ToolCategory::ImageGen.as_str(), "image_gen");
         assert_eq!(ToolCategory::Automation.as_str(), "automation");
+        assert_eq!(ToolCategory::Education.as_str(), "education");
         assert_eq!(ToolCategory::Other.as_str(), "other");
     }
 

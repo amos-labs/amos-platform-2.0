@@ -31,6 +31,7 @@ pub fn definition() -> ToolDefinition {
             "required": ["query"]
         }),
         requires_confirmation: false,
+        permission_level: amos_core::permissions::PermissionLevel::ReadOnly,
     }
 }
 

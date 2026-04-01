@@ -9,8 +9,15 @@ license.workspace = true
 name = "amos-harness"
 path = "src/main.rs"
 
+[features]
+default = []
+pkg-education = ["amos-education"]
+
 [dependencies]
-amos-core = { path = "../amos-core", features = ["db", "http"] }
+# Optional package dependencies (enabled via features)
+amos-education = { path = "../amos-packages/amos-education", optional = true }
+
+amos-core = { path = "../amos-core", features = ["db", "http", "packages"] }
 
 # Async runtime
 tokio = { workspace = true }

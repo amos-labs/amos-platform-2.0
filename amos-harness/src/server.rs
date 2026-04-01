@@ -112,8 +112,10 @@ pub async fn create_server(
         automation_engine.clone(),
     );
 
-    // Load configured packages (AMOS_PACKAGES env var)
-    let configured_packages = packages::load_configured_packages();
+    // Load configured packages and register their tools (AMOS_PACKAGES env var).
+    // Tools are registered now (before Arc wrapping) and tagged with package names.
+    let configured_packages =
+        packages::load_and_register_packages(&mut tool_registry, db_pool.clone(), config.clone());
 
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
 
@@ -145,16 +147,13 @@ pub async fn create_server(
     // Create event channel for schema → automation decoupling
     let automation_event_tx = automation_engine.create_event_channel();
 
-    // Create application state (tool_registry not yet Arc — packages register tools first)
-    let state_inner = AppState {
+    // Create application state
+    let state = Arc::new(AppState {
         db_pool,
         redis: redis_client,
         config: config.clone(),
         canvas_engine,
-        tool_registry: Arc::new(ToolRegistry::new(
-            sqlx::PgPool::connect_lazy("").unwrap_or_else(|_| unreachable!()),
-            config.clone(),
-        )), // placeholder, replaced below
+        tool_registry: Arc::new(tool_registry),
         agent_manager,
         task_queue,
         storage,
@@ -167,20 +166,10 @@ pub async fn create_server(
         embedding_service,
         automation_engine: automation_engine.clone(),
         automation_event_tx,
-    };
+    });
 
-    // Register package tools (needs access to AppState deps like db_pool)
-    for pkg in &configured_packages {
-        pkg.register_tools(&mut tool_registry, &state_inner);
-    }
-
-    // Now wrap registry in Arc and replace the placeholder
-    let mut state_inner = state_inner;
-    state_inner.tool_registry = Arc::new(tool_registry);
-    let state = Arc::new(state_inner);
-
-    // Activate packages (bootstrap schemas, canvas templates, seed data)
-    let package_routes = packages::activate_packages(&configured_packages, state.as_ref()).await?;
+    // Activate packages (bootstrap schemas, collect routes)
+    let package_routes = packages::activate_packages(&configured_packages, state.clone()).await?;
 
     // Build router with all routes
     let mut api_routes = routes::build_routes(state.clone());

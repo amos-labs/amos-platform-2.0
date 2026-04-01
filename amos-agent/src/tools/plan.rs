@@ -44,6 +44,7 @@ pub fn definition() -> ToolDefinition {
             "required": ["title", "steps"]
         }),
         requires_confirmation: false,
+        permission_level: amos_core::permissions::PermissionLevel::ReadOnly,
     }
 }
 

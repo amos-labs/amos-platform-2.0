@@ -5,6 +5,7 @@ members = [
     "amos-relay",
     "amos-cli",
     "amos-agent",
+    "amos-packages/amos-education",
     # Solana programs are built separately via Anchor (not part of cargo workspace)
 ]
 resolver = "2"
@@ -128,6 +129,9 @@ zip = "0.6"
 
 # JSON Schema validation
 jsonschema = "0.28"
+
+# XML parsing
+quick-xml = { version = "0.37", features = ["serialize"] }
 
 # Additional HTTP/WebSocket
 hyper = { version = "1.5", features = ["full"] }

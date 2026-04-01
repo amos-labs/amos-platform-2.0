@@ -32,6 +32,7 @@ pub fn read_file_definition() -> ToolDefinition {
             "required": ["path"]
         }),
         requires_confirmation: false,
+        permission_level: amos_core::permissions::PermissionLevel::ReadOnly,
     }
 }
 
@@ -56,6 +57,7 @@ pub fn write_file_definition() -> ToolDefinition {
             "required": ["path", "content"]
         }),
         requires_confirmation: true,
+        permission_level: amos_core::permissions::PermissionLevel::WorkspaceWrite,
     }
 }
 

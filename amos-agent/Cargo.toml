@@ -58,6 +58,9 @@ sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 
+# YAML (for slash command frontmatter)
+serde_yaml = { workspace = true }
+
 # Misc
 rand = { workspace = true }
 url = { workspace = true }

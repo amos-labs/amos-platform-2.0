@@ -25,6 +25,7 @@ pub fn definition() -> ToolDefinition {
             "required": ["thought"]
         }),
         requires_confirmation: false,
+        permission_level: amos_core::permissions::PermissionLevel::ReadOnly,
     }
 }
 

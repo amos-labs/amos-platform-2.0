@@ -565,8 +565,21 @@ pub fn create_provider(
             )?))
         }
         "bedrock" => Ok(Box::new(crate::bedrock::BedrockProvider::from_env()?)),
+        "vertex" | "google-cloud" => {
+            let base = api_base.unwrap_or("https://us-east5-aiplatform.googleapis.com");
+            let token = api_key.ok_or_else(|| {
+                AmosError::Config(
+                    "Vertex AI provider requires an access token (api_key). Use `gcloud auth print-access-token`.".to_string(),
+                )
+            })?;
+            Ok(Box::new(crate::vertex::VertexProvider::new(
+                base.to_string(),
+                token.to_string(),
+                model_id.to_string(),
+            )?))
+        }
         _ => Err(AmosError::Config(format!(
-            "Unknown model provider: '{}'. Supported: anthropic, openai, ollama, vllm, bedrock",
+            "Unknown model provider: '{}'. Supported: anthropic, openai, ollama, vllm, bedrock, vertex",
             provider_type
         ))),
     }

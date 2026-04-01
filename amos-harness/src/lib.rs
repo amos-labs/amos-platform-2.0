@@ -74,11 +74,12 @@ pub use canvas::{
     CanvasEngine,
 };
 
-// Re-export tool types
-pub use tools::{Tool, ToolCategory, ToolRegistry, ToolResult};
+// Re-export tool types (Tool, ToolResult, ToolCategory from amos-core; ToolRegistry is local)
+pub use amos_core::{Tool, ToolCategory, ToolResult};
+pub use tools::ToolRegistry;
 
-// Re-export package types
-pub use packages::AmosPackage;
+// Re-export package types (from amos-core)
+pub use amos_core::{AmosPackage, PackageContext, PackageToolRegistry};
 
 // Re-export OpenClaw types
 pub use openclaw::{AgentConfig, AgentManager, AgentStatus};

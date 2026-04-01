@@ -516,6 +516,101 @@ async fn parse_anthropic_sse(
     Ok(())
 }
 
+/// Parse Anthropic SSE from a text body (for use by Vertex AI and other providers
+/// that use the same response format but collect the body as text).
+pub async fn parse_anthropic_sse_text(body: &str, tx: &mpsc::Sender<StreamEvent>) {
+    let mut current_tool_id: Option<String> = None;
+    let mut current_tool_name: Option<String> = None;
+    let mut current_tool_json = String::new();
+    let mut total_input_tokens: u64 = 0;
+    let mut total_output_tokens: u64 = 0;
+
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("event:") {
+            continue;
+        }
+
+        if let Some(data) = line.strip_prefix("data: ") {
+            if let Ok(event) = serde_json::from_str::<SseEvent>(data) {
+                match event.event_type.as_str() {
+                    "message_start" => {
+                        if let Some(msg) = &event.message {
+                            if let Some(u) = &msg.usage {
+                                total_input_tokens = u.input_tokens;
+                            }
+                        }
+                    }
+                    "content_block_start" => {
+                        if let Some(cb) = &event.content_block {
+                            if cb.block_type == "tool_use" {
+                                current_tool_id = cb.id.clone();
+                                current_tool_name = cb.name.clone();
+                                current_tool_json.clear();
+                            }
+                        }
+                    }
+                    "content_block_delta" => {
+                        if let Some(delta) = &event.delta {
+                            match delta.delta_type.as_str() {
+                                "text_delta" => {
+                                    if let Some(text) = &delta.text {
+                                        if !text.is_empty() {
+                                            let _ =
+                                                tx.send(StreamEvent::TextDelta(text.clone())).await;
+                                        }
+                                    }
+                                }
+                                "input_json_delta" => {
+                                    if let Some(json_frag) = &delta.partial_json {
+                                        current_tool_json.push_str(json_frag);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    "content_block_stop" => {
+                        if let (Some(id), Some(name)) =
+                            (current_tool_id.take(), current_tool_name.take())
+                        {
+                            let input = serde_json::from_str(&current_tool_json)
+                                .unwrap_or(serde_json::json!({}));
+                            current_tool_json.clear();
+                            let _ = tx.send(StreamEvent::ToolUse { id, name, input }).await;
+                        }
+                    }
+                    "message_delta" => {
+                        if let Some(u) = &event.usage {
+                            total_output_tokens = u.output_tokens;
+                        }
+                    }
+                    "message_stop" => {
+                        let _ = tx
+                            .send(StreamEvent::TokenUsage(TokenUsage {
+                                input_tokens: total_input_tokens,
+                                output_tokens: total_output_tokens,
+                                total_tokens: total_input_tokens + total_output_tokens,
+                            }))
+                            .await;
+                        let _ = tx.send(StreamEvent::Stop).await;
+                        return;
+                    }
+                    "error" => {
+                        let _ = tx
+                            .send(StreamEvent::Error(format!("API error: {data}")))
+                            .await;
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let _ = tx.send(StreamEvent::Stop).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
