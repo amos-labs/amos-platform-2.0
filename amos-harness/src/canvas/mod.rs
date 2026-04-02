@@ -237,7 +237,7 @@ impl CanvasEngine {
     /// List system canvases (for navigation sidebar)
     pub async fn list_system_canvases(&self) -> Result<Vec<Canvas>> {
         let query = format!(
-            "SELECT {} FROM canvases WHERE is_system = true ORDER BY nav_order ASC",
+            "SELECT {} FROM canvases WHERE is_system = true AND nav_order > 0 ORDER BY nav_order ASC",
             CANVAS_COLUMNS
         );
 
