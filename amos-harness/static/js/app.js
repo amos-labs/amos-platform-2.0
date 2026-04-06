@@ -1877,4 +1877,134 @@ async function loadSpecialists() {
 
 // Start specialist polling (every 30 seconds)
 loadSpecialists();
+
+// ============================================================================
+// Past Projects Modal
+// ============================================================================
+
+const pastProjects = {
+    page: 0,
+    pageSize: 20,
+    total: 0,
+    query: '',
+    searchTimeout: null,
+};
+
+function openPastProjects() {
+    pastProjects.page = 0;
+    pastProjects.query = '';
+    const searchInput = document.getElementById('pastProjectsSearch');
+    if (searchInput) searchInput.value = '';
+    document.getElementById('pastProjectsModal').classList.remove('hidden');
+    lucide.createIcons();
+    fetchPastProjects();
+}
+
+function closePastProjects() {
+    document.getElementById('pastProjectsModal').classList.add('hidden');
+}
+
+function onPastProjectsSearch(value) {
+    clearTimeout(pastProjects.searchTimeout);
+    pastProjects.searchTimeout = setTimeout(() => {
+        pastProjects.query = value.trim();
+        pastProjects.page = 0;
+        fetchPastProjects();
+    }, 300);
+}
+
+function pastProjectsPage(delta) {
+    const newPage = pastProjects.page + delta;
+    const maxPage = Math.ceil(pastProjects.total / pastProjects.pageSize) - 1;
+    if (newPage < 0 || newPage > maxPage) return;
+    pastProjects.page = newPage;
+    fetchPastProjects();
+}
+
+async function fetchPastProjects() {
+    const listEl = document.getElementById('pastProjectsList');
+    const countEl = document.getElementById('pastProjectsCount');
+    const pageLabel = document.getElementById('pastProjectsPageLabel');
+    const prevBtn = document.getElementById('pastProjectsPrev');
+    const nextBtn = document.getElementById('pastProjectsNext');
+
+    listEl.innerHTML = '<p class="text-sm text-gray-400 text-center py-8">Loading...</p>';
+
+    const params = new URLSearchParams({
+        limit: pastProjects.pageSize,
+        offset: pastProjects.page * pastProjects.pageSize,
+    });
+    if (pastProjects.query) params.set('q', pastProjects.query);
+
+    try {
+        const resp = await fetch(`${state.apiBase}/api/v1/agent/sessions/search?${params}`);
+        if (!resp.ok) throw new Error('Failed to fetch');
+        const data = await resp.json();
+        const sessions = data.sessions || [];
+        pastProjects.total = data.total || 0;
+
+        if (sessions.length === 0) {
+            listEl.innerHTML = '<p class="text-sm text-gray-400 text-center py-8">No conversations found.</p>';
+        } else {
+            listEl.innerHTML = sessions.map(s => {
+                const title = escapeHtml(s.title || 'Untitled conversation');
+                const date = new Date(s.last_activity_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                const msgs = s.message_count || 0;
+                const isActive = state.sessionId === s.id;
+                const activeBg = isActive ? 'bg-amos-50 dark:bg-amos-900/30 ring-1 ring-amos-200 dark:ring-amos-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700';
+                return `<div class="flex items-center gap-3 px-3 py-2.5 rounded-xl ${activeBg} group cursor-pointer" onclick="openPastProject('${s.id}')">
+                    <i data-lucide="message-square" class="w-4 h-4 flex-shrink-0 text-gray-400 dark:text-gray-500"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium truncate">${title}</p>
+                        <p class="text-xs text-gray-400 dark:text-gray-500">${date} · ${msgs} message${msgs !== 1 ? 's' : ''}</p>
+                    </div>
+                    <button onclick="deletePastProject(event, '${s.id}')"
+                        class="flex-shrink-0 p-1 rounded-lg text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete conversation">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>`;
+            }).join('');
+        }
+
+        // Update footer
+        const totalPages = Math.max(1, Math.ceil(pastProjects.total / pastProjects.pageSize));
+        const currentPage = pastProjects.page + 1;
+        const start = pastProjects.page * pastProjects.pageSize + 1;
+        const end = Math.min(start + sessions.length - 1, pastProjects.total);
+        countEl.textContent = pastProjects.total > 0 ? `${start}–${end} of ${pastProjects.total}` : '0 conversations';
+        pageLabel.textContent = `${currentPage} / ${totalPages}`;
+        prevBtn.disabled = pastProjects.page === 0;
+        nextBtn.disabled = currentPage >= totalPages;
+
+        lucide.createIcons();
+    } catch (e) {
+        listEl.innerHTML = '<p class="text-sm text-red-400 text-center py-8">Failed to load conversations.</p>';
+    }
+}
+
+function openPastProject(sessionId) {
+    closePastProjects();
+    resumeSession(sessionId);
+}
+
+async function deletePastProject(event, sessionId) {
+    event.stopPropagation();
+    if (!confirm('Delete this conversation? This cannot be undone.')) return;
+
+    try {
+        const resp = await fetch(`${state.apiBase}/api/v1/agent/sessions/${sessionId}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Delete failed');
+
+        // If we deleted the active session, start fresh
+        if (state.sessionId === sessionId) {
+            newChat();
+        }
+        // Refresh both the modal list and the sidebar
+        fetchPastProjects();
+        loadRecentSessions();
+    } catch (e) {
+        alert('Failed to delete conversation. Please try again.');
+    }
+}
 setInterval(loadSpecialists, 30000);
