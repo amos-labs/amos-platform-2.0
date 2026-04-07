@@ -61,7 +61,7 @@ impl Tool for GetWorkspaceSummaryTool {
                     json!({
                         "name": row.get::<String, _>("name"),
                         "display_name": row.get::<Option<String>, _>("display_name"),
-                        "field_count": row.get::<Option<i64>, _>("field_count").unwrap_or(0),
+                        "field_count": row.get::<Option<i32>, _>("field_count").unwrap_or(0),
                         "record_count": row.get::<Option<i64>, _>("record_count").unwrap_or(0),
                     })
                 })
