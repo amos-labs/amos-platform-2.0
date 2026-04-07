@@ -36,5 +36,9 @@ amos-harness/data/uploads/
 # Solana keypairs (mounted at runtime)
 keys/
 
+# Solana build artifacts and JS deps
+amos-solana/target/
+amos-solana/node_modules/
+
 # Internal docs (not for public repo)
 docs/social_media_content.md
