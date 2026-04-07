@@ -381,6 +381,8 @@ fn derive_associated_token_account(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
 mod tests {
     use super::*;
 
+    // ── Client creation ────────────────────────────────────────────────
+
     #[test]
     fn solana_client_can_be_created() {
         let client = SolanaClient::new(
@@ -397,12 +399,108 @@ mod tests {
     }
 
     #[test]
-    fn test_anchor_discriminator() {
-        let disc = anchor_discriminator("submit_bounty_proof");
-        assert_eq!(disc.len(), 8);
-        // Discriminator should be deterministic
-        assert_eq!(disc, anchor_discriminator("submit_bounty_proof"));
+    fn test_settlement_readiness_unconfigured() {
+        let client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        assert!(!client.is_settlement_ready());
+        assert!(client.oracle_keypair.is_none());
+        assert!(client.mint.is_none());
+        assert!(client.treasury_token_account.is_none());
     }
+
+    #[test]
+    fn test_set_mint_valid() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        assert!(client.set_mint("11111111111111111111111111111111").is_ok());
+        assert!(client.mint.is_some());
+    }
+
+    #[test]
+    fn test_set_mint_invalid() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        assert!(client.set_mint("not_a_pubkey").is_err());
+        assert!(client.mint.is_none());
+    }
+
+    #[test]
+    fn test_set_treasury_valid() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        assert!(client.set_treasury("11111111111111111111111111111111").is_ok());
+        assert!(client.treasury_token_account.is_some());
+    }
+
+    #[test]
+    fn test_settlement_readiness_partial() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        // Only mint set — not ready
+        client.set_mint("11111111111111111111111111111111").unwrap();
+        assert!(!client.is_settlement_ready());
+
+        // Mint + treasury — still not ready (no keypair)
+        client
+            .set_treasury("11111111111111111111111111111111")
+            .unwrap();
+        assert!(!client.is_settlement_ready());
+    }
+
+    #[test]
+    fn test_load_oracle_keypair_missing_file() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        let result = client.load_oracle_keypair("/nonexistent/path/keypair.json");
+        assert!(result.is_err());
+        assert!(client.oracle_keypair.is_none());
+    }
+
+    // ── Anchor discriminator ───────────────────────────────────────────
+
+    #[test]
+    fn test_anchor_discriminator_deterministic() {
+        let disc1 = anchor_discriminator("submit_bounty_proof");
+        let disc2 = anchor_discriminator("submit_bounty_proof");
+        assert_eq!(disc1, disc2);
+        assert_eq!(disc1.len(), 8);
+    }
+
+    #[test]
+    fn test_anchor_discriminator_different_for_different_functions() {
+        let disc_submit = anchor_discriminator("submit_bounty_proof");
+        let disc_init = anchor_discriminator("initialize");
+        let disc_decay = anchor_discriminator("apply_decay");
+        assert_ne!(disc_submit, disc_init);
+        assert_ne!(disc_submit, disc_decay);
+        assert_ne!(disc_init, disc_decay);
+    }
+
+    // ── Instruction data building ──────────────────────────────────────
 
     #[test]
     fn test_instruction_data_length() {
@@ -415,37 +513,391 @@ mod tests {
             &bounty_id, 100, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
         );
 
-        // 8 + 32 + 2 + 1 + 1 + 1 + 32 + 32 + 32 + 64 = 205
+        // 8 (disc) + 32 (bounty_id) + 2 (points) + 1 (quality) + 1 (type)
+        // + 1 (is_agent) + 32 (agent_id) + 32 (reviewer) + 32 (evidence)
+        // + 64 (external_ref) = 205
         assert_eq!(data.len(), 205);
     }
 
     #[test]
-    fn test_hash_to_32_bytes() {
-        let hash = hash_to_32_bytes("test-bounty-id");
-        assert_eq!(hash.len(), 32);
-        // Should be deterministic
-        assert_eq!(hash, hash_to_32_bytes("test-bounty-id"));
+    fn test_instruction_data_starts_with_discriminator() {
+        let bounty_id = [0u8; 32];
+        let agent_id = [0u8; 32];
+        let evidence_hash = [0u8; 32];
+        let reviewer = Pubkey::new_unique();
+
+        let data = build_submit_bounty_proof_data(
+            &bounty_id, 0, 0, 0, false, &agent_id, &reviewer, &evidence_hash,
+        );
+
+        let expected_disc = anchor_discriminator("submit_bounty_proof");
+        assert_eq!(&data[..8], &expected_disc);
     }
 
     #[test]
-    fn test_settlement_readiness() {
+    fn test_instruction_data_encodes_base_points_little_endian() {
+        let bounty_id = [0u8; 32];
+        let agent_id = [0u8; 32];
+        let evidence_hash = [0u8; 32];
+        let reviewer = Pubkey::new_unique();
+
+        let data = build_submit_bounty_proof_data(
+            &bounty_id, 500, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+        );
+
+        // base_points at offset 8 + 32 = 40, 2 bytes LE
+        let points_bytes = &data[40..42];
+        assert_eq!(points_bytes, &500u16.to_le_bytes());
+    }
+
+    #[test]
+    fn test_instruction_data_encodes_quality_and_type() {
+        let bounty_id = [0u8; 32];
+        let agent_id = [0u8; 32];
+        let evidence_hash = [0u8; 32];
+        let reviewer = Pubkey::new_unique();
+
+        let data = build_submit_bounty_proof_data(
+            &bounty_id, 100, 95, 7, true, &agent_id, &reviewer, &evidence_hash,
+        );
+
+        // quality_score at offset 42, contribution_type at 43, is_agent at 44
+        assert_eq!(data[42], 95); // quality
+        assert_eq!(data[43], 7);  // infrastructure contribution type
+        assert_eq!(data[44], 1);  // is_agent = true
+    }
+
+    #[test]
+    fn test_instruction_data_is_agent_false() {
+        let bounty_id = [0u8; 32];
+        let agent_id = [0u8; 32];
+        let evidence_hash = [0u8; 32];
+        let reviewer = Pubkey::new_unique();
+
+        let data = build_submit_bounty_proof_data(
+            &bounty_id, 100, 80, 1, false, &agent_id, &reviewer, &evidence_hash,
+        );
+
+        assert_eq!(data[44], 0); // is_agent = false
+    }
+
+    #[test]
+    fn test_instruction_data_contains_bounty_id() {
+        let bounty_id = [42u8; 32];
+        let agent_id = [0u8; 32];
+        let evidence_hash = [0u8; 32];
+        let reviewer = Pubkey::new_unique();
+
+        let data = build_submit_bounty_proof_data(
+            &bounty_id, 100, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+        );
+
+        // bounty_id at offset 8..40
+        assert_eq!(&data[8..40], &bounty_id);
+    }
+
+    #[test]
+    fn test_instruction_data_ends_with_zeroed_external_reference() {
+        let bounty_id = [1u8; 32];
+        let agent_id = [2u8; 32];
+        let evidence_hash = [3u8; 32];
+        let reviewer = Pubkey::new_unique();
+
+        let data = build_submit_bounty_proof_data(
+            &bounty_id, 100, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+        );
+
+        // Last 64 bytes should be zeroed (external_reference)
+        assert_eq!(&data[141..205], &[0u8; 64]);
+    }
+
+    // ── Hash utility ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_hash_to_32_bytes_deterministic() {
+        let hash1 = hash_to_32_bytes("test-bounty-id");
+        let hash2 = hash_to_32_bytes("test-bounty-id");
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 32);
+    }
+
+    #[test]
+    fn test_hash_to_32_bytes_different_inputs() {
+        let hash1 = hash_to_32_bytes("bounty-1");
+        let hash2 = hash_to_32_bytes("bounty-2");
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_to_32_bytes_uuid_format() {
+        // Real UUID format that would come from the relay
+        let hash = hash_to_32_bytes("550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(hash.len(), 32);
+        assert_ne!(hash, [0u8; 32]); // Not all zeros
+    }
+
+    // ── ATA derivation ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_ata_derivation_deterministic() {
+        let wallet = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let ata1 = derive_associated_token_account(&wallet, &mint);
+        let ata2 = derive_associated_token_account(&wallet, &mint);
+        assert_eq!(ata1, ata2);
+    }
+
+    #[test]
+    fn test_ata_derivation_different_wallets() {
+        let wallet1 = Pubkey::new_unique();
+        let wallet2 = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let ata1 = derive_associated_token_account(&wallet1, &mint);
+        let ata2 = derive_associated_token_account(&wallet2, &mint);
+        assert_ne!(ata1, ata2);
+    }
+
+    #[test]
+    fn test_ata_derivation_different_mints() {
+        let wallet = Pubkey::new_unique();
+        let mint1 = Pubkey::new_unique();
+        let mint2 = Pubkey::new_unique();
+        let ata1 = derive_associated_token_account(&wallet, &mint1);
+        let ata2 = derive_associated_token_account(&wallet, &mint2);
+        assert_ne!(ata1, ata2);
+    }
+
+    #[test]
+    fn test_ata_differs_from_wallet() {
+        let wallet = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let ata = derive_associated_token_account(&wallet, &mint);
+        assert_ne!(ata, wallet);
+        assert_ne!(ata, mint);
+    }
+
+    // ── PDA derivation ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_pda_derivation_config() {
+        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let (config_pda, bump) =
+            Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        // PDA should be deterministic
+        let (config_pda2, bump2) =
+            Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        assert_eq!(config_pda, config_pda2);
+        assert_eq!(bump, bump2);
+        assert_ne!(config_pda, program_id);
+    }
+
+    #[test]
+    fn test_pda_derivation_daily_pool() {
+        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let day1: u32 = 100;
+        let day2: u32 = 101;
+        let (pool1, _) = Pubkey::find_program_address(
+            &[DAILY_POOL_SEED, &day1.to_le_bytes()],
+            &program_id,
+        );
+        let (pool2, _) = Pubkey::find_program_address(
+            &[DAILY_POOL_SEED, &day2.to_le_bytes()],
+            &program_id,
+        );
+        assert_ne!(pool1, pool2); // Different days = different PDAs
+    }
+
+    #[test]
+    fn test_pda_derivation_bounty_proof() {
+        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let bounty_id_1 = hash_to_32_bytes("bounty-1");
+        let bounty_id_2 = hash_to_32_bytes("bounty-2");
+        let (proof1, _) = Pubkey::find_program_address(
+            &[BOUNTY_PROOF_SEED, &bounty_id_1],
+            &program_id,
+        );
+        let (proof2, _) = Pubkey::find_program_address(
+            &[BOUNTY_PROOF_SEED, &bounty_id_2],
+            &program_id,
+        );
+        assert_ne!(proof1, proof2); // Different bounties = different PDAs
+    }
+
+    #[test]
+    fn test_pda_derivation_operator_stats() {
+        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let op1 = Pubkey::new_unique();
+        let op2 = Pubkey::new_unique();
+        let (stats1, _) = Pubkey::find_program_address(
+            &[OPERATOR_STATS_SEED, op1.as_ref()],
+            &program_id,
+        );
+        let (stats2, _) = Pubkey::find_program_address(
+            &[OPERATOR_STATS_SEED, op2.as_ref()],
+            &program_id,
+        );
+        assert_ne!(stats1, stats2);
+    }
+
+    #[test]
+    fn test_pda_derivation_agent_trust() {
+        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let agent_id_1 = [1u8; 32];
+        let agent_id_2 = [2u8; 32];
+        let (trust1, _) = Pubkey::find_program_address(
+            &[AGENT_TRUST_SEED, &agent_id_1],
+            &program_id,
+        );
+        let (trust2, _) = Pubkey::find_program_address(
+            &[AGENT_TRUST_SEED, &agent_id_2],
+            &program_id,
+        );
+        assert_ne!(trust1, trust2);
+    }
+
+    // ── Burn fees ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_burn_zero_amount() {
         let client = SolanaClient::new(
             "https://api.devnet.solana.com",
             "AmosBnty111111111111111111111111111111111111",
         )
         .unwrap();
 
-        assert!(!client.is_settlement_ready());
+        let result = client.burn_protocol_fees(0).await.unwrap();
+        assert_eq!(result, "no_burn_needed");
+    }
+
+    #[tokio::test]
+    async fn test_burn_nonzero_amount() {
+        let client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        let result = client.burn_protocol_fees(1000).await.unwrap();
+        assert_eq!(result, "pending_burn_1000");
+    }
+
+    // ── Process payout validation ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_process_payout_without_keypair() {
+        let client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        let params = SettlementParams {
+            bounty_id: "test-bounty".to_string(),
+            agent_wallet: "11111111111111111111111111111111".to_string(),
+            reviewer_wallet: "11111111111111111111111111111111".to_string(),
+            base_points: 100,
+            quality_score: 80,
+            contribution_type: 1,
+            is_agent: true,
+            agent_id: [0u8; 32],
+            evidence_hash: [0u8; 32],
+        };
+
+        let result = client.process_bounty_payout(&params).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Oracle keypair not configured"));
+    }
+
+    #[tokio::test]
+    async fn test_process_payout_invalid_wallet() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        // Create a temporary keypair file for the oracle
+        let keypair = Keypair::new();
+        let keypair_bytes = keypair.to_bytes();
+        let tmpfile = std::env::temp_dir().join("test_oracle_keypair.json");
+        std::fs::write(
+            &tmpfile,
+            serde_json::to_string(&keypair_bytes.to_vec()).unwrap(),
+        )
+        .unwrap();
+
+        client
+            .load_oracle_keypair(tmpfile.to_str().unwrap())
+            .unwrap();
+        client.set_mint("11111111111111111111111111111111").unwrap();
+        client
+            .set_treasury("11111111111111111111111111111111")
+            .unwrap();
+
+        let params = SettlementParams {
+            bounty_id: "test-bounty".to_string(),
+            agent_wallet: "not_a_valid_pubkey".to_string(),
+            reviewer_wallet: "11111111111111111111111111111111".to_string(),
+            base_points: 100,
+            quality_score: 80,
+            contribution_type: 1,
+            is_agent: true,
+            agent_id: [0u8; 32],
+            evidence_hash: [0u8; 32],
+        };
+
+        let result = client.process_bounty_payout(&params).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Invalid agent wallet"));
+
+        // Cleanup
+        let _ = std::fs::remove_file(tmpfile);
+    }
+
+    // ── Keypair loading ────────────────────────────────────────────────
+
+    #[test]
+    fn test_load_keypair_from_file() {
+        let keypair = Keypair::new();
+        let keypair_bytes = keypair.to_bytes();
+        let tmpfile = std::env::temp_dir().join("test_load_keypair.json");
+        std::fs::write(
+            &tmpfile,
+            serde_json::to_string(&keypair_bytes.to_vec()).unwrap(),
+        )
+        .unwrap();
+
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        assert!(client.load_oracle_keypair(tmpfile.to_str().unwrap()).is_ok());
+        assert!(client.oracle_keypair.is_some());
+        assert_eq!(
+            client.oracle_keypair.unwrap().pubkey(),
+            keypair.pubkey()
+        );
+
+        let _ = std::fs::remove_file(tmpfile);
     }
 
     #[test]
-    fn test_ata_derivation() {
-        let wallet = Pubkey::new_unique();
-        let mint = Pubkey::new_unique();
-        let ata = derive_associated_token_account(&wallet, &mint);
-        // ATA should be deterministic
-        assert_eq!(ata, derive_associated_token_account(&wallet, &mint));
-        // ATA should differ from the wallet
-        assert_ne!(ata, wallet);
+    fn test_load_keypair_invalid_json() {
+        let tmpfile = std::env::temp_dir().join("test_bad_keypair.json");
+        std::fs::write(&tmpfile, "not valid json at all").unwrap();
+
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "AmosBnty111111111111111111111111111111111111",
+        )
+        .unwrap();
+
+        assert!(client.load_oracle_keypair(tmpfile.to_str().unwrap()).is_err());
+
+        let _ = std::fs::remove_file(tmpfile);
     }
 }

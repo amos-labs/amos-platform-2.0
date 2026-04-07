@@ -138,7 +138,7 @@ async fn list_tools(
 }
 
 /// Map tool categories to minimum trust levels per the EAP spec.
-fn trust_level_for_category(category: amos_core::tools::ToolCategory) -> u8 {
+pub(crate) fn trust_level_for_category(category: amos_core::tools::ToolCategory) -> u8 {
     use amos_core::tools::ToolCategory;
     match category {
         ToolCategory::System | ToolCategory::Web | ToolCategory::Memory | ToolCategory::Knowledge => 1,
@@ -147,5 +147,76 @@ fn trust_level_for_category(category: amos_core::tools::ToolCategory) -> u8 {
         ToolCategory::OpenClaw | ToolCategory::Document | ToolCategory::ImageGen => 3,
         ToolCategory::Platform => 4,
         _ => 2,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use amos_core::tools::ToolCategory;
+
+    // ── Trust level mapping ────────────────────────────────────────────
+
+    #[test]
+    fn test_trust_level_system_tools_are_level_1() {
+        assert_eq!(trust_level_for_category(ToolCategory::System), 1);
+        assert_eq!(trust_level_for_category(ToolCategory::Web), 1);
+        assert_eq!(trust_level_for_category(ToolCategory::Memory), 1);
+        assert_eq!(trust_level_for_category(ToolCategory::Knowledge), 1);
+    }
+
+    #[test]
+    fn test_trust_level_workspace_tools_are_level_2() {
+        assert_eq!(trust_level_for_category(ToolCategory::Schema), 2);
+        assert_eq!(trust_level_for_category(ToolCategory::Canvas), 2);
+        assert_eq!(trust_level_for_category(ToolCategory::Apps), 2);
+    }
+
+    #[test]
+    fn test_trust_level_integration_tools_are_level_3() {
+        assert_eq!(trust_level_for_category(ToolCategory::Integration), 3);
+        assert_eq!(trust_level_for_category(ToolCategory::Automation), 3);
+        assert_eq!(trust_level_for_category(ToolCategory::TaskQueue), 3);
+        assert_eq!(trust_level_for_category(ToolCategory::OpenClaw), 3);
+        assert_eq!(trust_level_for_category(ToolCategory::Document), 3);
+        assert_eq!(trust_level_for_category(ToolCategory::ImageGen), 3);
+    }
+
+    #[test]
+    fn test_trust_level_platform_tools_are_level_4() {
+        assert_eq!(trust_level_for_category(ToolCategory::Platform), 4);
+    }
+
+    #[test]
+    fn test_trust_level_default_is_level_2() {
+        // Other/unknown categories default to 2
+        assert_eq!(trust_level_for_category(ToolCategory::Other), 2);
+    }
+
+    #[test]
+    fn test_trust_levels_are_in_range() {
+        let categories = [
+            ToolCategory::System, ToolCategory::Web, ToolCategory::Memory,
+            ToolCategory::Knowledge, ToolCategory::Schema, ToolCategory::Canvas,
+            ToolCategory::Apps, ToolCategory::Integration, ToolCategory::Automation,
+            ToolCategory::TaskQueue, ToolCategory::OpenClaw, ToolCategory::Document,
+            ToolCategory::ImageGen, ToolCategory::Platform, ToolCategory::Other,
+            ToolCategory::Education, ToolCategory::Autoresearch, ToolCategory::Orchestrator,
+        ];
+        for cat in categories {
+            let level = trust_level_for_category(cat);
+            assert!(level >= 1 && level <= 5, "Trust level {} for {:?} out of range", level, cat);
+        }
+    }
+
+    #[test]
+    fn test_trust_levels_are_monotonically_ordered() {
+        // ReadOnly (1) < WorkspaceWrite (2) < Integration (3) < FullAccess (4)
+        assert!(trust_level_for_category(ToolCategory::System) <
+                trust_level_for_category(ToolCategory::Schema));
+        assert!(trust_level_for_category(ToolCategory::Schema) <
+                trust_level_for_category(ToolCategory::Integration));
+        assert!(trust_level_for_category(ToolCategory::Integration) <
+                trust_level_for_category(ToolCategory::Platform));
     }
 }

@@ -114,36 +114,107 @@ pub fn generate_api_key(prefix: &str) -> String {
 mod tests {
     use super::*;
 
+    // ── Error response mapping ─────────────────────────────────────────
+
     #[test]
-    fn test_error_mapping() {
+    fn test_error_mapping_not_found() {
         let err = AmosError::NotFound {
             entity: "resource".to_string(),
             id: "123".to_string(),
         };
         let response = ErrorResponse(err).into_response();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 
+    #[test]
+    fn test_error_mapping_validation() {
         let err = AmosError::Validation("invalid input".to_string());
         let response = ErrorResponse(err).into_response();
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
 
+    #[test]
+    fn test_error_mapping_unauthorized() {
         let err = AmosError::Unauthorized("invalid credentials".to_string());
         let response = ErrorResponse(err).into_response();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
-    fn test_api_key_generation() {
+    fn test_error_mapping_internal() {
+        let err = AmosError::Internal("something broke".to_string());
+        let response = ErrorResponse(err).into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // ── API key generation ─────────────────────────────────────────────
+
+    #[test]
+    fn test_api_key_generation_format() {
         let key = generate_api_key("relay");
         assert!(key.starts_with("relay_"));
         assert_eq!(key.len(), 6 + 64); // "relay_" + 64 hex chars
     }
 
     #[test]
-    fn test_api_key_hashing() {
+    fn test_api_key_generation_different_prefixes() {
+        let key1 = generate_api_key("harness");
+        let key2 = generate_api_key("agent");
+        assert!(key1.starts_with("harness_"));
+        assert!(key2.starts_with("agent_"));
+    }
+
+    #[test]
+    fn test_api_key_generation_uniqueness() {
+        let key1 = generate_api_key("relay");
+        let key2 = generate_api_key("relay");
+        // Two generated keys should be different (overwhelming probability)
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_api_key_generation_hex_chars() {
+        let key = generate_api_key("test");
+        let hex_part = &key[5..]; // Skip "test_"
+        // Should only contain valid hex characters
+        assert!(hex_part.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    // ── API key hashing ────────────────────────────────────────────────
+
+    #[test]
+    fn test_api_key_hashing_deterministic() {
+        let hash1 = hash_api_key("test_key");
+        let hash2 = hash_api_key("test_key");
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_api_key_hashing_length() {
         let hash = hash_api_key("test_key");
         assert_eq!(hash.len(), 64); // SHA-256 produces 64 hex chars
-        // Should be deterministic
-        assert_eq!(hash, hash_api_key("test_key"));
+    }
+
+    #[test]
+    fn test_api_key_hashing_different_keys() {
+        let hash1 = hash_api_key("key_one");
+        let hash2 = hash_api_key("key_two");
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_api_key_hashing_hex_output() {
+        let hash = hash_api_key("anything");
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_api_key_roundtrip() {
+        // Generate a key, hash it, verify the hash is consistent
+        let key = generate_api_key("eap");
+        let hash1 = hash_api_key(&key);
+        let hash2 = hash_api_key(&key);
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 64);
     }
 }
