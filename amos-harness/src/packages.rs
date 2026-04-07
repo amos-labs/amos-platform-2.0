@@ -36,6 +36,9 @@ fn build_package_registry() -> Vec<Box<dyn AmosPackage>> {
     #[cfg(feature = "pkg-autoresearch")]
     packages.push(Box::new(amos_autoresearch::AutoresearchPackage::new()));
 
+    #[cfg(feature = "pkg-social")]
+    packages.push(Box::new(amos_social::SocialPackage::new()));
+
     packages
 }
 
