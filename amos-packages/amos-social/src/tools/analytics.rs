@@ -96,13 +96,11 @@ impl Tool for GetPostAnalyticsTool {
         };
 
         // Store analytics snapshot
-        let _ = sqlx::query(
-            r#"INSERT INTO schema_records (id, collection, data, created_at, updated_at)
-               VALUES ($1, 'social_analytics', $2, NOW(), NOW())"#,
+        let _ = super::twitter::insert_collection_record(
+            &self.db_pool,
+            "social_analytics",
+            &metrics,
         )
-        .bind(uuid::Uuid::new_v4())
-        .bind(&metrics)
-        .execute(&self.db_pool)
         .await;
 
         info!(
@@ -170,31 +168,15 @@ impl Tool for GetCampaignReportTool {
     }
 
     async fn execute(&self, _params: JsonValue) -> amos_core::Result<ToolResult> {
-        // Fetch all posted content from social_posts schema
-        let rows = sqlx::query(
-            "SELECT data FROM schema_records WHERE collection = 'social_posts' ORDER BY created_at",
-        )
-        .fetch_all(&self.db_pool)
-        .await
-        .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?;
-
-        let posts: Vec<JsonValue> = rows
-            .iter()
-            .filter_map(|row| sqlx::Row::try_get::<JsonValue, _>(row, "data").ok())
-            .collect();
+        // Fetch all posted content from social_posts collection
+        let posts = super::twitter::query_collection_records(&self.db_pool, "social_posts")
+            .await
+            .map_err(|e| amos_core::AmosError::Internal(e))?;
 
         // Fetch all analytics snapshots
-        let analytics_rows = sqlx::query(
-            "SELECT data FROM schema_records WHERE collection = 'social_analytics' ORDER BY created_at DESC",
-        )
-        .fetch_all(&self.db_pool)
-        .await
-        .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?;
-
-        let analytics: Vec<JsonValue> = analytics_rows
-            .iter()
-            .filter_map(|row| sqlx::Row::try_get::<JsonValue, _>(row, "data").ok())
-            .collect();
+        let analytics = super::twitter::query_collection_records(&self.db_pool, "social_analytics")
+            .await
+            .map_err(|e| amos_core::AmosError::Internal(e))?;
 
         // Aggregate by platform
         let mut by_platform: std::collections::HashMap<String, Vec<&JsonValue>> =

@@ -455,21 +455,84 @@ pub(crate) async fn record_post(
     text: &str,
     url: &str,
 ) -> Result<(), ()> {
-    let _ = sqlx::query(
-        r#"INSERT INTO schema_records (id, collection, data, created_at, updated_at)
-           VALUES ($1, 'social_posts', $2, NOW(), NOW())
-           ON CONFLICT DO NOTHING"#,
+    // Look up the social_posts collection ID
+    let collection_id: Option<uuid::Uuid> = sqlx::query_scalar(
+        "SELECT id FROM collections WHERE name = 'social_posts'",
     )
-    .bind(uuid::Uuid::new_v4())
-    .bind(json!({
-        "platform": platform,
-        "post_id": post_id,
-        "text": text,
-        "url": url,
-        "posted_at": chrono::Utc::now().to_rfc3339(),
-        "status": "posted",
-    }))
-    .execute(db_pool)
-    .await;
+    .fetch_optional(db_pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(cid) = collection_id {
+        let _ = sqlx::query(
+            "INSERT INTO records (id, collection_id, data, created_at, updated_at)
+             VALUES ($1, $2, $3, NOW(), NOW())",
+        )
+        .bind(uuid::Uuid::new_v4())
+        .bind(cid)
+        .bind(json!({
+            "platform": platform,
+            "post_id": post_id,
+            "text": text,
+            "url": url,
+            "posted_at": chrono::Utc::now().to_rfc3339(),
+            "status": "posted",
+        }))
+        .execute(db_pool)
+        .await;
+    }
     Ok(())
+}
+
+/// Helper to insert a record into any social collection by name.
+pub(crate) async fn insert_collection_record(
+    db_pool: &PgPool,
+    collection_name: &str,
+    data: &serde_json::Value,
+) -> Result<uuid::Uuid, String> {
+    let collection_id: uuid::Uuid = sqlx::query_scalar(
+        "SELECT id FROM collections WHERE name = $1",
+    )
+    .bind(collection_name)
+    .fetch_optional(db_pool)
+    .await
+    .map_err(|e| format!("DB error: {}", e))?
+    .ok_or_else(|| format!("Collection '{}' not found. Is the social package activated?", collection_name))?;
+
+    let record_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO records (id, collection_id, data, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())",
+    )
+    .bind(record_id)
+    .bind(collection_id)
+    .bind(data)
+    .execute(db_pool)
+    .await
+    .map_err(|e| format!("Insert error: {}", e))?;
+
+    Ok(record_id)
+}
+
+/// Helper to query records from a social collection by name.
+pub(crate) async fn query_collection_records(
+    db_pool: &PgPool,
+    collection_name: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let rows = sqlx::query(
+        "SELECT r.data FROM records r
+         JOIN collections c ON r.collection_id = c.id
+         WHERE c.name = $1
+         ORDER BY r.created_at",
+    )
+    .bind(collection_name)
+    .fetch_all(db_pool)
+    .await
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(rows
+        .iter()
+        .filter_map(|row| sqlx::Row::try_get::<serde_json::Value, _>(row, "data").ok())
+        .collect())
 }

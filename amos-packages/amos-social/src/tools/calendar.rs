@@ -122,20 +122,9 @@ impl Tool for LoadContentCalendarTool {
                     .and_then(|v| v.as_str())
                     .unwrap_or("content_calendar");
 
-                let rows = sqlx::query(
-                    "SELECT data FROM schema_records WHERE collection = $1 ORDER BY created_at",
-                )
-                .bind(collection)
-                .fetch_all(&self.db_pool)
-                .await
-                .map_err(|e| {
-                    amos_core::AmosError::Internal(format!("DB error: {}", e))
-                })?;
-
-                let calendar: Vec<JsonValue> = rows
-                    .iter()
-                    .filter_map(|row| sqlx::Row::try_get::<JsonValue, _>(row, "data").ok())
-                    .collect();
+                let calendar = super::twitter::query_collection_records(&self.db_pool, collection)
+                    .await
+                    .map_err(|e| amos_core::AmosError::Internal(e))?;
 
                 let platforms: Vec<String> = calendar
                     .iter()
@@ -291,9 +280,7 @@ impl Tool for ScheduleContentTool {
             }
         };
 
-        let schedule_id = uuid::Uuid::new_v4();
-
-        // Store in content_schedule schema
+        // Store in content_schedule collection
         let schedule_record = json!({
             "platform": platform,
             "tool": tool_name,
@@ -305,17 +292,13 @@ impl Tool for ScheduleContentTool {
             "create_bounty": create_bounty,
         });
 
-        let _ = sqlx::query(
-            r#"INSERT INTO schema_records (id, collection, data, created_at, updated_at)
-               VALUES ($1, 'content_schedule', $2, NOW(), NOW())"#,
+        let schedule_id = super::twitter::insert_collection_record(
+            &self.db_pool,
+            "content_schedule",
+            &schedule_record,
         )
-        .bind(schedule_id)
-        .bind(&schedule_record)
-        .execute(&self.db_pool)
         .await
-        .map_err(|e| {
-            amos_core::AmosError::Internal(format!("Failed to save schedule: {}", e))
-        })?;
+        .map_err(|e| amos_core::AmosError::Internal(e))?;
 
         info!(
             schedule_id = %schedule_id,

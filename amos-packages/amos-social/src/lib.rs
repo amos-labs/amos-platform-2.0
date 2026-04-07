@@ -104,25 +104,39 @@ impl AmosPackage for SocialPackage {
 
 /// Bootstrap social media schemas (idempotent).
 async fn bootstrap_schemas(db_pool: &sqlx::PgPool) -> Result<()> {
-    let schemas = [
-        ("social_campaigns", "Campaign definitions and settings"),
-        ("social_content", "Content items and drafts"),
-        ("social_posts", "Published posts with platform IDs and URLs"),
-        ("social_analytics", "Engagement metrics snapshots"),
-        ("content_calendar", "Content calendar entries"),
-        ("content_schedule", "Scheduled content items for posting"),
+    let collections = [
+        ("social_campaigns", "Campaigns", "Campaign definitions and settings"),
+        ("social_content", "Content", "Content items and drafts"),
+        ("social_posts", "Posts", "Published posts with platform IDs and URLs"),
+        ("social_analytics", "Analytics", "Engagement metrics snapshots"),
+        ("content_calendar", "Content Calendar", "Content calendar entries"),
+        ("content_schedule", "Content Schedule", "Scheduled content items for posting"),
     ];
 
-    for (collection, description) in schemas {
-        let _ = sqlx::query(
-            r#"INSERT INTO schema_collections (name, description, created_at, updated_at)
-               VALUES ($1, $2, NOW(), NOW())
-               ON CONFLICT (name) DO NOTHING"#,
+    for (name, display_name, description) in collections {
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM collections WHERE name = $1)",
         )
-        .bind(collection)
-        .bind(description)
-        .execute(db_pool)
-        .await;
+        .bind(name)
+        .fetch_one(db_pool)
+        .await
+        .unwrap_or(false);
+
+        if !exists {
+            tracing::info!("Creating social collection: {display_name}");
+            sqlx::query(
+                "INSERT INTO collections (id, name, display_name, description, fields, settings, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, NOW(), NOW())"
+            )
+            .bind(uuid::Uuid::new_v4())
+            .bind(name)
+            .bind(display_name)
+            .bind(description)
+            .bind(serde_json::json!([]))
+            .execute(db_pool)
+            .await
+            .ok();
+        }
     }
 
     Ok(())

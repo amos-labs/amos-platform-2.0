@@ -135,6 +135,9 @@ impl AutomationEngine {
                 self.action_send_notification(automation, &trigger_data)
                     .await
             }
+            ActionType::CreateBounty => {
+                self.action_create_bounty(automation, &trigger_data).await
+            }
         };
 
         let duration_ms = start.elapsed().as_millis() as i32;
@@ -366,6 +369,94 @@ impl AutomationEngine {
             "action": "run_agent_task",
             "task_id": task.id.to_string(),
             "title": title,
+        }))
+    }
+
+    /// Create an external bounty from automation config.
+    ///
+    /// The action_config should contain:
+    /// - `title` (string): Bounty title
+    /// - `description` (string): What needs to be done
+    /// - `reward_tokens` (i64): Token reward for completion
+    /// - `context` (object, optional): Additional context (e.g., tool name, content payload)
+    /// - `deadline_hours` (i64, optional): Hours until deadline (default: 24)
+    ///
+    /// Trigger data is merged into the bounty context so the executing agent
+    /// has access to the record that fired the automation.
+    async fn action_create_bounty(
+        &self,
+        automation: &Automation,
+        trigger_data: &JsonValue,
+    ) -> Result<JsonValue> {
+        let title = automation
+            .action_config
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&automation.name);
+
+        let description = automation
+            .action_config
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Automation-created bounty");
+
+        let reward_tokens = automation
+            .action_config
+            .get("reward_tokens")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(50);
+
+        let deadline_hours = automation
+            .action_config
+            .get("deadline_hours")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(24);
+
+        // Merge static context from action_config with dynamic trigger data
+        let mut context = automation
+            .action_config
+            .get("context")
+            .cloned()
+            .unwrap_or(json!({}));
+
+        if let Some(obj) = context.as_object_mut() {
+            obj.insert("trigger_data".to_string(), trigger_data.clone());
+            obj.insert("automation_id".to_string(), json!(automation.id.to_string()));
+            obj.insert("automation_name".to_string(), json!(automation.name));
+        }
+
+        let deadline_at = Utc::now() + chrono::Duration::hours(deadline_hours);
+
+        let params = CreateTaskParams {
+            title: title.to_string(),
+            description: Some(description.to_string()),
+            context: Some(context.clone()),
+            category: TaskCategory::External,
+            task_type: Some("bounty".to_string()),
+            priority: Some(5),
+            session_id: None,
+            parent_task_id: None,
+            reward_tokens: Some(reward_tokens),
+            deadline_at: Some(deadline_at),
+        };
+
+        let task = self.task_queue.create_task(params).await?;
+
+        tracing::info!(
+            bounty_id = %task.id,
+            title = title,
+            reward = reward_tokens,
+            deadline = %deadline_at,
+            "Bounty created from automation"
+        );
+
+        Ok(json!({
+            "action": "create_bounty",
+            "bounty_id": task.id.to_string(),
+            "title": title,
+            "reward_tokens": reward_tokens,
+            "deadline_at": deadline_at.to_rfc3339(),
+            "context": context,
         }))
     }
 

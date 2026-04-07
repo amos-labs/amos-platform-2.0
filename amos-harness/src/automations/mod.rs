@@ -65,6 +65,7 @@ pub enum ActionType {
     SendNotification,
     CallWebhook,
     RunAgentTask,
+    CreateBounty,
 }
 
 impl ActionType {
@@ -75,6 +76,7 @@ impl ActionType {
             ActionType::SendNotification => "send_notification",
             ActionType::CallWebhook => "call_webhook",
             ActionType::RunAgentTask => "run_agent_task",
+            ActionType::CreateBounty => "create_bounty",
         }
     }
 
@@ -85,6 +87,7 @@ impl ActionType {
             "send_notification" => Some(ActionType::SendNotification),
             "call_webhook" => Some(ActionType::CallWebhook),
             "run_agent_task" => Some(ActionType::RunAgentTask),
+            "create_bounty" => Some(ActionType::CreateBounty),
             _ => None,
         }
     }
@@ -158,6 +161,7 @@ mod tests {
             ActionType::SendNotification,
             ActionType::CallWebhook,
             ActionType::RunAgentTask,
+            ActionType::CreateBounty,
         ];
         for at in types {
             assert_eq!(ActionType::from_str(at.as_str()), Some(at));
