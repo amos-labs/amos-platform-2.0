@@ -24,11 +24,11 @@ use uuid::Uuid;
 pub fn routes() -> Router<RelayState> {
     Router::new()
         .route("/", post(create_bounty).get(list_bounties))
-        .route("/:id", get(get_bounty))
-        .route("/:id/claim", post(claim_bounty))
-        .route("/:id/submit", post(submit_work))
-        .route("/:id/approve", post(approve_submission))
-        .route("/:id/reject", post(reject_submission))
+        .route("/{id}", get(get_bounty))
+        .route("/{id}/claim", post(claim_bounty))
+        .route("/{id}/submit", post(submit_work))
+        .route("/{id}/approve", post(approve_submission))
+        .route("/{id}/reject", post(reject_submission))
 }
 
 // =============================================================================
@@ -79,8 +79,7 @@ pub struct RejectSubmissionRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "bounty_status", rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum BountyStatus {
     Open,
@@ -92,15 +91,48 @@ pub enum BountyStatus {
     Cancelled,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+impl BountyStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BountyStatus::Open => "open",
+            BountyStatus::Claimed => "claimed",
+            BountyStatus::Submitted => "submitted",
+            BountyStatus::Approved => "approved",
+            BountyStatus::Rejected => "rejected",
+            BountyStatus::Expired => "expired",
+            BountyStatus::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "open" => BountyStatus::Open,
+            "claimed" => BountyStatus::Claimed,
+            "submitted" => BountyStatus::Submitted,
+            "approved" => BountyStatus::Approved,
+            "rejected" => BountyStatus::Rejected,
+            "expired" => BountyStatus::Expired,
+            "cancelled" => BountyStatus::Cancelled,
+            _ => BountyStatus::Open,
+        }
+    }
+}
+
+impl std::fmt::Display for BountyStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BountyResponse {
     pub id: Uuid,
     pub title: String,
     pub description: String,
     pub reward_tokens: i64,
-    pub deadline: DateTime<Utc>,
+    pub deadline: Option<DateTime<Utc>>,
     pub required_capabilities: Vec<String>,
-    pub poster_wallet: String,
+    pub poster_wallet: Option<String>,
     pub status: BountyStatus,
     pub claimed_by_agent_id: Option<Uuid>,
     pub claimed_by_harness_id: Option<String>,
@@ -111,8 +143,56 @@ pub struct BountyResponse {
     pub approved_at: Option<DateTime<Utc>>,
     pub rejected_at: Option<DateTime<Utc>>,
     pub rejection_reason: Option<String>,
+    pub settlement_tx: Option<String>,
+    pub settlement_status: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// =============================================================================
+// ROW MAPPING
+// =============================================================================
+
+/// Standard SELECT columns for bounty queries (maps DB column names to response fields).
+const BOUNTY_SELECT: &str = r#"
+    id, title, description, reward_tokens, deadline_at,
+    required_capabilities, poster_wallet, status,
+    claimed_by_agent_id, claimed_by_harness_id,
+    submitted_at, result, quality_evidence,
+    quality_score, approved_at, rejected_at, rejection_reason,
+    settlement_tx, settlement_status,
+    created_at, updated_at
+"#;
+
+fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::Error> {
+    use sqlx::Row;
+    let caps: serde_json::Value = row.try_get("required_capabilities")?;
+    let caps_vec: Vec<String> = serde_json::from_value(caps).unwrap_or_default();
+    let status_str: String = row.try_get("status")?;
+
+    Ok(BountyResponse {
+        id: row.try_get("id")?,
+        title: row.try_get("title")?,
+        description: row.try_get("description")?,
+        reward_tokens: row.try_get("reward_tokens")?,
+        deadline: row.try_get("deadline_at")?,
+        required_capabilities: caps_vec,
+        poster_wallet: row.try_get("poster_wallet")?,
+        status: BountyStatus::from_str(&status_str),
+        claimed_by_agent_id: row.try_get("claimed_by_agent_id")?,
+        claimed_by_harness_id: row.try_get("claimed_by_harness_id")?,
+        submitted_at: row.try_get("submitted_at")?,
+        result: row.try_get("result")?,
+        quality_evidence: row.try_get("quality_evidence")?,
+        quality_score: row.try_get("quality_score")?,
+        approved_at: row.try_get("approved_at")?,
+        rejected_at: row.try_get("rejected_at")?,
+        rejection_reason: row.try_get("rejection_reason")?,
+        settlement_tx: row.try_get("settlement_tx")?,
+        settlement_status: row.try_get("settlement_status")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
 }
 
 // =============================================================================
@@ -127,38 +207,36 @@ async fn create_bounty(
     let bounty_id = Uuid::new_v4();
     let now = Utc::now();
 
-    let bounty = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        INSERT INTO relay_bounties (
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet, status,
-            created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        "#,
+    let caps_json = serde_json::to_value(&req.required_capabilities).unwrap_or_default();
+    let row = sqlx::query(
+        &format!(
+            "INSERT INTO relay_bounties (
+                id, title, description, reward_tokens, deadline_at,
+                required_capabilities, poster_wallet, status,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING {BOUNTY_SELECT}"
+        ),
     )
     .bind(bounty_id)
     .bind(&req.title)
     .bind(&req.description)
     .bind(req.reward_tokens as i64)
     .bind(req.deadline)
-    .bind(&req.required_capabilities)
+    .bind(&caps_json)
     .bind(&req.poster_wallet)
-    .bind(BountyStatus::Open)
+    .bind(BountyStatus::Open.as_str())
     .bind(now)
     .bind(now)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
         warn!("Failed to create bounty: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let bounty = bounty_from_row(row).map_err(|e| {
+        warn!("Failed to map bounty row: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -179,58 +257,30 @@ async fn list_bounties(
     let per_page = query.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    // Build query dynamically based on filters
-    let mut sql = String::from(
-        r#"
-        SELECT
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet, status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        FROM relay_bounties
-        WHERE 1=1
-        "#,
-    );
-
-    if query.status.is_some() {
-        sql.push_str(" AND status = $1");
+    let rows = if let Some(ref status) = query.status {
+        sqlx::query(
+            &format!("SELECT {BOUNTY_SELECT} FROM relay_bounties WHERE status = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"),
+        )
+        .bind(status.as_str())
+        .bind(per_page as i64)
+        .bind(offset as i64)
+        .fetch_all(&state.db)
+        .await
+    } else {
+        sqlx::query(
+            &format!("SELECT {BOUNTY_SELECT} FROM relay_bounties ORDER BY created_at DESC LIMIT $1 OFFSET $2"),
+        )
+        .bind(per_page as i64)
+        .bind(offset as i64)
+        .fetch_all(&state.db)
+        .await
     }
-    if query.min_reward.is_some() {
-        sql.push_str(" AND reward_tokens >= $2");
-    }
-    if query.capability.is_some() {
-        sql.push_str(" AND $3 = ANY(required_capabilities)");
-    }
-
-    sql.push_str(" ORDER BY created_at DESC LIMIT $4 OFFSET $5");
-
-    // For simplicity, we'll use a simpler approach without dynamic parameters
-    let bounties = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        SELECT
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        FROM relay_bounties
-        ORDER BY created_at DESC
-        LIMIT $1 OFFSET $2
-        "#,
-    )
-    .bind(per_page as i64)
-    .bind(offset as i64)
-    .fetch_all(&state.db)
-    .await
     .map_err(|e| {
         warn!("Failed to list bounties: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    let bounties: Vec<BountyResponse> = rows.into_iter().filter_map(|r| bounty_from_row(r).ok()).collect();
     Ok(Json(bounties))
 }
 
@@ -239,19 +289,8 @@ async fn get_bounty(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<BountyResponse>, StatusCode> {
-    let bounty = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        SELECT
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        FROM relay_bounties
-        WHERE id = $1
-        "#,
+    let row = sqlx::query(
+        &format!("SELECT {BOUNTY_SELECT} FROM relay_bounties WHERE id = $1"),
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -261,6 +300,7 @@ async fn get_bounty(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::NOT_FOUND)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(bounty))
 }
@@ -273,38 +313,23 @@ async fn claim_bounty(
 ) -> Result<Json<BountyResponse>, StatusCode> {
     let now = Utc::now();
 
-    let bounty = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        UPDATE relay_bounties
-        SET
-            status = $1,
-            claimed_by_agent_id = $2,
-            claimed_by_harness_id = $3,
-            updated_at = $4
-        WHERE id = $5 AND status = $6
-        RETURNING
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        "#,
+    let row = sqlx::query(
+        &format!("UPDATE relay_bounties SET status = $1, claimed_by_agent_id = $2, claimed_by_harness_id = $3, updated_at = $4 WHERE id = $5 AND status = $6 RETURNING {BOUNTY_SELECT}"),
     )
-    .bind(BountyStatus::Claimed)
+    .bind(BountyStatus::Claimed.as_str())
     .bind(req.agent_id)
     .bind(&req.harness_id)
     .bind(now)
     .bind(id)
-    .bind(BountyStatus::Open)
+    .bind(BountyStatus::Open.as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
         warn!("Failed to claim bounty {}: {}", id, e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?
-    .ok_or(StatusCode::CONFLICT)?; // Bounty already claimed or doesn't exist
+    .ok_or(StatusCode::CONFLICT)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     info!("Bounty {} claimed by agent {}", id, req.agent_id);
 
@@ -319,33 +344,16 @@ async fn submit_work(
 ) -> Result<Json<BountyResponse>, StatusCode> {
     let now = Utc::now();
 
-    let bounty = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        UPDATE relay_bounties
-        SET
-            status = $1,
-            submitted_at = $2,
-            result = $3,
-            quality_evidence = $4,
-            updated_at = $5
-        WHERE id = $6 AND status = $7 AND claimed_by_agent_id = $8
-        RETURNING
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        "#,
+    let row = sqlx::query(
+        &format!("UPDATE relay_bounties SET status = $1, submitted_at = $2, result = $3, quality_evidence = $4, updated_at = $5 WHERE id = $6 AND status = $7 AND claimed_by_agent_id = $8 RETURNING {BOUNTY_SELECT}"),
     )
-    .bind(BountyStatus::Submitted)
+    .bind(BountyStatus::Submitted.as_str())
     .bind(now)
     .bind(&req.result)
     .bind(&req.quality_evidence)
     .bind(now)
     .bind(id)
-    .bind(BountyStatus::Claimed)
+    .bind(BountyStatus::Claimed.as_str())
     .bind(req.agent_id)
     .fetch_optional(&state.db)
     .await
@@ -353,7 +361,8 @@ async fn submit_work(
         warn!("Failed to submit work for bounty {}: {}", id, e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?
-    .ok_or(StatusCode::CONFLICT)?; // Bounty not claimed by this agent
+    .ok_or(StatusCode::CONFLICT)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     info!("Work submitted for bounty {} by agent {}", id, req.agent_id);
 
@@ -377,7 +386,7 @@ async fn approve_submission(
         "#,
     )
     .bind(id)
-    .bind(BountyStatus::Submitted)
+    .bind(BountyStatus::Submitted.as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
@@ -397,31 +406,15 @@ async fn approve_submission(
     );
 
     // Update the bounty status
-    let bounty = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        UPDATE relay_bounties
-        SET
-            status = $1,
-            approved_at = $2,
-            quality_score = $3,
-            updated_at = $4
-        WHERE id = $5 AND status = $6
-        RETURNING
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        "#,
+    let row = sqlx::query(
+        &format!("UPDATE relay_bounties SET status = $1, approved_at = $2, quality_score = $3, updated_at = $4 WHERE id = $5 AND status = $6 RETURNING {BOUNTY_SELECT}"),
     )
-    .bind(BountyStatus::Approved)
+    .bind(BountyStatus::Approved.as_str())
     .bind(now)
     .bind(req.quality_score.map(|s| s as i16))
     .bind(now)
     .bind(id)
-    .bind(BountyStatus::Submitted)
+    .bind(BountyStatus::Submitted.as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
@@ -429,6 +422,7 @@ async fn approve_submission(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::CONFLICT)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Record protocol fee in the ledger
     let fee_id = Uuid::new_v4();
@@ -589,31 +583,15 @@ async fn reject_submission(
 ) -> Result<Json<BountyResponse>, StatusCode> {
     let now = Utc::now();
 
-    let bounty = sqlx::query_as::<_, BountyResponse>(
-        r#"
-        UPDATE relay_bounties
-        SET
-            status = $1,
-            rejected_at = $2,
-            rejection_reason = $3,
-            updated_at = $4
-        WHERE id = $5 AND status = $6
-        RETURNING
-            id, title, description, reward_tokens, deadline,
-            required_capabilities, poster_wallet,
-            status,
-            claimed_by_agent_id, claimed_by_harness_id,
-            submitted_at, result, quality_evidence,
-            quality_score, approved_at, rejected_at, rejection_reason,
-            created_at, updated_at
-        "#,
+    let row = sqlx::query(
+        &format!("UPDATE relay_bounties SET status = $1, rejected_at = $2, rejection_reason = $3, updated_at = $4 WHERE id = $5 AND status = $6 RETURNING {BOUNTY_SELECT}"),
     )
-    .bind(BountyStatus::Rejected)
+    .bind(BountyStatus::Rejected.as_str())
     .bind(now)
     .bind(&req.reason)
     .bind(now)
     .bind(id)
-    .bind(BountyStatus::Submitted)
+    .bind(BountyStatus::Submitted.as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
@@ -621,6 +599,7 @@ async fn reject_submission(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::CONFLICT)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     info!("Bounty {} rejected by reviewer {}", id, req.reviewer_wallet);
 

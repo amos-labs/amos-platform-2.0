@@ -17,8 +17,8 @@ pub fn routes() -> Router<RelayState> {
     Router::new()
         .route("/connect", post(connect_harness))
         .route("/", get(list_harnesses))
-        .route("/:id", get(get_harness))
-        .route("/:id/heartbeat", post(harness_heartbeat))
+        .route("/{id}", get(get_harness))
+        .route("/{id}/heartbeat", post(harness_heartbeat))
 }
 
 // =============================================================================

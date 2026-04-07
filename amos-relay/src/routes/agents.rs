@@ -10,6 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -18,8 +19,8 @@ pub fn routes() -> Router<RelayState> {
     Router::new()
         .route("/register", post(register_agent))
         .route("/", get(list_agents))
-        .route("/:id", get(get_agent))
-        .route("/:id/heartbeat", post(agent_heartbeat))
+        .route("/{id}", get(get_agent))
+        .route("/{id}/heartbeat", post(agent_heartbeat))
 }
 
 // =============================================================================
@@ -34,48 +35,68 @@ pub struct RegisterAgentRequest {
     pub capabilities: Vec<String>,
     pub description: Option<String>,
     pub wallet_address: String,
-    pub harness_id: String,
+    pub harness_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListAgentsQuery {
     pub capability: Option<String>,
     pub trust_level: Option<u8>,
-    pub status: Option<AgentStatus>,
+    pub status: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct HeartbeatRequest {
-    pub status: Option<AgentStatus>,
+    pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "agent_status", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-pub enum AgentStatus {
-    Active,
-    Idle,
-    Stopped,
-}
-
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AgentResponse {
     pub id: Uuid,
     pub name: String,
-    pub display_name: String,
-    pub endpoint_url: String,
+    pub display_name: Option<String>,
+    pub endpoint_url: Option<String>,
     pub capabilities: Vec<String>,
     pub description: Option<String>,
-    pub wallet_address: String,
-    pub harness_id: String,
+    pub wallet_address: Option<String>,
+    pub harness_id: Option<Uuid>,
     pub trust_level: i16,
-    pub status: AgentStatus,
-    pub total_bounties_completed: i32,
-    pub avg_quality_score: Option<f64>,
+    pub status: String,
+    pub total_bounties_completed: i64,
+    pub avg_quality_score: f64,
     pub registered_at: DateTime<Utc>,
-    pub last_heartbeat: Option<DateTime<Utc>>,
+    pub last_heartbeat: DateTime<Utc>,
+}
+
+const AGENT_SELECT: &str = r#"
+    id, name, display_name, endpoint_url, capabilities,
+    description, wallet_address, harness_id, trust_level,
+    status, total_bounties_completed, avg_quality_score,
+    registered_at, last_heartbeat
+"#;
+
+fn agent_from_row(row: sqlx::postgres::PgRow) -> Result<AgentResponse, sqlx::Error> {
+    let caps: serde_json::Value = row.try_get("capabilities")?;
+    let caps_vec: Vec<String> = serde_json::from_value(caps).unwrap_or_default();
+
+    Ok(AgentResponse {
+        id: row.try_get("id")?,
+        name: row.try_get("name")?,
+        display_name: row.try_get("display_name")?,
+        endpoint_url: row.try_get("endpoint_url")?,
+        capabilities: caps_vec,
+        description: row.try_get("description")?,
+        wallet_address: row.try_get("wallet_address")?,
+        harness_id: row.try_get("harness_id")?,
+        trust_level: row.try_get("trust_level")?,
+        status: row.try_get("status")?,
+        total_bounties_completed: row.try_get("total_bounties_completed")?,
+        avg_quality_score: row.try_get("avg_quality_score")?,
+        registered_at: row.try_get("registered_at")?,
+        last_heartbeat: row.try_get("last_heartbeat")?,
+    })
 }
 
 // =============================================================================
@@ -89,47 +110,47 @@ async fn register_agent(
 ) -> Result<(StatusCode, Json<AgentResponse>), StatusCode> {
     let agent_id = Uuid::new_v4();
     let now = Utc::now();
+    let caps_json = serde_json::to_value(&req.capabilities).unwrap_or_default();
 
-    let agent = sqlx::query_as::<_, AgentResponse>(
-        r#"
-        INSERT INTO relay_agents (
-            id, name, display_name, endpoint_url, capabilities,
-            description, wallet_address, harness_id, trust_level,
-            status, total_bounties_completed, avg_quality_score,
-            registered_at, last_heartbeat
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING
-            id, name, display_name, endpoint_url, capabilities,
-            description, wallet_address, harness_id, trust_level,
-            status,
-            total_bounties_completed, avg_quality_score,
-            registered_at, last_heartbeat
-        "#,
+    let row = sqlx::query(
+        &format!(
+            "INSERT INTO relay_agents (
+                id, name, display_name, endpoint_url, capabilities,
+                description, wallet_address, harness_id, trust_level,
+                status, total_bounties_completed, avg_quality_score,
+                registered_at, last_heartbeat
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING {AGENT_SELECT}"
+        ),
     )
     .bind(agent_id)
     .bind(&req.name)
     .bind(&req.display_name)
     .bind(&req.endpoint_url)
-    .bind(&req.capabilities)
+    .bind(&caps_json)
     .bind(&req.description)
     .bind(&req.wallet_address)
-    .bind(&req.harness_id)
+    .bind(req.harness_id)
     .bind(1i16) // Start at trust level 1 (Newcomer)
-    .bind(AgentStatus::Active)
-    .bind(0i32)
-    .bind(None::<f64>)
+    .bind("active")
+    .bind(0i64)
+    .bind(0.0f64)
     .bind(now)
-    .bind(Some(now))
+    .bind(now)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
         warn!("Failed to register agent: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+    let agent = agent_from_row(row).map_err(|e| {
+        warn!("Failed to map agent row: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     info!(
-        "Registered agent {} ({}) on harness {}",
+        "Registered agent {} ({}) on harness {:?}",
         agent_id, req.name, req.harness_id
     );
 
@@ -145,20 +166,8 @@ async fn list_agents(
     let per_page = query.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    // For simplicity, we'll fetch all agents and filter in-memory
-    // In production, you'd want to build dynamic SQL queries
-    let agents = sqlx::query_as::<_, AgentResponse>(
-        r#"
-        SELECT
-            id, name, display_name, endpoint_url, capabilities,
-            description, wallet_address, harness_id, trust_level,
-            status,
-            total_bounties_completed, avg_quality_score,
-            registered_at, last_heartbeat
-        FROM relay_agents
-        ORDER BY registered_at DESC
-        LIMIT $1 OFFSET $2
-        "#,
+    let rows = sqlx::query(
+        &format!("SELECT {AGENT_SELECT} FROM relay_agents ORDER BY registered_at DESC LIMIT $1 OFFSET $2"),
     )
     .bind(per_page as i64)
     .bind(offset as i64)
@@ -169,6 +178,7 @@ async fn list_agents(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    let agents: Vec<AgentResponse> = rows.into_iter().filter_map(|r| agent_from_row(r).ok()).collect();
     Ok(Json(agents))
 }
 
@@ -177,17 +187,8 @@ async fn get_agent(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<AgentResponse>, StatusCode> {
-    let agent = sqlx::query_as::<_, AgentResponse>(
-        r#"
-        SELECT
-            id, name, display_name, endpoint_url, capabilities,
-            description, wallet_address, harness_id, trust_level,
-            status,
-            total_bounties_completed, avg_quality_score,
-            registered_at, last_heartbeat
-        FROM relay_agents
-        WHERE id = $1
-        "#,
+    let row = sqlx::query(
+        &format!("SELECT {AGENT_SELECT} FROM relay_agents WHERE id = $1"),
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -197,6 +198,7 @@ async fn get_agent(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::NOT_FOUND)?;
+    let agent = agent_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(agent))
 }
@@ -209,40 +211,30 @@ async fn agent_heartbeat(
 ) -> Result<Json<AgentResponse>, StatusCode> {
     let now = Utc::now();
 
-    let mut query = sqlx::QueryBuilder::new("UPDATE relay_agents SET last_heartbeat = ");
-    query.push_bind(now);
-
-    if let Some(status) = req.status {
-        query.push(", status = ");
-        query.push_bind(status);
+    let row = if let Some(ref status) = req.status {
+        sqlx::query(
+            &format!("UPDATE relay_agents SET last_heartbeat = $1, status = $2 WHERE id = $3 RETURNING {AGENT_SELECT}"),
+        )
+        .bind(now)
+        .bind(status)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+    } else {
+        sqlx::query(
+            &format!("UPDATE relay_agents SET last_heartbeat = $1 WHERE id = $2 RETURNING {AGENT_SELECT}"),
+        )
+        .bind(now)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
     }
-
-    query.push(" WHERE id = ");
-    query.push_bind(id);
-    query.push(" RETURNING *");
-
-    let agent = sqlx::query_as::<_, AgentResponse>(
-        r#"
-        UPDATE relay_agents
-        SET last_heartbeat = $1
-        WHERE id = $2
-        RETURNING
-            id, name, display_name, endpoint_url, capabilities,
-            description, wallet_address, harness_id, trust_level,
-            status,
-            total_bounties_completed, avg_quality_score,
-            registered_at, last_heartbeat
-        "#,
-    )
-    .bind(now)
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await
     .map_err(|e| {
         warn!("Failed to update heartbeat for agent {}: {}", id, e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::NOT_FOUND)?;
+    let agent = agent_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(agent))
 }

@@ -16,7 +16,7 @@ use uuid::Uuid;
 /// Build reputation routes.
 pub fn routes() -> Router<RelayState> {
     Router::new()
-        .route("/:agent_id", get(get_reputation))
+        .route("/{agent_id}", get(get_reputation))
         .route("/report", post(report_outcome))
 }
 
