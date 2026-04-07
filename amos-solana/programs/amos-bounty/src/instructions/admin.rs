@@ -52,7 +52,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<Initialize>, oracle_authority: Pubkey) -> Result<()> {
+pub fn handler_initialize(ctx: Context<Initialize>, oracle_authority: Pubkey) -> Result<()> {
     let config = &mut ctx.accounts.config;
     let clock = Clock::get()?;
 
@@ -106,7 +106,7 @@ pub struct UpdateDecayRate<'info> {
     pub oracle_authority: Signer<'info>,
 }
 
-pub fn handler(ctx: Context<UpdateDecayRate>, new_rate_bps: u16) -> Result<()> {
+pub fn handler_update_decay(ctx: Context<UpdateDecayRate>, new_rate_bps: u16) -> Result<()> {
     // Validate new rate is within bounds
     require!(
         new_rate_bps >= MIN_DECAY_RATE_BPS && new_rate_bps <= MAX_DECAY_RATE_BPS,
@@ -146,7 +146,7 @@ pub struct AdvanceHalving<'info> {
     pub config: Account<'info, BountyConfig>,
 }
 
-pub fn handler(ctx: Context<AdvanceHalving>) -> Result<()> {
+pub fn handler_advance_halving(ctx: Context<AdvanceHalving>) -> Result<()> {
     let config = &mut ctx.accounts.config;
     let clock = Clock::get()?;
 

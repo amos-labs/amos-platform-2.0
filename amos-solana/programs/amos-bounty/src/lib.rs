@@ -64,7 +64,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("AMoSBoUntyPrOgrAm11111111111111111111111111");
+declare_id!("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq");
 
 #[program]
 pub mod amos_bounty {
@@ -84,7 +84,7 @@ pub mod amos_bounty {
     ///
     /// This can only be called once.
     pub fn initialize(ctx: Context<Initialize>, oracle_authority: Pubkey) -> Result<()> {
-        instructions::admin::handler(ctx, oracle_authority)
+        instructions::admin::handler_initialize(ctx, oracle_authority)
     }
 
     /// Update the annual decay rate
@@ -95,7 +95,7 @@ pub mod amos_bounty {
     /// # Arguments
     /// * `new_rate_bps` - New rate in basis points (200-2500)
     pub fn update_decay_rate(ctx: Context<UpdateDecayRate>, new_rate_bps: u16) -> Result<()> {
-        instructions::admin::handler(ctx, new_rate_bps)
+        instructions::admin::handler_update_decay(ctx, new_rate_bps)
     }
 
     /// Advance to the next halving epoch
@@ -105,7 +105,7 @@ pub mod amos_bounty {
     ///
     /// This is a PERMISSIONLESS operation - no authorization required.
     pub fn advance_halving(ctx: Context<AdvanceHalving>) -> Result<()> {
-        instructions::admin::handler(ctx)
+        instructions::admin::handler_advance_halving(ctx)
     }
 
     // ========================================================================
@@ -145,7 +145,7 @@ pub mod amos_bounty {
         evidence_hash: [u8; 32],
         external_reference: [u8; 64],
     ) -> Result<()> {
-        instructions::distribution::handler(
+        instructions::distribution::handler_submit_proof(
             ctx,
             bounty_id,
             base_points,
@@ -174,7 +174,7 @@ pub mod amos_bounty {
     ///
     /// This is a PERMISSIONLESS operation.
     pub fn apply_decay(ctx: Context<ApplyDecay>) -> Result<()> {
-        instructions::decay::handler(ctx)
+        instructions::decay::handler_apply_decay(ctx)
     }
 
     // ========================================================================
@@ -197,7 +197,7 @@ pub mod amos_bounty {
         ctx: Context<RegisterAgentTrust>,
         agent_id: [u8; 32],
     ) -> Result<()> {
-        instructions::trust::handler(ctx, agent_id)
+        instructions::trust::handler_register_agent(ctx, agent_id)
     }
 
     /// Record the outcome of an agent's bounty submission
@@ -218,7 +218,7 @@ pub mod amos_bounty {
         approved: bool,
         tokens_earned: u64,
     ) -> Result<()> {
-        instructions::trust::handler(ctx, agent_id, approved, tokens_earned)
+        instructions::trust::handler_record_completion(ctx, agent_id, approved, tokens_earned)
     }
 
     /// Upgrade an agent's trust level
@@ -238,7 +238,7 @@ pub mod amos_bounty {
         ctx: Context<UpgradeTrustLevel>,
         agent_id: [u8; 32],
     ) -> Result<()> {
-        instructions::trust::handler(ctx, agent_id)
+        instructions::trust::handler_upgrade_trust(ctx, agent_id)
     }
 }
 

@@ -48,7 +48,7 @@ pub struct RegisterAgentTrust<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<RegisterAgentTrust>, agent_id: [u8; 32]) -> Result<()> {
+pub fn handler_register_agent(ctx: Context<RegisterAgentTrust>, agent_id: [u8; 32]) -> Result<()> {
     let agent_trust = &mut ctx.accounts.agent_trust;
     let clock = Clock::get()?;
 
@@ -130,7 +130,7 @@ pub struct RecordAgentCompletion<'info> {
     pub oracle_authority: Signer<'info>,
 }
 
-pub fn handler(
+pub fn handler_record_completion(
     ctx: Context<RecordAgentCompletion>,
     agent_id: [u8; 32],
     approved: bool,
@@ -229,7 +229,7 @@ pub struct UpgradeTrustLevel<'info> {
     pub trigger: Signer<'info>,
 }
 
-pub fn handler(ctx: Context<UpgradeTrustLevel>, agent_id: [u8; 32]) -> Result<()> {
+pub fn handler_upgrade_trust(ctx: Context<UpgradeTrustLevel>, agent_id: [u8; 32]) -> Result<()> {
     let agent_trust = &mut ctx.accounts.agent_trust;
     let clock = Clock::get()?;
 

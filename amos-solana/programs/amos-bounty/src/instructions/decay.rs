@@ -72,7 +72,7 @@ pub struct ApplyDecay<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<ApplyDecay>) -> Result<()> {
+pub fn handler_apply_decay(ctx: Context<ApplyDecay>) -> Result<()> {
     let clock = Clock::get()?;
     let config = &ctx.accounts.config;
     let operator_stats = &mut ctx.accounts.operator_stats;

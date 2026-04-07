@@ -414,7 +414,7 @@ fn default_governance_program() -> String {
     "AQEf6P1qhKC2dCTMhqRh2rmKNpcQsR4ahwT1MvSoSehu".into()
 }
 fn default_bounty_program() -> String {
-    "AmosBnty111111111111111111111111111111111111".into()
+    "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq".into()
 }
 fn default_aws_region() -> String {
     "us-west-2".into()

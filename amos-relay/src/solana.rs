@@ -387,7 +387,7 @@ mod tests {
     fn solana_client_can_be_created() {
         let client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         );
         assert!(client.is_ok());
     }
@@ -402,7 +402,7 @@ mod tests {
     fn test_settlement_readiness_unconfigured() {
         let client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -416,7 +416,7 @@ mod tests {
     fn test_set_mint_valid() {
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -428,7 +428,7 @@ mod tests {
     fn test_set_mint_invalid() {
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -440,7 +440,7 @@ mod tests {
     fn test_set_treasury_valid() {
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -452,7 +452,7 @@ mod tests {
     fn test_settlement_readiness_partial() {
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -471,7 +471,7 @@ mod tests {
     fn test_load_oracle_keypair_missing_file() {
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_pda_derivation_config() {
-        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let (config_pda, bump) =
             Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
         // PDA should be deterministic
@@ -693,7 +693,7 @@ mod tests {
 
     #[test]
     fn test_pda_derivation_daily_pool() {
-        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let day1: u32 = 100;
         let day2: u32 = 101;
         let (pool1, _) = Pubkey::find_program_address(
@@ -709,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_pda_derivation_bounty_proof() {
-        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let bounty_id_1 = hash_to_32_bytes("bounty-1");
         let bounty_id_2 = hash_to_32_bytes("bounty-2");
         let (proof1, _) = Pubkey::find_program_address(
@@ -725,7 +725,7 @@ mod tests {
 
     #[test]
     fn test_pda_derivation_operator_stats() {
-        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let op1 = Pubkey::new_unique();
         let op2 = Pubkey::new_unique();
         let (stats1, _) = Pubkey::find_program_address(
@@ -741,7 +741,7 @@ mod tests {
 
     #[test]
     fn test_pda_derivation_agent_trust() {
-        let program_id = Pubkey::from_str("AmosBnty111111111111111111111111111111111111").unwrap();
+        let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let agent_id_1 = [1u8; 32];
         let agent_id_2 = [2u8; 32];
         let (trust1, _) = Pubkey::find_program_address(
@@ -761,7 +761,7 @@ mod tests {
     async fn test_burn_zero_amount() {
         let client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -773,7 +773,7 @@ mod tests {
     async fn test_burn_nonzero_amount() {
         let client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -787,7 +787,7 @@ mod tests {
     async fn test_process_payout_without_keypair() {
         let client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -813,7 +813,7 @@ mod tests {
     async fn test_process_payout_invalid_wallet() {
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -871,7 +871,7 @@ mod tests {
 
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 
@@ -892,7 +892,7 @@ mod tests {
 
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
-            "AmosBnty111111111111111111111111111111111111",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
         )
         .unwrap();
 

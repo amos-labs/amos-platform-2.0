@@ -40,7 +40,7 @@ use crate::state::*;
 /// - All calculations use checked arithmetic (no overflow/underflow)
 /// - Immutable records (complete audit trail)
 #[derive(Accounts)]
-#[instruction(bounty_id: [u8; 32])]
+#[instruction(bounty_id: [u8; 32], base_points: u16, quality_score: u8, contribution_type: u8, is_agent: bool, agent_id: [u8; 32])]
 pub struct SubmitBountyProof<'info> {
     #[account(
         mut,
@@ -118,7 +118,7 @@ pub struct SubmitBountyProof<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
+pub fn handler_submit_proof(
     ctx: Context<SubmitBountyProof>,
     bounty_id: [u8; 32],
     base_points: u16,
@@ -308,7 +308,7 @@ pub fn handler(
     // ========================================================================
 
     // Transfer to operator
-    let treasury_key = ctx.accounts.treasury.key();
+    let _treasury_key = ctx.accounts.treasury.key();
     let config_seeds = &[BOUNTY_CONFIG_SEED, &[config.bump]];
     let signer_seeds = &[&config_seeds[..]];
 
