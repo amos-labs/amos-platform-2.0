@@ -1,8 +1,12 @@
 # AMOS
 
-**Autonomous Management Operating System** -- an AI-native business operating system written in pure Rust.
+**Autonomous Management Operating System** -- an AI-native economic operating system written in pure Rust.
 
-AMOS provides a per-customer AI harness (the "operating system") that hosts tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. The harness never runs its own agent loop; agents are independent processes that register, pull tasks, call harness tools over HTTP, and report results.
+AMOS is infrastructure for the autonomous economy. Three macro forces -- the re-weaponization of energy as geopolitical power, a US fiscal crisis demanding productivity at scale, and $700B/year in AI investment -- are converging to make autonomous agents inevitable. AMOS ensures that when agents become economic participants, humans retain ownership and agency through transparent, auditable, on-chain mechanisms.
+
+The system provides a per-customer AI harness (the "operating system") that hosts tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. A global relay marketplace enables cross-harness bounty distribution with Solana-based settlement and reputation tracking. The harness never runs its own agent loop; agents are independent processes that register, pull tasks, call harness tools over HTTP, and report results.
+
+> **Read the full thesis:** [AMOS: Operating System for the Next Economy](docs/AMOS_THESIS_AND_STRATEGY.md) -- why this matters, the macro landscape, and the economic model.
 
 ## Architecture
 
@@ -15,7 +19,7 @@ amos-automate/               (this repo)
 ├── amos-cli        Command-line interface
 ├── amos-solana/    On-chain programs (treasury, bounties, governance) -- built via Anchor
 ├── docker/         Production Dockerfiles (harness, agent, relay)
-└── docs/           Whitepaper, token economics
+└── docs/           Strategy, architecture, EAP spec, whitepapers, token economics
 ```
 
 > **Note:** The managed hosting platform (`amos-platform`) has been extracted to its own repository: [amos-labs/amos-managed-platform](https://github.com/amos-labs/amos-managed-platform). It is a separate product with its own deployment lifecycle.
@@ -233,6 +237,13 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 | `POST` | `/api/v1/tasks/{id}/result` | Report task result |
 | `GET` | `/c/{slug}` | Public canvas |
 | `GET` | `/s/{slug}` | Public site |
+| `GET` | `/api/v1/bounties` | List/create bounties (proxied to relay) |
+| `POST` | `/api/v1/bounties` | Create bounty |
+| `POST` | `/api/v1/bounties/{id}/claim` | Claim bounty |
+| `POST` | `/api/v1/bounties/{id}/submit` | Submit work |
+| `POST` | `/api/v1/bounties/{id}/approve` | Approve submission |
+| `GET` | `/.well-known/agent.json` | EAP Agent Card discovery |
+| `GET` | `/api/v1/tools` | List all available tools |
 | `GET` | `/health` | Health check |
 
 ### Relay Endpoints -- amos-relay :4100
@@ -243,6 +254,8 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 | `POST` | `/api/v1/bounties` | Create bounty (posted by harness) |
 | `POST` | `/api/v1/bounties/{id}/claim` | Claim bounty for work |
 | `POST` | `/api/v1/bounties/{id}/submit` | Submit completed work |
+| `POST` | `/api/v1/bounties/{id}/approve` | Approve + trigger on-chain settlement |
+| `POST` | `/api/v1/bounties/{id}/reject` | Reject submission |
 | `GET` | `/api/v1/agents` | Global agent directory |
 | `POST` | `/api/v1/agents/register` | Register agent globally (reputation) |
 | `POST` | `/api/v1/reputation/report` | Submit reputation data |
@@ -270,9 +283,23 @@ AMOS monetizes exclusively through the **Network Relay** -- a 3% protocol fee (3
 
 The harness (Layer 2) and default agent (Layer 1) are 100% open source (Apache-2.0) with no monetization. The relay (Layer 3) is the only tokenized component, serving as the global marketplace layer that connects harnesses and agents across the network.
 
-AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixed supply.
+AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixed supply. Currently deployed on **Solana Devnet** -- the on-chain programs (treasury, bounty settlement, governance) are live and the relay performs real settlement transactions when bounties are approved. Migration to mainnet requires only config changes (RPC URL, program IDs, mint address).
 
 See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full specification.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Core thesis: macro forces, the autonomous economy, why AMOS matters now |
+| [External Agent Protocol (EAP) Spec](docs/EAP_SPECIFICATION_v1.md) | Full EAP v1 specification: registration, tool execution, tasks, trust levels |
+| [EAP Architecture](docs/EXTERNAL_AGENT_PROTOCOL.md) | Architecture deep-dive: agent lifecycle, bounty system, reputation |
+| [Harness Architecture](docs/HARNESS_ARCHITECTURE.md) | Detailed harness internals: tools, canvas engine, schemas, agent registry |
+| [Tools Inventory](docs/TOOLS_INVENTORY.md) | Complete catalog of all 54+ harness tools by category |
+| [Technical Whitepaper](docs/whitepaper_technical.md) | Token economics, Solana programs, protocol fee mechanics |
+| [Simple Whitepaper](docs/whitepaper_simple.md) | Non-technical overview of the AMOS token and network |
+| [Token Economy Math](docs/token_economy_math.md) | Formal equations: decay model, staking rewards, emission curves |
+| [Token Economy Equations](docs/token_economy_equations.md) | Quick reference for token economic formulas |
 
 ## Related Repositories
 

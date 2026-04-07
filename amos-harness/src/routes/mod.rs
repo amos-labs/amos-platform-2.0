@@ -2,6 +2,7 @@
 
 pub mod agent_proxy;
 pub mod bots;
+pub mod bounties;
 pub mod canvas;
 pub mod credentials;
 pub mod data;
@@ -62,6 +63,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/hooks", hooks::routes(state.clone()))
         // Harness info route (multi-harness discovery)
         .nest("/api/v1/harness", harness_info::routes(state.clone()))
+        // Bounty proxy routes (forwards to AMOS Network Relay)
+        .nest("/api/v1/bounties", bounties::routes(state.clone()))
         // Package management routes
         .nest("/api/v1/packages", packages::routes(state.clone()))
         // Site management routes
