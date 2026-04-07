@@ -235,10 +235,11 @@ impl Tool for ViewWebPageTool {
             .await
             .map_err(|e| amos_core::AmosError::Validation(format!("URL blocked: {}", e)))?;
 
-        // Fetch the web page (no redirects to prevent redirect-based SSRF bypass)
+        // Fetch the web page (allow limited redirects with SSRF re-validation)
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
-            .redirect(reqwest::redirect::Policy::none())
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .user_agent("Mozilla/5.0 (compatible; AMOS/1.0; +https://amoslabs.com)")
             .build()
             .map_err(|e| {
                 amos_core::AmosError::Internal(format!("Failed to build HTTP client: {}", e))
@@ -247,6 +248,14 @@ impl Tool for ViewWebPageTool {
         let response: reqwest::Response = client.get(url).send().await.map_err(|e| {
             amos_core::AmosError::Internal(format!("External: Failed to fetch URL: {}", e))
         })?;
+
+        // Re-validate the final URL after redirects to prevent SSRF bypass
+        let final_url = response.url().as_str();
+        if final_url != url {
+            validate_url_safe(final_url).await.map_err(|e| {
+                amos_core::AmosError::Validation(format!("Redirect target blocked: {}", e))
+            })?;
+        }
 
         let html = response.text().await.map_err(|e| {
             amos_core::AmosError::Internal(format!("External: Failed to read response body: {}", e))
