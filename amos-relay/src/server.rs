@@ -1,9 +1,10 @@
 //! HTTP server configuration and routing.
 
-use crate::{routes, state::RelayState, Result, VERSION};
+use crate::{middleware::api_key_auth, routes, state::RelayState, Result, VERSION};
 use axum::{
     extract::State,
     http::{header, Method, StatusCode},
+    middleware,
     response::Json,
     routing::get,
     Router,
@@ -39,6 +40,10 @@ pub fn build_http_router(state: RelayState) -> Router {
     Router::new()
         .route("/health", get(health))
         .nest("/api/v1", routes::api_routes())
+        .layer(middleware::from_fn_with_state(
+            state.db.clone(),
+            api_key_auth,
+        ))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())

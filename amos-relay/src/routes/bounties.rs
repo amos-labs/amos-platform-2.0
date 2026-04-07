@@ -1,6 +1,10 @@
 //! Bounty marketplace routes.
 
-use crate::{protocol_fees::calculate_fee, state::RelayState};
+use crate::{
+    protocol_fees::calculate_fee,
+    solana::SettlementParams,
+    state::RelayState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -11,6 +15,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -425,12 +430,152 @@ async fn approve_submission(
     })?
     .ok_or(StatusCode::CONFLICT)?;
 
-    // TODO: Trigger Solana settlement transaction
-    // - Transfer reward to agent wallet (minus protocol fee)
-    // - Distribute protocol fee to holder pool, treasury, and burn
+    // Record protocol fee in the ledger
+    let fee_id = Uuid::new_v4();
+    if let Err(e) = sqlx::query(
+        r#"
+        INSERT INTO protocol_fee_ledger (id, bounty_id, total_fee, holder_share, treasury_share, ops_burn_share)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(fee_id)
+    .bind(id)
+    .bind(fee.total_fee as i64)
+    .bind(fee.holder_share as i64)
+    .bind(fee.treasury_share as i64)
+    .bind(fee.ops_burn_share as i64)
+    .execute(&state.db)
+    .await
+    {
+        warn!("Failed to record protocol fee: {}", e);
+    }
+
+    // Trigger Solana settlement if configured
+    let mut settlement_tx: Option<String> = None;
+    if let Some(ref solana) = state.solana {
+        if solana.is_settlement_ready() {
+            // Look up agent wallet from relay_agents
+            let agent_wallet = if let Some(agent_id) = bounty.claimed_by_agent_id {
+                sqlx::query_scalar::<_, Option<String>>(
+                    "SELECT wallet_address FROM relay_agents WHERE id = $1",
+                )
+                .bind(agent_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .flatten()
+            } else {
+                None
+            };
+
+            if let Some(wallet) = agent_wallet {
+                // Hash the bounty ID and agent ID for on-chain records
+                let bounty_id_str = id.to_string();
+                let agent_id_bytes = {
+                    let mut hasher = Sha256::new();
+                    hasher.update(
+                        bounty
+                            .claimed_by_agent_id
+                            .map(|a| a.to_string())
+                            .unwrap_or_default()
+                            .as_bytes(),
+                    );
+                    let result = hasher.finalize();
+                    let mut out = [0u8; 32];
+                    out.copy_from_slice(&result);
+                    out
+                };
+                let evidence_hash = {
+                    let mut hasher = Sha256::new();
+                    hasher.update(
+                        serde_json::to_string(&bounty.result)
+                            .unwrap_or_default()
+                            .as_bytes(),
+                    );
+                    let result = hasher.finalize();
+                    let mut out = [0u8; 32];
+                    out.copy_from_slice(&result);
+                    out
+                };
+
+                // Convert reward tokens to base points (1 token = 1 point, capped at 2000)
+                let base_points = (reward_tokens.min(2000)) as u16;
+
+                let params = SettlementParams {
+                    bounty_id: bounty_id_str,
+                    agent_wallet: wallet,
+                    reviewer_wallet: req.reviewer_wallet.clone(),
+                    base_points,
+                    quality_score: req.quality_score.unwrap_or(70),
+                    contribution_type: 1, // default: feature
+                    is_agent: true,
+                    agent_id: agent_id_bytes,
+                    evidence_hash,
+                };
+
+                match solana.process_bounty_payout(&params).await {
+                    Ok(result) => {
+                        settlement_tx = Some(result.tx_signature.clone());
+                        info!(
+                            bounty_id = %id,
+                            tx = %result.tx_signature,
+                            "On-chain settlement successful"
+                        );
+
+                        // Update fee ledger with settlement tx
+                        let _ = sqlx::query(
+                            "UPDATE protocol_fee_ledger SET settled_on_chain = true, settlement_tx = $1 WHERE id = $2",
+                        )
+                        .bind(&result.tx_signature)
+                        .bind(fee_id)
+                        .execute(&state.db)
+                        .await;
+
+                        // Update bounty with settlement info
+                        let _ = sqlx::query(
+                            "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+                        )
+                        .bind(&result.tx_signature)
+                        .bind(id)
+                        .execute(&state.db)
+                        .await;
+                    }
+                    Err(e) => {
+                        warn!(
+                            bounty_id = %id,
+                            error = %e,
+                            "On-chain settlement failed — bounty approved but tokens not distributed"
+                        );
+                        // Mark as failed for retry
+                        let _ = sqlx::query(
+                            "UPDATE relay_bounties SET settlement_status = 'failed' WHERE id = $1",
+                        )
+                        .bind(id)
+                        .execute(&state.db)
+                        .await;
+                    }
+                }
+            } else {
+                warn!(
+                    bounty_id = %id,
+                    "Agent has no wallet address — cannot settle on-chain"
+                );
+            }
+        } else {
+            info!(
+                bounty_id = %id,
+                "Solana settlement not fully configured — fee recorded in ledger only"
+            );
+        }
+    }
+
     info!(
-        "Bounty {} approved. TODO: Trigger Solana settlement for {} tokens",
-        id, reward_tokens
+        bounty_id = %id,
+        reward = reward_tokens,
+        fee = fee.total_fee,
+        settlement = ?settlement_tx,
+        "Bounty approved"
     );
 
     Ok(Json(bounty))

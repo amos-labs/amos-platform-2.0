@@ -16,7 +16,7 @@ pub mod sites;
 pub mod uploads;
 
 use crate::state::AppState;
-use axum::{extract::DefaultBodyLimit, routing::get, Router};
+use axum::{extract::DefaultBodyLimit, extract::State, routing::get, Json, Router};
 use std::sync::Arc;
 
 /// Build all application routes
@@ -25,6 +25,9 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         // Health check
         .route("/health", get(health::health_check))
         .route("/ready", get(health::readiness_check))
+        // EAP discovery endpoints
+        .route("/.well-known/agent.json", get(well_known_agent_json))
+        .route("/api/v1/tools", get(list_tools))
         // Auth page routes (served as standalone HTML pages from system canvases)
         .route("/login", get(canvas::serve_login))
         .route("/register", get(canvas::serve_register))
@@ -74,4 +77,75 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
             axum::routing::post(sites::handle_form_submit),
         )
         .with_state(state)
+}
+
+/// `GET /.well-known/agent.json` — EAP Agent Card discovery endpoint.
+async fn well_known_agent_json(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let harness_role = std::env::var("AMOS_HARNESS_ROLE").unwrap_or_else(|_| "primary".into());
+    let tool_count = state.tool_registry.list_tools().len();
+
+    Json(serde_json::json!({
+        "name": "amos-harness",
+        "description": "AMOS Harness — per-customer AI operating system with tool execution",
+        "url": format!("{}://{}:{}", "https", state.config.server.host, state.config.server.port),
+        "version": env!("CARGO_PKG_VERSION"),
+        "protocol": "eap/1.0",
+        "capabilities": {
+            "streaming": true,
+            "pushNotifications": false,
+            "batchExecution": false
+        },
+        "skills": [],
+        "provider": {
+            "name": "AMOS Labs",
+            "model": "multi-model (BYOK)"
+        },
+        "role": harness_role,
+        "tools_available": tool_count,
+        "contact": "https://amoslabs.com"
+    }))
+}
+
+/// `GET /api/v1/tools` — EAP tool discovery endpoint.
+///
+/// Returns all available tools with their names, descriptions, categories,
+/// and parameter schemas.
+async fn list_tools(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let tools: Vec<serde_json::Value> = state
+        .tool_registry
+        .list_tools()
+        .iter()
+        .filter_map(|name| {
+            let tool = state.tool_registry.get(name)?;
+            Some(serde_json::json!({
+                "name": tool.name(),
+                "description": tool.description(),
+                "category": format!("{:?}", tool.category()),
+                "parameters_schema": tool.parameters_schema(),
+                "required_trust_level": trust_level_for_category(tool.category()),
+            }))
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "tools": tools,
+        "count": tools.len()
+    }))
+}
+
+/// Map tool categories to minimum trust levels per the EAP spec.
+fn trust_level_for_category(category: amos_core::tools::ToolCategory) -> u8 {
+    use amos_core::tools::ToolCategory;
+    match category {
+        ToolCategory::System | ToolCategory::Web | ToolCategory::Memory | ToolCategory::Knowledge => 1,
+        ToolCategory::Schema | ToolCategory::Canvas | ToolCategory::Apps => 2,
+        ToolCategory::Integration | ToolCategory::Automation | ToolCategory::TaskQueue => 3,
+        ToolCategory::OpenClaw | ToolCategory::Document | ToolCategory::ImageGen => 3,
+        ToolCategory::Platform => 4,
+        _ => 2,
+    }
 }

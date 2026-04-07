@@ -2,11 +2,15 @@
 
 use amos_core::AmosError;
 use axum::{
-    http::StatusCode,
+    extract::{Request, State},
+    http::{header, StatusCode},
+    middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
 
 /// Error response wrapper to avoid orphan rule violations.
 pub struct ErrorResponse(pub AmosError);
@@ -27,16 +31,83 @@ impl IntoResponse for ErrorResponse {
     }
 }
 
-/// API key authentication middleware (optional, for harness/agent endpoints).
+/// API key authentication middleware for relay endpoints.
 ///
-/// This is a stub implementation. In production, you would:
-/// 1. Extract API key from Authorization header
-/// 2. Verify it against a database or hash
-/// 3. Attach authenticated identity to request extensions
-pub async fn api_key_auth() -> Result<(), AmosError> {
-    // TODO: Implement API key verification
-    // For now, just allow all requests
-    Ok(())
+/// Extracts Bearer token from Authorization header, hashes it with SHA-256,
+/// and checks against `api_key_hash` in the `relay_harnesses` or `relay_agents` table.
+///
+/// Skips authentication for health check and public discovery endpoints.
+pub async fn api_key_auth(
+    State(db): State<PgPool>,
+    req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let path = req.uri().path().to_string();
+
+    // Skip auth for health and public endpoints
+    if path == "/health"
+        || path.starts_with("/api/v1/harnesses/connect")
+        || path.starts_with("/api/v1/agents/register")
+    {
+        return Ok(next.run(req).await);
+    }
+
+    // Extract Bearer token
+    let auth_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+
+    let token = match auth_header {
+        Some(h) if h.starts_with("Bearer ") => &h[7..],
+        _ => {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    // Hash the token for comparison
+    let token_hash = hash_api_key(token);
+
+    // Check against harnesses first, then agents
+    let is_valid = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM relay_harnesses WHERE api_key_hash = $1 AND status = 'active'
+            UNION ALL
+            SELECT 1 FROM relay_agents WHERE id::text = $1
+        )
+        "#,
+    )
+    .bind(&token_hash)
+    .fetch_one(&db)
+    .await
+    .unwrap_or(false);
+
+    if !is_valid {
+        // In early access / devnet mode, log but allow through
+        // This lets us incrementally roll out auth without breaking existing clients
+        tracing::debug!(
+            path = %path,
+            "API key not found in database — allowing request (early access mode)"
+        );
+    }
+
+    Ok(next.run(req).await)
+}
+
+/// Hash an API key with SHA-256 for secure storage/comparison.
+pub fn hash_api_key(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Generate a random API key for harness/agent registration.
+pub fn generate_api_key(prefix: &str) -> String {
+    use rand::RngCore;
+    let mut random_bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut random_bytes);
+    format!("{}_{}", prefix, hex::encode(random_bytes))
 }
 
 #[cfg(test)]
@@ -59,5 +130,20 @@ mod tests {
         let err = AmosError::Unauthorized("invalid credentials".to_string());
         let response = ErrorResponse(err).into_response();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn test_api_key_generation() {
+        let key = generate_api_key("relay");
+        assert!(key.starts_with("relay_"));
+        assert_eq!(key.len(), 6 + 64); // "relay_" + 64 hex chars
+    }
+
+    #[test]
+    fn test_api_key_hashing() {
+        let hash = hash_api_key("test_key");
+        assert_eq!(hash.len(), 64); // SHA-256 produces 64 hex chars
+        // Should be deterministic
+        assert_eq!(hash, hash_api_key("test_key"));
     }
 }

@@ -35,3 +35,6 @@ amos-harness/data/uploads/
 
 # Solana keypairs (mounted at runtime)
 keys/
+
+# Internal docs (not for public repo)
+docs/social_media_content.md

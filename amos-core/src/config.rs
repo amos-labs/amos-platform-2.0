@@ -108,6 +108,16 @@ pub struct SolanaConfig {
     pub governance_program_id: String,
     #[serde(default = "default_bounty_program")]
     pub bounty_program_id: String,
+    /// Path to the oracle keypair JSON file (Solana CLI format).
+    /// Required for signing bounty settlement transactions.
+    #[serde(default)]
+    pub oracle_keypair_path: Option<String>,
+    /// AMOS SPL token mint address.
+    #[serde(default)]
+    pub mint_address: Option<String>,
+    /// Treasury token account that holds distribution tokens.
+    #[serde(default)]
+    pub treasury_token_account: Option<String>,
 }
 
 impl Default for SolanaConfig {
@@ -118,6 +128,9 @@ impl Default for SolanaConfig {
             treasury_program_id: default_treasury_program(),
             governance_program_id: default_governance_program(),
             bounty_program_id: default_bounty_program(),
+            oracle_keypair_path: None,
+            mint_address: None,
+            treasury_token_account: None,
         }
     }
 }

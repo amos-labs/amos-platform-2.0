@@ -78,6 +78,33 @@ pub struct EapToolExecuteResponse {
     pub metadata: Option<serde_json::Value>,
 }
 
+/// EAP task response (returned from task polling).
+#[derive(Debug, Serialize)]
+pub struct EapTaskResponse {
+    pub task_id: String,
+    pub title: String,
+    pub description: String,
+    pub context: serde_json::Value,
+    pub category: String,
+    pub priority: i32,
+    pub reward_tokens: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deadline_at: Option<String>,
+    pub created_at: String,
+}
+
+/// EAP task result submission request.
+#[derive(Debug, Deserialize)]
+pub struct EapTaskResultRequest {
+    pub status: String, // "completed" or "failed"
+    pub result: serde_json::Value,
+    pub error_message: Option<String>,
+    pub execution_time_ms: Option<i64>,
+    pub tools_used: Option<Vec<String>>,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_agents).post(register_agent))
@@ -86,6 +113,8 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/{id}/heartbeat", post(eap_heartbeat))
         .route("/{id}/tools/execute", post(eap_tool_execute))
         .route("/{id}/tasks", get(eap_poll_tasks))
+        // EAP task result submission
+        .route("/{id}/tasks/{task_id}/result", post(eap_submit_task_result))
         // OpenClaw management endpoints
         .route("/{id}", get(get_agent).put(update_agent))
         .route("/{id}/activate", post(activate_agent))
@@ -233,14 +262,53 @@ async fn eap_heartbeat(Path(_id): Path<String>) -> StatusCode {
 }
 
 /// `POST /api/v1/agents/{id}/tools/execute` — Execute a harness tool.
+///
+/// Enforces trust-level gating: agents must have sufficient trust level
+/// to access tools in higher permission tiers.
 async fn eap_tool_execute(
     State(state): State<Arc<AppState>>,
-    Path(_id): Path<String>,
+    Path(agent_id): Path<String>,
     Json(req): Json<EapToolExecuteRequest>,
 ) -> Result<Json<EapToolExecuteResponse>, StatusCode> {
     let start = std::time::Instant::now();
 
-    info!(tool = %req.tool_name, "EAP tool execution request");
+    info!(tool = %req.tool_name, agent = %agent_id, "EAP tool execution request");
+
+    // Check trust level gating
+    if let Some(tool) = state.tool_registry.get(&req.tool_name) {
+        let required_trust = super::trust_level_for_category(tool.category());
+
+        // Look up agent trust level (default to 1 for internal/sidecar agents)
+        let agent_trust: i16 = if agent_id == "sidecar" || agent_id.starts_with("eap-internal") {
+            5 // Internal sidecar agent gets full access
+        } else {
+            sqlx::query_scalar::<_, i16>(
+                "SELECT trust_level FROM external_agents WHERE id::text = $1 OR name = $1",
+            )
+            .bind(&agent_id)
+            .fetch_optional(&state.db_pool)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(1)
+        };
+
+        if (agent_trust as u8) < required_trust {
+            return Ok(Json(EapToolExecuteResponse {
+                content: format!(
+                    "Insufficient trust level: tool '{}' requires level {}, agent has level {}",
+                    req.tool_name, required_trust, agent_trust
+                ),
+                is_error: true,
+                duration_ms: start.elapsed().as_millis() as u64,
+                metadata: Some(serde_json::json!({
+                    "error_code": "INSUFFICIENT_TRUST",
+                    "required_trust_level": required_trust,
+                    "agent_trust_level": agent_trust,
+                })),
+            }));
+        }
+    }
 
     match state.tool_registry.execute(&req.tool_name, req.input).await {
         Ok(result) => {
@@ -271,7 +339,121 @@ async fn eap_tool_execute(
     }
 }
 
-/// `GET /api/v1/agents/{id}/tasks` — Poll for available tasks (returns empty for now).
-async fn eap_poll_tasks(Path(_id): Path<String>) -> Json<Vec<serde_json::Value>> {
-    Json(vec![])
+/// `GET /api/v1/agents/{id}/tasks` — Poll for available tasks.
+///
+/// Returns the next pending work item assigned to or available for this agent.
+/// If no tasks are available, returns 204 No Content.
+async fn eap_poll_tasks(
+    State(state): State<Arc<AppState>>,
+    Path(_agent_id): Path<String>,
+) -> Result<Json<Vec<EapTaskResponse>>, StatusCode> {
+    // Query for pending work items (assigned to this agent or unassigned)
+    let tasks = sqlx::query_as::<_, (
+        uuid::Uuid,
+        String,
+        String,
+        Option<serde_json::Value>,
+        String,
+        i32,
+        Option<i64>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        chrono::DateTime<chrono::Utc>,
+    )>(
+        r#"
+        SELECT
+            id, title, description, input_data, task_type, priority,
+            reward_tokens, deadline_at, created_at
+        FROM work_items
+        WHERE status = 'pending'
+        ORDER BY priority ASC, created_at ASC
+        LIMIT 5
+        "#,
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|e| {
+        tracing::warn!("Failed to query work items: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if tasks.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let responses: Vec<EapTaskResponse> = tasks
+        .into_iter()
+        .map(|(id, title, description, input_data, task_type, priority, reward_tokens, deadline_at, created_at)| {
+            EapTaskResponse {
+                task_id: id.to_string(),
+                title,
+                description,
+                context: input_data.unwrap_or(serde_json::json!({})),
+                category: task_type,
+                priority,
+                reward_tokens: reward_tokens.unwrap_or(0),
+                deadline_at: deadline_at.map(|d| d.to_rfc3339()),
+                created_at: created_at.to_rfc3339(),
+            }
+        })
+        .collect();
+
+    Ok(Json(responses))
+}
+
+/// `POST /api/v1/agents/{id}/tasks/{task_id}/result` — Submit task result.
+async fn eap_submit_task_result(
+    State(state): State<Arc<AppState>>,
+    Path((_agent_id, task_id)): Path<(String, String)>,
+    Json(req): Json<EapTaskResultRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let task_uuid = uuid::Uuid::parse_str(&task_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let now = chrono::Utc::now();
+
+    let new_status = match req.status.as_str() {
+        "completed" => "completed",
+        "failed" => "failed",
+        _ => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    let result = sqlx::query(
+        r#"
+        UPDATE work_items
+        SET
+            status = $1,
+            output_data = $2,
+            completed_at = $3,
+            updated_at = $4,
+            metadata = metadata || $5
+        WHERE id = $6 AND status IN ('pending', 'assigned', 'in_progress')
+        RETURNING id
+        "#,
+    )
+    .bind(new_status)
+    .bind(&req.result)
+    .bind(now)
+    .bind(now)
+    .bind(serde_json::json!({
+        "execution_time_ms": req.execution_time_ms,
+        "tools_used": req.tools_used,
+        "error_message": req.error_message,
+    }))
+    .bind(task_uuid)
+    .fetch_optional(&state.db_pool)
+    .await
+    .map_err(|e| {
+        tracing::warn!("Failed to update work item {}: {}", task_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if result.is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    info!(task_id = %task_id, status = %new_status, "Task result submitted");
+
+    Ok(Json(serde_json::json!({
+        "accepted": true,
+        "quality_score": null,
+        "reward_status": "pending"
+    })))
 }

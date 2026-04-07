@@ -46,11 +46,33 @@ impl RelayState {
             .map_err(|e| AmosError::Internal(format!("Failed to connect to Redis: {}", e)))?;
         info!("Redis connection established");
 
-        // Initialize Solana client (optional, may fail in dev)
+        // Initialize Solana client with optional settlement configuration
         let solana =
             match SolanaClient::new(&config.solana.rpc_url, &config.solana.bounty_program_id) {
-                Ok(client) => {
-                    info!("Solana client initialized: {}", config.solana.rpc_url);
+                Ok(mut client) => {
+                    // Configure settlement (oracle keypair, mint, treasury)
+                    if let Some(ref path) = config.solana.oracle_keypair_path {
+                        if let Err(e) = client.load_oracle_keypair(path) {
+                            warn!("Failed to load oracle keypair: {}", e);
+                        }
+                    }
+                    if let Some(ref addr) = config.solana.mint_address {
+                        if let Err(e) = client.set_mint(addr) {
+                            warn!("Failed to set mint address: {}", e);
+                        }
+                    }
+                    if let Some(ref addr) = config.solana.treasury_token_account {
+                        if let Err(e) = client.set_treasury(addr) {
+                            warn!("Failed to set treasury address: {}", e);
+                        }
+                    }
+
+                    let ready = client.is_settlement_ready();
+                    info!(
+                        rpc = %config.solana.rpc_url,
+                        settlement_ready = ready,
+                        "Solana client initialized"
+                    );
                     Some(Arc::new(client))
                 }
                 Err(e) => {
