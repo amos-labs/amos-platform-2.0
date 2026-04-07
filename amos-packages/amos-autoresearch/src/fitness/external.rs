@@ -143,8 +143,8 @@ mod tests {
 
     #[test]
     fn test_extract_string_number() {
-        let data = json!({"rate": "3.14"});
-        assert_eq!(extract_json_path(&data, "$.rate"), Some(3.14));
+        let data = json!({"rate": "2.72"});
+        assert_eq!(extract_json_path(&data, "$.rate"), Some(2.72));
     }
 
     #[test]

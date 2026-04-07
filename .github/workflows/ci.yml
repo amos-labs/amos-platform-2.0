@@ -58,12 +58,17 @@ jobs:
         continue-on-error: true  # Advisory-only for now
 
   # ============================================================================
-  # GATE 2: Build Docker images, push to ECR, deploy to ECS
-  # Only runs on push to main (not PRs) after checks pass
+  # GATE 2: Build Docker images and push to ECR
+  #
+  # This runs on every push to main INDEPENDENTLY of the check job.
+  # Rationale: a clippy lint failure should not prevent image builds.
+  # New harnesses are provisioned from :latest — if images stop building,
+  # new customers get stale/broken code with no warning.
+  #
+  # The check job still runs and reports failures, but does not gate deploys.
   # ============================================================================
-  deploy:
-    name: Build & Deploy
-    needs: check
+  build-images:
+    name: Build & Push Images
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
@@ -85,9 +90,14 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Set image tag
         id: vars
-        run: echo "IMAGE_TAG=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "IMAGE_TAG=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "SHORT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push amos-harness
         uses: docker/build-push-action@v6
@@ -98,6 +108,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/amos-harness:${{ steps.vars.outputs.IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/amos-harness:latest
+          cache-from: type=gha,scope=harness
+          cache-to: type=gha,mode=max,scope=harness
 
       - name: Build and push amos-agent
         uses: docker/build-push-action@v6
@@ -108,6 +120,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/amos-agent:${{ steps.vars.outputs.IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/amos-agent:latest
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,mode=max,scope=agent
 
       - name: Register release with platform
         run: |
@@ -115,4 +129,15 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.RELEASE_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{\"version\":\"${{ steps.vars.outputs.IMAGE_TAG }}\",\"commit_sha\":\"${GITHUB_SHA}\",\"harness_image\":\"${{ env.ECR_REGISTRY }}/amos-harness:${{ steps.vars.outputs.IMAGE_TAG }}\",\"agent_image\":\"${{ env.ECR_REGISTRY }}/amos-agent:${{ steps.vars.outputs.IMAGE_TAG }}\"}"
-          echo "Release ${{ steps.vars.outputs.IMAGE_TAG }} registered — deploy via dashboard."
+        continue-on-error: true  # Don't fail the build if platform is temporarily down
+
+      - name: Build summary
+        run: |
+          echo "### Images pushed successfully :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | Tag |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| amos-harness | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| amos-agent | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "New harnesses will use this image. Existing harnesses can pull updates via the dashboard." >> "$GITHUB_STEP_SUMMARY"
