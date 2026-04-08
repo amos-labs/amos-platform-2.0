@@ -42,11 +42,14 @@ use uuid::Uuid;
 ///
 /// All routes are relative — they get nested under `/api/v1/agent` in `build_routes()`.
 pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
+    use axum::routing::delete;
     Router::new()
         .route("/chat", post(proxy_chat))
         .route("/chat/cancel", post(cancel_chat))
         .route("/sessions", get(list_sessions))
+        .route("/sessions/search", get(search_sessions))
         .route("/sessions/{id}", get(get_session))
+        .route("/sessions/{id}", delete(delete_session))
 }
 
 /// Resolve the agent service URL from environment.
@@ -627,6 +630,69 @@ async fn list_sessions(
         Err(e) => {
             warn!("Failed to list sessions: {e}");
             Json(serde_json::json!({ "sessions": [] })).into_response()
+        }
+    }
+}
+
+/// Search sessions with pagination and optional title filter.
+///
+/// Query params: `limit` (default 20), `offset` (default 0), `q` (optional search string).
+/// Returns `{ sessions: [...], total: N }`.
+async fn search_sessions(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let limit: i64 = params
+        .get("limit")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20);
+    let offset: i64 = params
+        .get("offset")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let query = params.get("q").map(|s| s.as_str());
+
+    match crate::sessions::search_sessions(&state.db_pool, limit, offset, query).await {
+        Ok((sessions, total)) => {
+            Json(serde_json::json!({ "sessions": sessions, "total": total })).into_response()
+        }
+        Err(e) => {
+            warn!("Failed to search sessions: {e}");
+            Json(serde_json::json!({ "sessions": [], "total": 0 })).into_response()
+        }
+    }
+}
+
+/// Delete a session (and its messages, via cascade).
+async fn delete_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let session_id = match Uuid::parse_str(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Invalid session ID" })),
+            )
+                .into_response()
+        }
+    };
+
+    match crate::sessions::delete_session(&state.db_pool, session_id).await {
+        Ok(true) => Json(serde_json::json!({ "deleted": true })).into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Session not found" })),
+        )
+            .into_response(),
+        Err(e) => {
+            warn!("Failed to delete session {session_id}: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Failed to delete session" })),
+            )
+                .into_response()
         }
     }
 }

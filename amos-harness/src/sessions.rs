@@ -132,6 +132,88 @@ pub async fn list_sessions(pool: &PgPool, limit: i64) -> Result<Vec<SessionSumma
         .collect())
 }
 
+/// Search sessions with pagination and optional title filter.
+///
+/// Returns a page of sessions plus the total count of matching sessions.
+pub async fn search_sessions(
+    pool: &PgPool,
+    limit: i64,
+    offset: i64,
+    query: Option<&str>,
+) -> Result<(Vec<SessionSummary>, i64)> {
+    // Build pattern for ILIKE if a query was provided
+    let pattern = query
+        .filter(|q| !q.trim().is_empty())
+        .map(|q| format!("%{}%", q.replace('%', "\\%").replace('_', "\\_")));
+
+    let (rows, total) = if let Some(ref pat) = pattern {
+        let rows = sqlx::query_as::<_, SessionSummaryRow>(
+            r#"
+            SELECT id, title, message_count, last_activity_at, created_at
+            FROM sessions
+            WHERE status = 'active'
+              AND (title ILIKE $1 OR title IS NULL AND $1 = '%%')
+            ORDER BY last_activity_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(pat)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("search_sessions: {e}")))?;
+
+        let total: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sessions WHERE status = 'active' AND title ILIKE $1",
+        )
+        .bind(pat)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("search_sessions count: {e}")))?;
+
+        (rows, total.0)
+    } else {
+        let rows = sqlx::query_as::<_, SessionSummaryRow>(
+            r#"
+            SELECT id, title, message_count, last_activity_at, created_at
+            FROM sessions
+            WHERE status = 'active'
+            ORDER BY last_activity_at DESC
+            LIMIT $1 OFFSET $2
+            "#,
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("search_sessions: {e}")))?;
+
+        let total: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE status = 'active'")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| {
+                    amos_core::AmosError::Internal(format!("search_sessions count: {e}"))
+                })?;
+
+        (rows, total.0)
+    };
+
+    let summaries = rows
+        .into_iter()
+        .map(|r| SessionSummary {
+            id: r.id,
+            title: r.title,
+            message_count: r.message_count,
+            last_activity_at: r.last_activity_at,
+            created_at: r.created_at,
+        })
+        .collect();
+
+    Ok((summaries, total))
+}
+
 /// Delete a session (cascades to messages).
 pub async fn delete_session(pool: &PgPool, session_id: Uuid) -> Result<bool> {
     let result = sqlx::query("DELETE FROM sessions WHERE id = $1")
