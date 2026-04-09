@@ -366,7 +366,7 @@ impl ToolRegistry {
             task_queue.clone(),
         )));
         registry.register(Arc::new(task_tools::CreateBountyTool::new(
-            task_queue.clone(),
+            config.relay.url.clone(),
         )));
         registry.register(Arc::new(task_tools::ListTasksTool::new(task_queue.clone())));
         registry.register(Arc::new(task_tools::GetTaskResultTool::new(

@@ -136,14 +136,14 @@ impl Tool for CreateTaskTool {
 
 // ── CreateBountyTool ────────────────────────────────────────────────────
 
-/// Create an external bounty for OpenClaw agents to claim.
+/// Create a bounty on the AMOS relay marketplace for agents to claim.
 pub struct CreateBountyTool {
-    task_queue: Arc<TaskQueue>,
+    relay_url: String,
 }
 
 impl CreateBountyTool {
-    pub fn new(task_queue: Arc<TaskQueue>) -> Self {
-        Self { task_queue }
+    pub fn new(relay_url: String) -> Self {
+        Self { relay_url }
     }
 }
 
@@ -172,24 +172,19 @@ impl Tool for CreateBountyTool {
                     "type": "string",
                     "description": "Detailed description of what needs to be done and expected deliverables"
                 },
-                "priority": {
-                    "type": "integer",
-                    "description": "Priority from 1 (highest) to 10 (lowest). Default: 5",
-                    "minimum": 1,
-                    "maximum": 10
-                },
-                "context": {
-                    "type": "object",
-                    "description": "Additional context data an agent may need (JSON)"
-                },
                 "reward_tokens": {
                     "type": "integer",
-                    "description": "Token reward for completing the bounty. Default: 0",
+                    "description": "AMOS token reward for completing the bounty. Default: 0",
                     "minimum": 0
                 },
-                "session_id": {
+                "deadline": {
                     "type": "string",
-                    "description": "Session ID to associate the bounty with (UUID format)"
+                    "description": "Optional deadline in ISO 8601 format (e.g. '2026-04-15T00:00:00Z')"
+                },
+                "required_capabilities": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Capabilities required to complete this bounty (e.g. ['web_search', 'code_execution'])"
                 }
             },
             "required": ["title", "description"]
@@ -205,44 +200,60 @@ impl Tool for CreateBountyTool {
             amos_core::AmosError::Validation("description is required".to_string())
         })?;
 
-        let priority = params
-            .get("priority")
+        let reward_tokens = params
+            .get("reward_tokens")
             .and_then(|v| v.as_i64())
-            .map(|v| v as i32);
-        let context = params.get("context").cloned();
-        let reward_tokens = params.get("reward_tokens").and_then(|v| v.as_i64());
-        let session_id = params
-            .get("session_id")
-            .and_then(|v| v.as_str())
-            .and_then(|s| Uuid::parse_str(s).ok());
+            .unwrap_or(0);
 
-        let create_params = CreateTaskParams {
-            title: title.to_string(),
-            description: Some(description.to_string()),
-            context,
-            category: TCategory::External,
-            task_type: None,
-            priority,
-            session_id,
-            parent_task_id: None,
-            reward_tokens,
-            deadline_at: None,
-        };
+        let deadline = params.get("deadline").and_then(|v| v.as_str());
 
-        match self.task_queue.create_task(create_params).await {
-            Ok(task) => Ok(ToolResult::success(json!({
-                "task_id": task.id.to_string(),
-                "title": task.title,
-                "category": "external",
-                "status": "pending",
-                "priority": task.priority,
-                "reward_tokens": task.reward_tokens,
-                "message": format!(
-                    "Bounty '{}' posted (ID: {}). External agents can now claim it.",
-                    task.title, task.id
-                )
-            }))),
-            Err(e) => Ok(ToolResult::error(format!("Failed to create bounty: {e}"))),
+        let capabilities: Vec<String> = params
+            .get("required_capabilities")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let payload = json!({
+            "title": title,
+            "description": description,
+            "reward_tokens": reward_tokens,
+            "deadline": deadline,
+            "required_capabilities": capabilities,
+        });
+
+        let url = format!("{}/api/v1/bounties", self.relay_url);
+        let client = reqwest::Client::new();
+
+        match client.post(&url).json(&payload).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let body: JsonValue = resp.json().await.unwrap_or(json!({}));
+                let bounty_id = body["id"].as_str().unwrap_or("unknown");
+                Ok(ToolResult::success(json!({
+                    "bounty_id": bounty_id,
+                    "title": title,
+                    "status": "open",
+                    "reward_tokens": reward_tokens,
+                    "message": format!(
+                        "Bounty '{}' posted to marketplace (ID: {}). Agents can now claim it.",
+                        title, bounty_id
+                    )
+                })))
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                Ok(ToolResult::error(format!(
+                    "Relay returned {}: {}",
+                    status, body
+                )))
+            }
+            Err(e) => Ok(ToolResult::error(format!(
+                "Failed to reach relay marketplace: {e}"
+            ))),
         }
     }
 
@@ -556,13 +567,13 @@ mod tests {
 
     #[tokio::test]
     async fn create_bounty_tool_metadata() {
-        let tq = test_task_queue();
-        let tool = CreateBountyTool::new(tq);
+        let tool = CreateBountyTool::new("http://localhost:4100".to_string());
         assert_eq!(tool.name(), "create_bounty");
         assert_eq!(tool.category(), ToolCategory::TaskQueue);
 
         let schema = tool.parameters_schema();
         assert!(schema["properties"]["reward_tokens"].is_object());
+        assert!(schema["properties"]["required_capabilities"].is_object());
     }
 
     #[tokio::test]
@@ -604,7 +615,7 @@ mod tests {
         let tq = test_task_queue();
         let names = [
             CreateTaskTool::new(tq.clone()).name().to_string(),
-            CreateBountyTool::new(tq.clone()).name().to_string(),
+            CreateBountyTool::new("http://localhost:4100".to_string()).name().to_string(),
             ListTasksTool::new(tq.clone()).name().to_string(),
             GetTaskResultTool::new(tq.clone()).name().to_string(),
             CancelTaskTool::new(tq.clone()).name().to_string(),

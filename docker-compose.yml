@@ -4,12 +4,16 @@
 # This is for local development only. In production, services are deployed separately.
 #
 # Architecture:
-# - amos-harness: Per-customer AI business OS (port 3000)
-# - amos-agent: Autonomous AI agent that registers with harness (port 3100)
+# - amos-platform: Central control plane (ports 4000 HTTP, 4001 gRPC)
+# - amos-harness: Per-customer AI business OS (port 3000) [standalone profile]
+# - amos-agent: Autonomous AI agent that registers with harness (port 3100) [standalone profile]
 # - amos-relay: Network relay / bounty marketplace (port 4100)
 # - postgres: Shared PostgreSQL 16 with pgvector (port 5432)
 # - redis: Shared Redis 7 (port 6379)
 # - localstack: AWS S3 emulation for dev (port 4566)
+#
+# Default mode: platform + infra (harnesses are provisioned via platform dashboard)
+# Standalone mode: docker compose --profile standalone up (harness runs directly)
 #
 # Note: In production, each service has its own postgres/redis.
 # This shared setup is purely for convenience in local development.
@@ -54,9 +58,11 @@ services:
       - amos_network
 
   # LocalStack for S3 emulation (development only)
+  # To use: docker compose --profile localstack up
   localstack:
     image: localstack/localstack:latest
     container_name: amos_dev_localstack
+    profiles: ["localstack"]
     environment:
       SERVICES: s3
       DEBUG: 0
@@ -72,12 +78,95 @@ services:
     networks:
       - amos_network
 
-  # AMOS Harness - Per-customer AI business OS
+  # AMOS Platform - Central control plane (provisioning, billing, governance)
+  platform:
+    build:
+      context: ../amos-platform
+      dockerfile: Dockerfile
+    container_name: amos_dev_platform
+    ports:
+      - "4000:4000"
+      - "4001:4001"
+    environment:
+      # Server
+      AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
+      AMOS__SERVER__HOST: 0.0.0.0
+      AMOS__SERVER__PORT: 4000
+
+      # Database (platform uses its own DB)
+      AMOS__DATABASE__URL: postgresql://${POSTGRES_USER:-amos}:${POSTGRES_PASSWORD:-amos_dev_password}@postgres:5432/amos_platform_dev
+      AMOS__DATABASE__MAX_CONNECTIONS: 20
+
+      # Redis (using db 3 for platform)
+      AMOS__REDIS__URL: redis://redis:6379/3
+      AMOS__REDIS__POOL_SIZE: 10
+
+      # Vault (stable dev key so encrypted credentials survive container restarts)
+      AMOS__VAULT__MASTER_KEY: ${VAULT_MASTER_KEY:-fddcNAcyrkZ7eC9vgMXfRtTGtVAQZT8sost219njm10=}
+
+      # Auth
+      AMOS__AUTH__JWT_SECRET: ${AUTH_JWT_SECRET:-dev_jwt_secret_change_in_prod}
+
+      # Docker/Podman socket for Bollard container provisioning
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+      # Postgres credentials forwarded so provisioning code can build harness DB URLs
+      POSTGRES_USER: ${POSTGRES_USER:-amos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amos_dev_password}
+
+      # AWS Bedrock (forwarded to provisioned harnesses)
+      AMOS__BEDROCK__AWS_REGION: ${AWS_REGION:-us-west-2}
+      AMOS__BEDROCK__AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AMOS__BEDROCK__AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AMOS__BEDROCK__DEFAULT_MODEL: ${DEFAULT_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+
+      # Stripe billing (per-harness pricing)
+      AMOS__STRIPE__SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      AMOS__STRIPE__PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      AMOS__STRIPE__WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      AMOS__STRIPE__PRICE_SMALL: ${STRIPE_PRICE_SMALL:-price_1TJzUOGlkubafVtvglhkzbQf}
+      AMOS__STRIPE__PRICE_MEDIUM: ${STRIPE_PRICE_MEDIUM:-price_1TK0NjGlkubafVtvbJuzot1z}
+      AMOS__STRIPE__PRICE_LARGE: ${STRIPE_PRICE_LARGE:-price_1TK0NlGlkubafVtvuJOxntmQ}
+
+      # gRPC
+      AMOS__GRPC__PORT: 4001
+
+      # Observability
+      RUST_LOG: ${RUST_LOG:-info,amos_platform=debug}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
+    # Run as root so we can access the Podman socket (owned by core:core in the VM)
+    user: "0:0"
+    security_opt:
+      - label=disable
+    volumes:
+      # Mount the container runtime socket for Bollard provisioning.
+      # Override DOCKER_SOCK in .env for Podman or non-standard paths:
+      #   macOS Podman: /run/user/501/podman/podman.sock
+      #   Linux Docker: /var/run/docker.sock
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - amos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # AMOS Harness - Per-customer AI business OS (standalone mode, no platform)
+  # To use: docker compose --profile standalone up
   harness:
     build:
       context: .
       dockerfile: docker/harness/Dockerfile
+    image: amos-harness:latest
     container_name: amos_dev_harness
+    profiles: ["standalone"]
     ports:
       - "3000:3000"
     environment:
@@ -86,6 +175,9 @@ services:
       AMOS_HARNESS_ID: 00000000-0000-0000-0000-000000000001
       # In specialist mode, point to siblings:
       # AMOS_SIBLING_HARNESSES: autoresearch:http://harness-autoresearch:3000
+
+      # Vault (stable dev key so encrypted credentials survive container restarts)
+      AMOS__VAULT__MASTER_KEY: ${VAULT_MASTER_KEY:-fddcNAcyrkZ7eC9vgMXfRtTGtVAQZT8sost219njm10=}
 
       # Server
       AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -122,6 +214,9 @@ services:
       AMOS__RELAY__ENABLED: "true"
       AMOS__RELAY__API_KEY: ${RELAY_API_KEY:-dev_relay_key_change_in_prod}
 
+      # Agent sidecar connection (container networking, not localhost)
+      AGENT_URL: http://agent:3100
+
       # Observability
       RUST_LOG: ${RUST_LOG:-info,amos_harness=debug}
       RUST_BACKTRACE: ${RUST_BACKTRACE:-1}
@@ -157,7 +252,7 @@ services:
       AMOS_HARNESS_ID: 00000000-0000-0000-0000-000000000002
       AMOS_PACKAGES: autoresearch
       AMOS_SIBLING_HARNESSES: ""
-      AMOS_PLATFORM_URL: http://host.docker.internal:4000
+      AMOS_PLATFORM_URL: ${AMOS_PLATFORM_URL:-http://platform:4000}
 
       # Server
       AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -201,12 +296,14 @@ services:
       retries: 5
       start_period: 15s
 
-  # AMOS Agent - Autonomous AI agent that registers with harness
+  # AMOS Agent - Autonomous AI agent that registers with harness (standalone mode)
+  # To use: docker compose --profile standalone up
   agent:
     build:
       context: .
       dockerfile: docker/agent/Dockerfile
     container_name: amos_dev_agent
+    profiles: ["standalone"]
     ports:
       - "3100:3100"
     environment:
@@ -252,11 +349,13 @@ services:
       start_period: 15s
 
   # AMOS Relay - Network relay / bounty marketplace
+  # To use: docker compose --profile relay up
   relay:
     build:
       context: .
       dockerfile: docker/relay/Dockerfile
     container_name: amos_dev_relay
+    profiles: ["relay"]
     ports:
       - "4100:4100"
     environment:

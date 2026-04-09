@@ -12,7 +12,6 @@ COPY Cargo.toml Cargo.lock ./
 # Copy all workspace crate sources (cargo requires all members for workspace resolution)
 COPY amos-core ./amos-core
 COPY amos-harness ./amos-harness
-COPY amos-platform ./amos-platform
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
 COPY amos-relay ./amos-relay

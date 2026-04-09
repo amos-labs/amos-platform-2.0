@@ -1,5 +1,6 @@
 //! Bounty marketplace routes.
 
+use amos_core::types::BountyStatus;
 use crate::{
     protocol_fees::calculate_fee,
     solana::SettlementParams,
@@ -79,50 +80,7 @@ pub struct RejectSubmissionRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum BountyStatus {
-    Open,
-    Claimed,
-    Submitted,
-    Approved,
-    Rejected,
-    Expired,
-    Cancelled,
-}
-
-impl BountyStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            BountyStatus::Open => "open",
-            BountyStatus::Claimed => "claimed",
-            BountyStatus::Submitted => "submitted",
-            BountyStatus::Approved => "approved",
-            BountyStatus::Rejected => "rejected",
-            BountyStatus::Expired => "expired",
-            BountyStatus::Cancelled => "cancelled",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "open" => BountyStatus::Open,
-            "claimed" => BountyStatus::Claimed,
-            "submitted" => BountyStatus::Submitted,
-            "approved" => BountyStatus::Approved,
-            "rejected" => BountyStatus::Rejected,
-            "expired" => BountyStatus::Expired,
-            "cancelled" => BountyStatus::Cancelled,
-            _ => BountyStatus::Open,
-        }
-    }
-}
-
-impl std::fmt::Display for BountyStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+// BountyStatus is re-exported from amos_core::types
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BountyResponse {
