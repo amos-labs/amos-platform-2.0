@@ -434,7 +434,7 @@ Example: If platform base rate is 10%:
 | Buy to get rich | Earn through contribution |
 | Fixed supply, hold forever | Decay encourages activity |
 | No real utility | Revenue share + governance |
-| Team dumps on retail | Same rules for everyone |
+| Team gets insider allocation | No insiders — everyone earns equally |
 | Early buyers locked in | Floor grows with tenure |
 
 ---
@@ -447,51 +447,24 @@ Example: If platform base rate is 10%:
 100,000,000 AMOS tokens total (forever)
 
 Distribution:
-├── 60% Treasury (ongoing contributor rewards - you EARN these)
-├── 15% AMOS Labs Inc. (company operations - hiring, partnerships)
-├── 10% Investors (capital investments - money IN for tokens)
-├── 10% Community (grants and airdrops - ecosystem building)
-└── 5%  Emergency reserve (DAO-locked)
+├── 95% Bounty Treasury (contributor rewards - you EARN these)
+└── 5%  Emergency Reserve (DAO-locked, governance vote required)
 
 Founders: 0% ← We start at zero and earn like everyone else
+Investors: 0% ← No insider allocation, no seed rounds
+Company: 0% ← No entity pool, no corporate reserve
 ```
 
-**Where does initial liquidity come from?**
-```
-Investor Pool (not Entity Pool)
-├── Founder invests $10k at $0.02/token
-├── Receives 500k AMOS from Investor Pool
-├── Uses half for LP, keeps half
-└── This is "Series Seed" - first investment round
-```
+**Why only two buckets?**
+- Maximum simplicity: tokens go to contributors or stay locked for emergencies
+- No insider allocation means no dump risk — ever
+- Everyone earns the same way: by contributing
 
 **Why do founders get zero?**
 - Maximum credibility: "We built this - we earn like you"
 - No dump risk: No founder tokens to sell
+- No lockup games: There is nothing to lock up
 - Perfect alignment: We succeed only if the platform succeeds
-
-### The AMOS Labs 10-Year Lockup
-
-The company's 15% allocation is **locked for 10 years**:
-
-```
-AMOS LABS COMMITMENT:
-├── 15,000,000 AMOS locked in smart contract
-├── Cannot sell for 10 years (enforced by code)
-├── Zero decay (tokens preserve value)
-├── CAN stake for revenue share
-└── CAN vote in governance
-
-WHAT THIS MEANS:
-• We can't dump on you - literally impossible
-• We only make money if the platform makes money
-• Our incentive: Build revenue, not pump price
-• "Trust us" → "Verify on-chain"
-```
-
-**After 10 years:** Gradual 2-year unlock (12.5% per quarter).
-
-This is the ultimate "skin in the game" - we can't exit, even if we wanted to.
 
 ### Revenue Distribution
 
@@ -661,7 +634,7 @@ Ways tokens typically crash:
 ❌ "Everyone sells at launch" → AMOS: Tokens earned slowly over years
 ❌ "Whales dump on retail" → AMOS: Same rules for everyone, decay prevents hoarding
 ❌ "No utility, pure speculation" → AMOS: Real fee share (70%!)
-❌ "Team sells all their tokens" → AMOS: Core entity allocation is hard-locked (no early sell path)
+❌ "Team sells all their tokens" → AMOS: No insider allocation — founders earn like everyone else
 ```
 
 **AMOS is designed to be sustainable, not a get-rich-quick pump-and-dump.**

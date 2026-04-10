@@ -50,31 +50,6 @@ pub const MIN_STAKE_DAYS: u64 = 30;
 pub const MIN_STAKE_AMOUNT: u64 = 100;
 
 // ============================================================================
-// Entity Allocation & Lockup
-// ============================================================================
-
-/// Total AMOS tokens allocated to entity: 15 million
-pub const ENTITY_ALLOCATION: u64 = 15_000_000;
-
-/// Entity lockup period: 10 years in seconds
-/// 10 years * 365.25 days * 24 hours * 60 minutes * 60 seconds
-pub const ENTITY_LOCKUP_SECONDS: i64 = 315_576_000; // 10 years
-
-// ============================================================================
-// LP Incentive Constants
-// ============================================================================
-
-/// LP incentive pool allocation from entity tokens
-pub const LP_INCENTIVE_ALLOCATION: u64 = 1_000_000;
-
-/// LP incentive duration in seconds (1 year)
-pub const LP_INCENTIVE_DURATION_SECONDS: i64 = 31_557_600;
-
-/// Founder LP fee percentage (basis points)
-/// 0.3% fee on LP operations
-pub const FOUNDER_LP_FEE_BPS: u16 = 30;
-
-// ============================================================================
 // Payment Discounts
 // ============================================================================
 
@@ -173,23 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn test_entity_allocation() {
-        // Verify entity allocation is 15 million
-        assert_eq!(ENTITY_ALLOCATION, 15_000_000, "Entity allocation should be 15 million AMOS");
-    }
-
-    #[test]
-    fn test_entity_lockup_duration() {
-        // Verify lockup is approximately 10 years
-        let ten_years_approx = 10 * 365 * 24 * 60 * 60;
-        let tolerance = 24 * 60 * 60; // 1 day tolerance for leap years
-        assert!(
-            (ENTITY_LOCKUP_SECONDS - ten_years_approx).abs() < tolerance,
-            "Entity lockup should be approximately 10 years"
-        );
-    }
-
-    #[test]
     fn test_discount_percentages_valid() {
         // Verify discounts don't exceed 100%
         assert!(
@@ -202,21 +160,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_lp_incentive_allocation() {
-        // Verify LP incentive allocation is reasonable
-        assert!(
-            LP_INCENTIVE_ALLOCATION <= ENTITY_ALLOCATION,
-            "LP incentive cannot exceed total entity allocation"
-        );
-    }
-
-    #[test]
-    fn test_founder_lp_fee_reasonable() {
-        // Verify founder LP fee is reasonable (less than 1%)
-        assert!(
-            FOUNDER_LP_FEE_BPS <= 100,
-            "Founder LP fee should be less than 1%"
-        );
-    }
 }

@@ -24,19 +24,10 @@ pub const BPS_DENOMINATOR: u64 = 10_000;
 /// Fixed total supply — mint authority permanently disabled.
 pub const TOTAL_SUPPLY: u64 = 100_000_000;
 
-/// Allocation: 60% Treasury (contributor rewards via daily emissions).
-pub const TREASURY_ALLOCATION: u64 = 60_000_000;
+/// Allocation: 95% Bounty Treasury (contributor rewards via daily emissions).
+pub const TREASURY_ALLOCATION: u64 = 95_000_000;
 
-/// Allocation: 15% AMOS Labs entity (10-year lockup, no decay).
-pub const ENTITY_ALLOCATION: u64 = 15_000_000;
-
-/// Allocation: 10% Investors (future fundraising rounds).
-pub const INVESTOR_ALLOCATION: u64 = 10_000_000;
-
-/// Allocation: 10% Community (airdrops, grants, marketing).
-pub const COMMUNITY_ALLOCATION: u64 = 10_000_000;
-
-/// Allocation: 5% Reserve (DAO-controlled emergency fund).
+/// Allocation: 5% Emergency Reserve (DAO-locked, governance vote required).
 pub const RESERVE_ALLOCATION: u64 = 5_000_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -159,19 +150,6 @@ pub const MIN_STAKE_AMOUNT: u64 = 100;
 pub const MIN_STAKE_DAYS: u64 = 30;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ENTITY LOCKUP (AMOS Labs 10-year commitment)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Entity lockup: 10 years in seconds.
-pub const ENTITY_LOCKUP_SECONDS: i64 = 10 * 365 * 24 * 60 * 60;
-
-/// Entity unlock: 2 years linear after lockup, 8 quarterly tranches.
-pub const ENTITY_UNLOCK_SECONDS: i64 = 2 * 365 * 24 * 60 * 60;
-
-/// Number of quarterly unlock tranches.
-pub const ENTITY_UNLOCK_TRANCHES: u64 = 8;
-
-// ═══════════════════════════════════════════════════════════════════════════
 // BOUNTY SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -207,22 +185,6 @@ pub const MULTIPLIER_DESIGN_BPS: u64 = 10_000;
 pub const MULTIPLIER_INFRA_BPS: u64 = 13_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LP INCENTIVES
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Total LP incentive allocation: 3% of supply.
-pub const LP_INCENTIVE_ALLOCATION: u64 = 3_000_000;
-/// Year 1: 1,500,000 AMOS.
-pub const LP_INCENTIVE_YEAR_1: u64 = 1_500_000;
-/// Year 2: 1,000,000 AMOS.
-pub const LP_INCENTIVE_YEAR_2: u64 = 1_000_000;
-/// Year 3: 500,000 AMOS.
-pub const LP_INCENTIVE_YEAR_3: u64 = 500_000;
-
-/// Founder LP permanent fee: 0.05% of all trades forever.
-pub const FOUNDER_LP_FEE_BPS: u64 = 5;
-
-// ═══════════════════════════════════════════════════════════════════════════
 // PAYMENT DISCOUNTS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -242,11 +204,7 @@ mod tests {
     #[test]
     fn supply_allocations_sum_to_total() {
         assert_eq!(
-            TREASURY_ALLOCATION
-                + ENTITY_ALLOCATION
-                + INVESTOR_ALLOCATION
-                + COMMUNITY_ALLOCATION
-                + RESERVE_ALLOCATION,
+            TREASURY_ALLOCATION + RESERVE_ALLOCATION,
             TOTAL_SUPPLY,
             "Allocations must sum to 100M"
         );
@@ -281,14 +239,6 @@ mod tests {
         const {
             assert!(DEFAULT_DECAY_RATE_BPS <= MAX_DECAY_RATE_BPS);
         }
-    }
-
-    #[test]
-    fn lp_incentives_sum_to_allocation() {
-        assert_eq!(
-            LP_INCENTIVE_YEAR_1 + LP_INCENTIVE_YEAR_2 + LP_INCENTIVE_YEAR_3,
-            LP_INCENTIVE_ALLOCATION,
-        );
     }
 
     #[test]

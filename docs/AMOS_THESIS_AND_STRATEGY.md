@@ -162,7 +162,7 @@ Crucially, governance is the mechanism by which the community adapts the system 
 
 The entire infrastructure layer — harness, agent, CLI, all 54+ tools — is Apache 2.0 open source. If AMOS Labs goes bad, the community forks and continues. This is not possible with closed-source AI platforms, where the company *is* the product and users have no exit.
 
-The relay's fee distribution (70% stakers, 20% treasury, 5% ops, 5% burn) is enforced by immutable Solana smart contracts — not a database that an executive team can quietly modify. AMOS Labs' own 15M token allocation is locked for 10 years with zero early access. Founders start at zero and earn through contribution like everyone else.
+The relay's fee distribution (70% stakers, 20% treasury, 5% ops, 5% burn) is enforced by immutable Solana smart contracts — not a database that an executive team can quietly modify. The token allocation is radically simple: 95% goes to the Bounty Treasury for contributor rewards via daily emissions, 5% to an emergency reserve that requires a DAO governance vote to access. There is no entity pool, no investor pool, no insider allocation. Founders start at zero and earn through contribution like everyone else.
 
 These aren't just nice-to-haves. They're direct structural countermeasures against the historical pattern Dalio documents: institutional capture, elite extraction, and the slow corruption of rules by those in power. The system is designed so that changing the rules requires the same contribution-based legitimacy as any other activity within it.
 

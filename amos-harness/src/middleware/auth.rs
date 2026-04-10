@@ -76,10 +76,21 @@ pub async fn authenticate(
         .unwrap_or(false);
 
     if is_browser {
-        // Redirect to platform login with return URL
+        // Redirect to platform login with return URL so user comes back after auth
         let platform_url = std::env::var("AMOS__PLATFORM__URL")
             .unwrap_or_else(|_| "https://app.amoslabs.com".into());
-        let redirect_url = format!("{}/login", platform_url);
+        // Build the harness origin from the Host header
+        let harness_origin = headers
+            .get(header::HOST)
+            .and_then(|h| h.to_str().ok())
+            .map(|host| format!("https://{}", host))
+            .unwrap_or_default();
+        let redirect_url = if harness_origin.is_empty() {
+            format!("{}/login", platform_url)
+        } else {
+            let return_url = harness_origin.replace(':', "%3A").replace('/', "%2F");
+            format!("{}/login?redirect={}", platform_url, return_url)
+        };
         Err(Redirect::to(&redirect_url).into_response())
     } else {
         Err((

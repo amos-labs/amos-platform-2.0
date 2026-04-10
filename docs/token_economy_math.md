@@ -324,12 +324,9 @@ The dynamic decay creates **organic equilibrium**:
 Total Supply = 100,000,000 AMOS (fixed)
 
 Distribution:
-• Treasury (60%):      60,000,000 AMOS  →  Ongoing contributor rewards
-• Entity Pool (15%):   15,000,000 AMOS  →  AMOS Labs operations (10-year lockup)
-• Investor Pool (10%): 10,000,000 AMOS  →  Capital investments
-• Community (10%):     10,000,000 AMOS  →  Grants, airdrops, ecosystem
-• Reserve (5%):         5,000,000 AMOS  →  Emergency (DAO-locked)
-• Founders:                     0 AMOS  →  Start at zero, earn like everyone
+• Bounty Treasury (95%): 95,000,000 AMOS  →  Contributor rewards via daily emissions
+• Emergency Reserve (5%): 5,000,000 AMOS  →  DAO-locked, governance vote required
+• Founders:                       0 AMOS  →  Start at zero, earn like everyone
 ```
 
 ---
@@ -774,5 +771,5 @@ Payout_you = (S_you / S_total) × R_holders
 
 ---
 
-*Last Updated: March 8, 2026*
-*Version: 2.0.0*
+*Last Updated: April 10, 2026*
+*Version: 2.1.0*

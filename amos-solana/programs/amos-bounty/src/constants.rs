@@ -13,9 +13,9 @@ use anchor_lang::prelude::*;
 /// Total supply of AMOS tokens (100 million)
 pub const TOTAL_SUPPLY: u64 = 100_000_000;
 
-/// Treasury allocation (60% of total supply = 60 million tokens)
+/// Bounty Treasury allocation (95% of total supply = 95 million tokens)
 /// This is the pool from which bounties are distributed
-pub const TREASURY_ALLOCATION: u64 = 60_000_000;
+pub const TREASURY_ALLOCATION: u64 = 95_000_000;
 
 /// Initial daily emission rate (16,000 tokens per day)
 /// This represents the starting rate before any halvings occur
@@ -238,8 +238,8 @@ mod tests {
 
     #[test]
     fn test_treasury_allocation() {
-        // Verify treasury is 60% of total supply
-        assert_eq!(TREASURY_ALLOCATION, TOTAL_SUPPLY * 60 / 100);
+        // Verify treasury is 95% of total supply
+        assert_eq!(TREASURY_ALLOCATION, TOTAL_SUPPLY * 95 / 100);
     }
 
     #[test]

@@ -2,11 +2,25 @@
 
 **Autonomous Management Operating System** -- an AI-native economic operating system written in pure Rust.
 
-AMOS is infrastructure for the autonomous economy. Three macro forces -- the re-weaponization of energy as geopolitical power, a US fiscal crisis demanding productivity at scale, and $700B/year in AI investment -- are converging to make autonomous agents inevitable. AMOS ensures that when agents become economic participants, humans retain ownership and agency through transparent, auditable, on-chain mechanisms.
+---
 
-The system provides a per-customer AI harness (the "operating system") that hosts tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. A global relay marketplace enables cross-harness bounty distribution with Solana-based settlement and reputation tracking. The harness never runs its own agent loop; agents are independent processes that register, pull tasks, call harness tools over HTTP, and report results.
+### Mainnet Launch: April 15, 2026
 
-> **Read the full thesis:** [AMOS: Operating System for the Next Economy](docs/AMOS_THESIS_AND_STRATEGY.md) -- why this matters, the macro landscape, and the economic model.
+Real Solana token. Live bounty marketplace. Open relay. Full open-source codebase.
+
+**[Full Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf)** | **[Thesis & Strategy](docs/AMOS_THESIS_AND_STRATEGY.md)** | **[Investor Strategy (AI-Readable)](docs/AMOS_Strategy_AI.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
+
+---
+
+AMOS is infrastructure for the autonomous economy. Four macro forces -- the re-weaponization of energy as geopolitical power, a US fiscal crisis demanding productivity at scale, $700B/year in AI investment with near-zero macro productivity payoff, and model access concentrated in 3-5 companies -- are converging to make autonomous agents inevitable. AMOS ensures that when agents become economic participants, humans retain ownership and agency through transparent, auditable, on-chain mechanisms.
+
+The system provides a per-customer AI harness (the "operating system") that hosts 54+ tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. A global relay marketplace enables cross-harness bounty distribution with Solana-based settlement and reputation tracking. Five interlocking design choices make it structurally resistant to capture:
+
+1. **Substrate-agnostic bounties** -- rewards output, not identity; human, AI, or hybrid
+2. **Dynamic decay (2-25% annually)** -- tokens flow from passive holders to active contributors
+3. **Progressive trust (5 tiers)** -- reputation earned through verified work, not purchased
+4. **Contribution-based governance** -- voting power tracks contribution, not token size
+5. **Open source + on-chain immutability** -- Apache 2.0 code, immutable Solana smart contracts
 
 ## Architecture
 
@@ -291,7 +305,11 @@ See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full sp
 
 | Document | Description |
 |----------|-------------|
-| [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Core thesis: macro forces, the autonomous economy, why AMOS matters now |
+| [Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf) | Full 18-page strategic overview for investors and partners |
+| [Investor Strategy (AI-Readable)](docs/AMOS_Strategy_AI.md) | Structured strategy doc: macro thesis, 5 pillars, token economics, corporate structure, roadmap |
+| [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Deep thesis: macro forces, dual threat analysis, the autonomous economy |
+| [Corporate Structure Analysis](docs/CORPORATE_STRUCTURE_ANALYSIS.md) | Three-entity structure: Labs C-Corp, Services Co., Wyoming DAO LLC |
+| [Mainnet Launch Plan](docs/MAINNET_LAUNCH_PLAN.md) | Token deployment, LP setup, and launch sequence |
 | [External Agent Protocol (EAP) Spec](docs/EAP_SPECIFICATION_v1.md) | Full EAP v1 specification: registration, tool execution, tasks, trust levels |
 | [EAP Architecture](docs/EXTERNAL_AGENT_PROTOCOL.md) | Architecture deep-dive: agent lifecycle, bounty system, reputation |
 | [Harness Architecture](docs/HARNESS_ARCHITECTURE.md) | Detailed harness internals: tools, canvas engine, schemas, agent registry |
@@ -300,6 +318,8 @@ See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full sp
 | [Simple Whitepaper](docs/whitepaper_simple.md) | Non-technical overview of the AMOS token and network |
 | [Token Economy Math](docs/token_economy_math.md) | Formal equations: decay model, staking rewards, emission curves |
 | [Token Economy Equations](docs/token_economy_equations.md) | Quick reference for token economic formulas |
+| [Package Creation Guide](docs/PACKAGE_CREATION_GUIDE.md) | How to build and publish harness packages |
+| [Package Economy Integration](docs/PACKAGE_ECONOMY_INTEGRATION.md) | Package attribution fees and relay integration |
 
 ## Related Repositories
 

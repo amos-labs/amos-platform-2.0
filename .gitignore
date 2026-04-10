@@ -40,5 +40,11 @@ keys/
 amos-solana/target/
 amos-solana/node_modules/
 
+# Office documents (source files — PDFs are the published versions)
+*.docx
+*.pptx
+~$*
+.~lock.*
+
 # Internal docs (not for public repo)
 docs/social_media_content.md

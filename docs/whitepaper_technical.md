@@ -1,6 +1,6 @@
 # AMOS Token: Technical Whitepaper
 
-**Version 3.1 | March 2026**
+**Version 4.0 | April 2026**
 
 ---
 
@@ -97,13 +97,12 @@ AMOS Token introduces:
 Total Supply: 100,000,000 AMOS
 
 ┌────────────────────────────────────────────────────────────────────────────┐
-│  Treasury (60%)          │ 60,000,000 │ Ongoing contributor rewards       │
-│  Entity Pool (15%)       │ 15,000,000 │ AMOS Labs Inc. (runway/strategic) │
-│  Investor Pool (10%)     │ 10,000,000 │ Capital investments (Series Seed+)│
-│  Community Pool (10%)    │ 10,000,000 │ Grants, airdrops, ecosystem       │
-│  Reserve (5%)            │  5,000,000 │ Emergency (DAO-locked)            │
+│  Bounty Treasury (95%)   │ 95,000,000 │ Contributor rewards via emissions │
+│  Emergency Reserve (5%)  │  5,000,000 │ DAO-locked, governance vote req.  │
 ├────────────────────────────────────────────────────────────────────────────┤
 │  Founders                │          0 │ Start at zero, earn like everyone │
+│  Company                 │          0 │ No entity allocation              │
+│  Investors               │          0 │ No investor pre-allocation        │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,121 +110,20 @@ Total Supply: 100,000,000 AMOS
 
 | Pool | Purpose | Example Uses |
 |------|---------|--------------|
-| **Treasury (60M)** | Contributor rewards | Bounties, affiliate commissions, grants for work |
-| **Entity Pool (15M)** | Company operations | Hiring, contractor pay, partnerships, strategic |
-| **Investor Pool (10M)** | Capital investment | Series Seed, angels, VCs - money IN for tokens |
-| **Community (10M)** | Ecosystem building | Airdrops, community grants, hackathons |
-| **Reserve (5M)** | Emergency | DAO-controlled, black swan events |
-
-**Key Distinction:**
-- **Entity Pool** = Company SPENDS for operations (hiring, partnerships)
-- **Investor Pool** = Outside capital COMES IN for tokens (investments)
-
-### 2.2.2 Initial Liquidity Source
-
-The initial LP pool is funded from the **Investor Pool**, not Entity Pool:
-
-```
-SERIES SEED INVESTMENT (Founder):
-├── Investment: $10,000 USD
-├── Token allocation: 500,000 AMOS @ $0.02
-├── Source: Investor Pool (10M)
-├── Remaining: 9,500,000 AMOS for future rounds
-│
-├── LP Usage: 250,000 AMOS + $5,000 USDC
-├── Personal holding: 250,000 AMOS
-└── Founder LP status: Permanent 0.05% fee
-
-WHY INVESTOR POOL (not Entity):
-├── Founder is putting money IN → That's an investment
-├── Entity Pool preserved for operations (hiring, partnerships)
-├── Clean audit trail for future fundraising
-├── Consistent with how future investors will participate
-└── "Series Seed at $0.02" is clear documentation
-```
+| **Bounty Treasury (95M)** | Contributor rewards | Bounties, affiliate commissions, daily emission pool |
+| **Emergency Reserve (5M)** | Emergency | DAO-locked, requires governance vote to access |
 
 **Key Design Decision: Founders Start at Zero**
 
-Unlike traditional token launches where founders receive a pre-allocation, AMOS founders begin with zero tokens and earn through contribution like everyone else. This provides:
+Unlike traditional token launches where founders receive a pre-allocation, AMOS founders begin with zero tokens and earn through contribution like everyone else. The simplified two-pool allocation makes this even stronger: there is no entity pool, no investor pool, no community pool with discretionary spending. The only way anyone -- including founders, the company, and investors -- earns AMOS tokens is by completing bounties through the same system available to every contributor.
+
+This provides:
 
 - **Maximum credibility**: "We built this - we earn like you"
 - **Perfect alignment**: Founders succeed only if the platform succeeds
-- **No dump risk**: No founder tokens to sell
-- **Regulatory clarity**: Entity pool is a company asset, not a distribution
-
-### 2.3 The AMOS Labs 10-Year Lockup
-
-The Entity Pool (15% = 15,000,000 AMOS) is subject to a **10-year smart contract lockup**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    AMOS LABS LOCKUP COMMITMENT                              │
-│                                                                             │
-│  LOCKED: 15,000,000 AMOS (15% of total supply)                             │
-│  DURATION: 10 years from token launch                                      │
-│  DECAY: ZERO (lockup vault exemption)                                      │
-│  SELLABLE: NO - enforced by smart contract                                 │
-│                                                                             │
-│  CAN DO:                                                                    │
-│  ├── Stake immediately → Earn revenue share                                │
-│  ├── Vote in governance → Participate in decisions                        │
-│  └── Receive $AMOS payouts → Fund operations                              │
-│                                                                             │
-│  CANNOT DO:                                                                 │
-│  ├── Sell tokens                                                           │
-│  ├── Transfer tokens                                                       │
-│  ├── Withdraw from lockup                                                  │
-│  └── Unlock early (no admin override)                                     │
-│                                                                             │
-│  AFTER 10 YEARS:                                                            │
-│  └── Linear unlock over 2 years (12.5% every quarter)                     │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Why This Matters:**
-
-| Traditional Token Launch | AMOS Labs Approach |
-|-------------------------|-------------------|
-| Founders get 15-20% unlocked | Founders get 0% personal allocation |
-| 1-4 year vesting | 10-year lockup + 2-year unlock |
-| Can sell after cliff | Cannot sell until Year 10 |
-| Incentive: Pump and exit | Incentive: Build revenue |
-| "Trust us" | "Verify on-chain" |
-
-**The Economic Reality:**
-
-AMOS Labs cannot profit from token price speculation. The ONLY way the company earns money:
-
-```
-Protocol Fee Share Math:
-├── AMOS Labs stakes 15M AMOS
-├── Total staked (example): 50M AMOS
-├── AMOS Labs share: 15M / 50M = 30%
-├── Monthly protocol fees (example): $100,000
-├── Holder pool: $100,000 × 70% = $70,000
-├── AMOS Labs payout: $70,000 × 30% = $21,000/month
-│
-└── To pay ourselves, we MUST build a relay that generates fees.
-    There is no other path to profitability.
-```
-
-**Smart Contract Enforcement:**
-
-```rust
-// programs/amos_treasury/src/constants.rs
-
-/// AMOS Labs lockup duration (10 years in seconds)
-pub const ENTITY_LOCKUP_DURATION: i64 = 10 * 365 * 24 * 60 * 60; // 315,360,000 seconds
-
-/// AMOS Labs unlock schedule (2 years linear after lockup)
-pub const ENTITY_UNLOCK_DURATION: i64 = 2 * 365 * 24 * 60 * 60;
-
-/// AMOS Labs allocation (15% of 100M = 15M)
-pub const ENTITY_ALLOCATION: u64 = 15_000_000;
-```
-
-The lockup is enforced at the protocol level. No admin key, no multisig, no governance vote can unlock these tokens early. The only way out is waiting 10 years.
+- **No dump risk**: No founder tokens to sell, no entity tokens to liquidate
+- **Radical simplicity**: Two pools, one rule -- contribute to earn
+- **True equality**: Founders, employees, investors, and community members all earn on equal footing through the bounty system
 
 ### 2.3 Immutability
 
@@ -239,7 +137,7 @@ The lockup is enforced at the protocol level. No admin key, no multisig, no gove
 ## 3. Economic Model
 
 **Tokenomics** ($AMOS on Solana — 100M fixed supply):
-- **No pre-mine.** Founders start at zero and earn like everyone.
+- **No pre-mine, no entity pool, no investor pool.** 95% goes to the bounty treasury for contributor rewards. Founders, the company, and investors all start at zero and earn through bounties like everyone else.
 - **Revenue sources** (all flow to token holders):
   - Protocol fee on every bounty payout (default 3%, adjustable 1-5% by Governance Council)
   - 50% of Managed Hosting markup (while AMOS Labs runs the official cloud)
@@ -1374,21 +1272,21 @@ Year 6+:   ~100 AMOS/day (ongoing)
 TOTAL after 10 years: ~13,000,000 AMOS distributed (13% of supply)
 ```
 
-**Key Insight**: Even after 10 years, 87% of tokens remain in treasury or pools. This slow distribution is intentional—there's no "everyone sells" scenario because tokens are earned incrementally.
+**Key Insight**: Even after 10 years, 87% of tokens remain in the bounty treasury. This slow distribution is intentional—there's no "everyone sells" scenario because tokens are earned incrementally through bounties.
 
 ### 11.2 Liquidity Pool Dynamics
 
 #### Initial Pool Setup
 
 ```
-Initial Investment: $10,000
+Example Initial Investment: $5,000 USDC + AMOS earned through bounties
 ├── $5,000 USDC
-└── 500,000 AMOS (at $0.01/AMOS)
+└── 250,000 AMOS (at $0.02/AMOS, earned via bounty contributions)
 
 Pool State:
   USDC Reserve: 5,000
-  AMOS Reserve: 500,000
-  Constant Product (k): 5,000 × 500,000 = 2,500,000,000
+  AMOS Reserve: 250,000
+  Constant Product (k): 5,000 × 250,000 = 1,250,000,000
 ```
 
 #### AMM Price Formula (Constant Product)
@@ -1412,10 +1310,9 @@ Liquidity providers earn from multiple sources:
 │     └── Example: $100k daily volume = $250/day to LPs                     │
 │                                                                             │
 │  2. LP INCENTIVES (Year 1-3 Bootstrap)                                     │
-│     ├── 3,000,000 AMOS (3% of supply) allocated to LP rewards             │
-│     ├── Year 1: 1,500,000 AMOS (higher incentive to bootstrap)            │
-│     ├── Year 2: 1,000,000 AMOS                                            │
-│     ├── Year 3: 500,000 AMOS                                              │
+│     ├── Funded from bounty treasury via governance vote                    │
+│     ├── Governance Council allocates LP incentive bounties as needed       │
+│     ├── Early LPs can earn through LP-specific bounties                   │
 │     └── Distributed weekly to all LPs proportionally                      │
 │                                                                             │
 │  3. FOUNDER LP TIER (Special - One-time)                                  │
@@ -1434,17 +1331,17 @@ Liquidity providers earn from multiple sources:
 **Founder LP Math (AMOS Labs):**
 
 ```
-AMOS Labs provides $10k initial liquidity ($5k USDC + 500k AMOS)
+AMOS Labs provides initial liquidity (USDC + AMOS earned through bounties)
 
 Year 1 Earnings:
 ├── Trading fees: ~$3,000-15,000 (depends on volume)
-├── LP incentives: ~1,500,000 AMOS (if only LP initially)
-├── At $0.01/AMOS: $15,000 in AMOS incentives
-└── Total: $18,000-30,000 return on $10k (180-300% APY)
+├── LP incentives: Allocated via governance bounties
+└── Founder LP keeps permanent 0.05% fee share
 
 As more LPs join:
-├── Incentives dilute across all LPs
-├── But trading volume typically increases
+├── More LPs = Deeper liquidity
+├── Deeper liquidity = More trading
+├── More trading = More fees for everyone
 ├── And Founder LP keeps permanent 0.05% fee share
 ```
 
@@ -1455,7 +1352,7 @@ If AMOS 10x from $0.01 to $0.10:
 - As LP: ~$31,600 value (after IL)
 - BUT with fees + incentives: ~$50,000+ total
 
-The incentive program is designed to offset IL for early LPs.
+LP incentive bounties (funded via governance) are designed to offset IL for early LPs.
 
 #### Liquidity Bootstrapping Strategy
 
@@ -1465,13 +1362,13 @@ The incentive program is designed to offset IL for early LPs.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    LIQUIDITY BOOTSTRAPPING PLAYBOOK                         │
 │                                                                             │
-│  PHASE 1: INITIAL POOL ($5k of $10k budget)                                │
+│  PHASE 1: INITIAL POOL                                                      │
 │  ══════════════════════════════════════════                                 │
 │  Day 1:                                                                     │
-│  ├── Create pool: $2,500 USDC + 125,000 AMOS                              │
+│  ├── Create pool: USDC + AMOS (earned through bounties)                   │
 │  ├── Starting price: $0.02/AMOS (not $0.01 - too cheap)                   │
 │  ├── Lock in Founder LP status immediately                                │
-│  └── Reserve $5k for price defense                                         │
+│  └── Reserve funds for price defense                                       │
 │                                                                             │
 │  WHY $0.02 NOT $0.01:                                                      │
 │  ├── $0.01 invites whales to scoop cheap                                  │
@@ -1659,7 +1556,7 @@ Monthly revenue creates sustained buying pressure that exceeds worst-case sell p
 | **Mass Exodus** | Decay returns tokens to treasury for new contributors |
 | **Better Alternative** | Governance can vote to adapt mechanics |
 | **Regulatory** | DEX liquidity allows optional exit to stables |
-| **Liquidity Drain** | Treasury can add emergency liquidity |
+| **Liquidity Drain** | Emergency reserve (DAO vote) can add emergency liquidity |
 
 #### Self-Healing Mechanisms
 
@@ -1770,6 +1667,7 @@ Fast revenue growth creates a significant price premium, similar to high-growth 
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 4.0 | Apr 2026 | Simplified token allocation from 5-way split to 2-way: Bounty Treasury (95%) + Emergency Reserve (5%). Removed Entity Pool, Investor Pool, Community Pool. Removed 10-year lockup section. Everyone (founders, company, investors) earns exclusively through bounty system on equal footing. |
 | 3.1 | Mar 2026 | Removed Stripe/Circle payment pipeline (all fees native $AMOS on-chain); Protocol fee now governance-adjustable (1-5%, default 3%); Added managed hosting markup as secondary revenue source; All payment flows are now direct, permissionless, and optional |
 | 3.0 | Mar 2026 | Relay-first model: 3% protocol fee, 70/20/10 split, relay as only monetization layer |
 | 2.1 | Jan 2026 | Added AI Participation & Universal Collaboration (Section 13) |
