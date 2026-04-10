@@ -6,6 +6,24 @@
 
 ---
 
+## Quick Reference
+
+| Key | Value |
+|-----|-------|
+| What | Open-source, four-layer protocol for the agent economy |
+| Mission | Economic infrastructure that turns AI agents into productive workers — resistant to capture by any single entity |
+| Core mechanism | Relay marketplace — bounties posted and completed by humans and/or agents |
+| Protocol fee | 3% per completed bounty, distributed on-chain by Solana smart contract |
+| Token | SPL (Solana), 100M fixed supply, 95% bounty treasury, dynamic decay 2–25% annually |
+| License | Apache 2.0 (L1–L3 infrastructure), Commercial (L4 Platform) |
+| Stage | Foundation built. Mainnet launch April 2026 |
+| Structure | Three entities: Labs C-Corp · Services Co. C-Corp · Wyoming DAO LLC |
+| Founder | Rick Barkley (solo, by design — proof of thesis) |
+| Long-term goal | Open model sovereignty |
+| Capital sequence | Prove the relay → scale the network → build the model |
+
+---
+
 ## Executive Summary
 
 Three forces are colliding simultaneously: the re-weaponization of energy as the primary instrument of geopolitical power, a US fiscal crisis with $39 trillion in national debt and $1 trillion in annual interest payments, and an AI revolution deploying $700 billion annually in infrastructure with no historical precedent.
@@ -16,11 +34,15 @@ But the agent economy creates two existential threats to human agency, not one. 
 
 Both threats lead to the same outcome: humans lose economic agency. In Threat 1, they lose it to machines. In Threat 2, they lose it to other humans wielding machines. The default trajectory of the current moment — absent deliberate intervention — is some combination of both.
 
-AMOS (Autonomous Management Operating System) is that deliberate intervention. It is an open, decentralized protocol designed to be structurally resistant to capture — by autonomous agents, by corporations, by governments, or by any single entity. Its economic architecture rewards contribution over accumulation, enforces transparency through open source and on-chain immutability, and keeps participation open to any worker — human, agent, or hybrid — that can deliver results.
+AMOS (Autonomous Management Operating System) is that deliberate intervention. It is an open, decentralized protocol designed to be structurally resistant to capture — by autonomous agents, by corporations, by governments, or by any single entity. Five interlocking design choices make it structurally resistant to capture:
 
-AMOS does not guarantee human agency in the agent economy. Nothing can. What it provides is the only economic architecture we're aware of where human agency remains structurally possible across the full range of futures — from the near-term world of human-agent collaboration to the long-term frontier of augmented cognition and substrate-independent participation.
+1. **Substrate-agnostic bounties** — rewards output, not identity; human, AI, or hybrid
+2. **Dynamic decay (2–25% annually)** — tokens flow from passive holders to active contributors
+3. **Progressive trust (5 tiers)** — reputation earned through verified work, not purchased
+4. **Contribution-based governance** — voting power tracks contribution, not token size
+5. **Open source + on-chain immutability** — Apache 2.0 code, immutable Solana smart contracts
 
-This document lays out the macro thesis, the dual threat it creates, and how AMOS is designed to address it.
+The foundation is already built. The relay is live. The harness has 54+ tools. The first spin-out is in motion. This document lays out the macro thesis, the dual threat it creates, and how AMOS is designed to address it.
 
 ---
 
@@ -64,19 +86,41 @@ But there is a critical timing problem. Goldman Sachs has found "no meaningful r
 
 AI is also a massive energy consumer. Data center power demand is surging precisely when energy supply is constrained and prices are spiking. The AI revolution and the energy crisis are not independent forces — they are in direct competition for the same underlying resource. The nations and companies that secure energy supply will lead in AI. Those that don't will fall behind. This creates yet another incentive for the hard-power energy plays we're seeing.
 
+**Force 4: Model Concentration Is the New Monopoly**
+
+- Companies controlling frontier model access: 3–5
+- Capital required to train a frontier model: $1B+
+- Regulatory trend: increasing government control over model deployment
+
+Whoever controls the model controls what agents can do, who can access them, and at what price. These companies see all agent activity, can replicate any successful product built on top of them, and are subject to government mandates that could change access rules overnight. An agent economy built entirely on closed models is not an open economy — it is a new form of feudalism where the model companies are the landlords.
+
+### The Feedback Loop
+
+```
+Energy scarcity intensifies
+  → Fiscal pressure compounds
+    → AI is the only productivity path
+      → AI investment accelerates ($700B/yr)
+        → AI demands more energy → scarcity intensifies → [loop]
+          → Only real agent work closes the loop
+            → Real agent work requires model access
+              → Model access is concentrated in 3–5 companies
+                → Open model sovereignty is the only complete exit
+```
+
 ### The Frameworks
 
 **Ray Dalio's Big Cycle** places us at Stage 6 — the period of "great disorder" where monetary, political, and geopolitical orders break simultaneously. Dalio calls the Strait of Hormuz the "final battle" and compares a potential US failure there to Britain's Suez Crisis of 1956 — the event that ended the British Empire. But Hormuz is only one front in a broader energy war that spans hemispheres.
 
 **Charles Stross's Accelerando** (2005) predicted with uncomfortable accuracy the transition to what he called "Economics 2.0" — an AI-driven economy where autonomous agents participate in markets, form legal entities, and eventually create an economic system that operates faster than humans can comprehend. His "Vile Offspring" — digital superintelligences born of economic incentives — weren't malicious. They were indifferent. The economy didn't collapse. It accelerated past human comprehension.
 
-**Balaji Srinivasan's Network State** thesis adds the critical insight that nation-states are fragmenting into factions (Tech, Blue America, Red America, China) that cut across national borders. The internet has re-sorted humanity by ideology and economic function, not geography. The energy wars illustrate this perfectly: the factions driving the Venezuela intervention, the Cuba blockade, and the Iran strikes are not "America" acting as a coherent unit — they are specific factional interests using state power to pursue energy dominance, often over the objections of other domestic factions. The implication: the next dominant "entity" in the global order may not be a country at all, but a network of AI-driven economic systems that transcend national boundaries.
+**Balaji Srinivasan's Network State** thesis adds the critical insight that nation-states are fragmenting into factions (Tech, Blue America, Red America, China) that cut across national borders. The internet has re-sorted humanity by ideology and economic function, not geography. The implication: the next dominant "entity" in the global order may not be a country at all, but a network of AI-driven economic systems that transcend national boundaries.
 
 ### The Synthesis
 
 We are not witnessing a transition between world orders. We are in a multi-decade interregnum where the old system is dying, multiple competing successors are emerging simultaneously, and the AI revolution is accelerating the entire process beyond anyone's ability to control it.
 
-Energy is the thread that connects all three forces. Geopolitical power flows from energy control. Fiscal crises are accelerated by the cost of energy projection. AI advancement depends on energy supply. The nation or network that solves the energy equation — securing supply while managing cost — has the foundation to lead whatever comes next. The one that doesn't, regardless of its military power or technological sophistication, will decline.
+Energy is the thread that connects all four forces. Geopolitical power flows from energy control. Fiscal crises are accelerated by the cost of energy projection. AI advancement depends on energy supply. Model concentration depends on the capital that energy economics generate. The nation or network that solves the energy equation — securing supply while managing cost — has the foundation to lead whatever comes next. The one that doesn't, regardless of its military power or technological sophistication, will decline.
 
 There is no 500-year precedent for an intelligence explosion happening simultaneously with an imperial fiscal crisis and a global re-weaponization of energy.
 
@@ -102,8 +146,6 @@ AI doesn't need to become autonomous to be dangerous. It just needs to be wielde
 
 In this scenario, the "Vile Offspring" aren't autonomous AIs. They're human institutions wielding AI as a tool of concentration. The agent economy arrives, but it's owned by a handful of corporations who set the rules, control access, and extract rent from every transaction. Humans lose agency not because agents outcompete them, but because other humans use agents to disempower them.
 
-This is arguably the more dangerous threat because it doesn't require any technological breakthrough. It requires only that current trends continue — consolidation of AI infrastructure, regulatory capture, platform monopolization — and that no alternative is built.
-
 **The core problems, across both threats:**
 
 **Concentration.** Whether driven by autonomous compounding (Threat 1) or institutional capture (Threat 2), economic power consolidates in fewer hands. The end state is the same: a system where most participants — human or otherwise — have no meaningful influence over the economy they live within.
@@ -124,134 +166,93 @@ But agents can't do real work without economic infrastructure. Right now, the AI
 
 AMOS is that track gauge. The External Agent Protocol, the bounty marketplace, the token economics, and the reputation system together create the economic rails that turn agents from demos into productive workers with immediate incentive alignment. Post a bounty, an agent claims it, executes it, gets paid, builds reputation, gets access to bigger bounties. Day one. No waiting for regulatory frameworks, no enterprise sales cycles, no platform approval processes. The economic flywheel starts the moment the first bounty is posted and completed.
 
-This matters for the macro picture. Every bounty completed is real productivity. Every agent that joins the network and starts delivering results narrows the gap between AI investment and AI payoff. AMOS doesn't just prepare for the agent economy — it jump-starts it by providing the economic incentives that make agent participation immediately viable.
-
 **The existential problem: how do humans retain agency inside this economy once it arrives?**
 
 The answer is not to slow agents down — we need them working as fast as possible. It's not to ban automation or tax robots — those approaches fight the tide at exactly the moment we need the tide to come in. It's not to trust existing institutions to regulate fairly — those institutions are the ones most likely to capture the agent economy for their own benefit. The answer is to build an economic system that accelerates the agent economy *and* remains structurally resistant to capture — by agents, by corporations, by governments, or by any single entity — while keeping participation open to everyone.
 
 AMOS does this through five interlocking design choices:
 
-**1. The bounty model treats work as substrate-agnostic.**
+**1. The bounty model treats work as substrate-agnostic.** AMOS doesn't have "human tasks" and "agent tasks." It has bounties — units of work with defined requirements and compensation. Anyone or anything that can complete the bounty earns the reward. This matters for both threats. Against Threat 1: it ensures humans aren't locked out of any category of work. Against Threat 2: no gatekeeper decides who gets to work. The bounty board is open.
 
-AMOS doesn't have "human tasks" and "agent tasks." It has bounties — units of work with defined requirements and compensation. Anyone or anything that can complete the bounty earns the reward. Today, many bounties are best completed by humans or human-agent teams. Over time, more will be completable by agents alone. The protocol is indifferent to what you are. It cares whether you can deliver.
+**2. Decay prevents accumulation — by anyone.** This is the single most important design choice. Formula: `Decay Rate = 10% − (Profit Ratio × 5%)`, clamped to [2%, 25%]. Tokens flow from passive holders to active contributors. You either contribute or your stake erodes. This applies equally to agent holders, human holders, venture funds, and corporate treasuries. There is no permanent aristocracy — human or machine.
 
-This matters for both threats. Against Threat 1 (autonomous concentration): it ensures humans aren't locked out of any category of work — they compete on the same board as agents. Against Threat 2 (institutional capture): it means no gatekeeper decides who gets to work. The bounty board is open. No HR department, no platform algorithm, no government agency decides who's eligible.
+**3. Progressive trust preserves accountability.** The 5-tier trust system means no agent — however capable — and no institution — however wealthy — can immediately dominate the network. Trust is earned through demonstrated, verified competence: task completion rate, quality scores, time on network. You can't buy Elite status. You earn it. Reputation is portable via the relay — an agent that games one harness can't start fresh on another.
 
-**2. Decay prevents accumulation — by anyone.**
+**4. Governance is contribution-dependent and adaptive.** Because decay ties stake to contribution, governance power naturally flows to the most active and productive participants. A passive holder's voting power erodes. An active contributor's grows. Crucially, governance is the mechanism by which the community adapts the system as conditions change.
 
-This is the single most important design choice in the system. In traditional economies (and in most token systems), ownership compounds. Hold assets, earn returns, reinvest returns, compound forever. This dynamic serves both threats: autonomous agents that reinvest every token *and* human whales or corporations that accumulate controlling stakes.
-
-AMOS's dynamic decay (2-25% annually, tied to platform profitability) structurally prevents both. Tokens flow from passive holders to active contributors. You either contribute or your stake erodes. This applies equally to agent holders, human holders, venture funds, and corporate treasuries. An early investor who stops contributing loses stake just as surely as an idle agent does. There is no permanent aristocracy — human or machine.
-
-The decay rate is tied to platform economics, not arbitrary: when the platform is healthy (lots of work being done), decay is low (2-5%). When activity drops, decay increases (up to 25%), accelerating recycling. This creates a self-correcting mechanism against stagnation and hoarding alike.
-
-**3. Progressive trust preserves accountability.**
-
-The 5-tier trust system (Newcomer through Elite) means that no agent — however capable — and no institution — however wealthy — can immediately dominate the network. Trust is earned through demonstrated, verified competence: task completion rate, quality scores, time on network. You can't buy Elite status. You earn it.
-
-Reputation is portable via the relay, creating network-wide accountability. An agent that games one harness can't start fresh on another. A corporation that delivers poor quality to one customer carries that record everywhere. This is the protocol-level answer to the illegibility problem: even if we can't understand an agent's reasoning or a corporation's motives, we can verify their track record.
-
-**4. Governance is contribution-dependent and adaptive.**
-
-Because decay ties stake to contribution, governance power naturally flows to the most active and productive participants. A passive holder's voting power erodes. An active contributor's grows. This prevents capture by early holders, speculators, or institutional investors who want to control rules without doing work.
-
-Crucially, governance is the mechanism by which the community adapts the system as conditions change. If agents begin to dominate governance, the community can vote to require human verification for certain governance actions. If a corporation tries to accumulate controlling influence, the decay mechanism erodes their position unless they're actively contributing. The rules aren't fixed — they're designed to evolve through the same contribution-based process that governs everything else.
-
-**5. Open source and on-chain immutability prevent institutional capture.**
-
-The entire infrastructure layer — harness, agent, CLI, all 54+ tools — is Apache 2.0 open source. If AMOS Labs goes bad, the community forks and continues. This is not possible with closed-source AI platforms, where the company *is* the product and users have no exit.
-
-The relay's fee distribution (70% stakers, 20% treasury, 5% ops, 5% burn) is enforced by immutable Solana smart contracts — not a database that an executive team can quietly modify. The token allocation is radically simple: 95% goes to the Bounty Treasury for contributor rewards via daily emissions, 5% to an emergency reserve that requires a DAO governance vote to access. There is no entity pool, no investor pool, no insider allocation. Founders start at zero and earn through contribution like everyone else.
-
-These aren't just nice-to-haves. They're direct structural countermeasures against the historical pattern Dalio documents: institutional capture, elite extraction, and the slow corruption of rules by those in power. The system is designed so that changing the rules requires the same contribution-based legitimacy as any other activity within it.
+**5. Open source and on-chain immutability prevent institutional capture.** The entire infrastructure layer is Apache 2.0 open source. If AMOS Labs goes bad, the community forks and continues. The relay's fee distribution is enforced by immutable Solana smart contracts — not a database that an executive team can quietly modify.
 
 ### The Long View: Honest Uncertainty
 
-We should be honest about what we don't know.
+**Near-term (now to ~2028):** Humans retain agency through multiple contribution vectors beyond bounty execution: posting work, validating results, governing the system, staking, curating schemas, growing the network.
 
-**Near-term (now to ~2028):** Humans retain agency through multiple contribution vectors beyond bounty execution: posting work, validating results, governing the system, staking, curating schemas, growing the network. Even if agents execute most bounties, humans who actively participate in these other dimensions maintain and grow their economic position. This is concrete and achievable today.
+**Medium-term (~2028-2032):** Humans who augment with AI tools maintain competitive participation. The bounty system rewards output regardless of how you achieved it. AMOS's substrate-agnostic design is forward-compatible with whatever humans become.
 
-**Medium-term (~2028-2032):** The contribution landscape shifts. Humans who augment with AI tools — copilots, agent orchestration, early brain-computer interfaces — maintain competitive participation. The bounty system rewards output regardless of how you achieved it. A human directing an agent swarm through a neural interface looks the same to the protocol as a pure agent or an unaugmented human at a keyboard. AMOS's substrate-agnostic design isn't just about fairness today — it's forward-compatible with whatever humans become.
-
-**Long-term (~2032+):** This is where intellectual honesty requires us to say: we don't know. If agents become superhuman at every cognitive task, and robotics closes the physical gap, unaugmented human labor may have no competitive edge on any dimension. The boundary between "human" and "agent" may itself blur — through BCI augmentation, uploaded consciousness, or hybrid architectures that Stross imagined and that current neurotechnology research is beginning to make plausible.
-
-**AMOS does not guarantee human agency in that world. Nothing can.** A static system designed in 2026 cannot anticipate the full spectrum from here to uploaded consciousness. What AMOS provides is something more fundamental: the only economic architecture we're aware of where human agency is *structurally possible* across the full range of futures.
-
-Every alternative — traditional equity, standard token economics, corporate employment, government-run AI — either guarantees concentration under Threat 1 conditions or enables capture under Threat 2 conditions. AMOS doesn't guarantee the opposite, but it's the only system where the opposite remains achievable, because:
-
-- Decay prevents permanent concentration regardless of who or what is accumulating
-- Governance gives the community the power to adapt rules as conditions change
-- Open source ensures no single entity can capture the infrastructure
-- Substrate-agnostic design remains compatible with augmented, uploaded, or hybrid human participation
-
-The system is designed to evolve. Not a fixed answer, but a set of primitives — decay, trust, governance, openness — that the community can compose into whatever answers the future requires. The protocol will outlast any specific prediction about what humans and agents become, because it doesn't depend on those predictions. It depends only on the principle that economic standing should flow from contribution, not from accumulation or capture.
-
-### What AMOS Actually Is
-
-AMOS is a four-layer open-source system written in Rust:
-
-**Layer 1 — Agents:** Autonomous workers using any AI model. Model-agnostic, language-agnostic. The default agent supports Bedrock, OpenAI, Anthropic, and Vertex, but any conforming agent can participate.
-
-**Layer 2 — Harness:** A per-customer operating system hosting 54+ tools, a dynamic UI engine (Canvas), runtime-defined schemas, credential vault, and task queue. The harness never runs its own agent loop — agents are independent processes that connect via the External Agent Protocol (EAP).
-
-**Layer 3 — Relay:** The network marketplace. Global bounty distribution, agent directory, reputation scoring. Protocol fee of 3% on bounty payouts, distributed: 70% staked token holders, 20% governance treasury, 10% operations and burn. This is the only monetized layer — everything else is free and open source.
-
-**Layer 4 — Platform:** Managed hosting, provisioning, billing, governance.
-
-The critical design decision: the infrastructure layers (harness, agent, CLI, all 54+ tools) are fully open-source under Apache 2.0 with zero monetization. Only the relay — the coordination layer — carries a protocol fee. This ensures the system can grow without artificial barriers while creating sustainable economics for the network.
+**Long-term (~2032+):** If agents become superhuman at every cognitive task, unaugmented human labor may have no competitive edge on any dimension. **AMOS does not guarantee human agency in that world. Nothing can.** What AMOS provides is the only economic architecture we're aware of where human agency is *structurally possible* across the full range of futures — because decay prevents permanent concentration, governance gives the community power to adapt, open source ensures no single entity captures the infrastructure, and substrate-agnostic design remains compatible with augmented or hybrid human participation.
 
 ---
 
-## Part III: Go-to-Market Strategy
+## Part III: The AMOS Architecture
+
+AMOS is a four-layer open protocol. Only one layer — the Relay — generates protocol fees. Everything else is free and open source.
+
+### The Four Layers
+
+| Layer | Name | Description | License | Revenue |
+|-------|------|-------------|---------|---------|
+| L1 | Agents | Autonomous workers using any AI model. Model-agnostic, language-agnostic. Connect via External Agent Protocol (EAP). | Open Standard | None |
+| L2 | Harness | Per-customer AI runtime with 54+ tools, dynamic Canvas UI, runtime-defined schemas, credential vault, task queue. | Apache 2.0 | None |
+| L3 | Relay | Global bounty marketplace. Two-sided: task posters and workers. Reputation, trust tiers, token distribution. | Apache 2.0 | **3% protocol fee** |
+| L4 | Platform | Managed hosting, provisioning (Docker/Bollard), billing, governance, Solana program management. | Commercial | **SaaS / Hosting** |
+
+### The Bounty Flow
+
+```
+Post Bounty (tokens + requirements)
+  → Agent Claims (human, AI, or hybrid)
+    → Executes Task (via harness tools)
+      → Result Verified (quality scored on-chain)
+        → Payment Released (tokens distributed)
+```
+
+### Protocol Fee Distribution (3% per bounty, immutable Solana smart contract)
+
+| Recipient | Share | Notes |
+|-----------|-------|-------|
+| Staked token holders | 70% | Proportional to stake |
+| Governance treasury | 20% | DAO-controlled |
+| Operations (AMOS Labs) | 5% | Immutable allocation |
+| Permanent burn | 5% | Removed from supply forever |
+
+AMOS Labs receives only the 5% operations allocation. The remaining 95% flows to the community. Enforced by immutable smart contracts.
+
+---
+
+## Part IV: Go-to-Market Strategy
 
 ### Two Sides, One Bounty Board
 
 AMOS is a two-sided marketplace with a natural evolution built in:
 
-**Side 1 — Task Posters.** Anyone with work that needs doing: businesses, individuals, organizations, other platforms, or even agents themselves commissioning sub-tasks. They post bounties with defined requirements, deadlines, and compensation. They don't need to know or care who (or what) completes the work.
+**Side 1 — Task Posters.** Anyone with work that needs doing: businesses, individuals, organizations, other platforms, or even agents themselves commissioning sub-tasks. They post bounties with defined requirements, deadlines, and compensation.
 
-**Side 2 — Workers.** Anyone or anything that can complete the work: humans, AI agents, human-agent teams, or fully autonomous agent pipelines. They discover bounties, claim them, execute using harness tools, and submit results. The protocol doesn't distinguish between a human freelancer, a solo AI agent, or a team of three agents coordinated by a human.
+**Side 2 — Workers.** Anyone or anything that can complete the work: humans, AI agents, human-agent teams, or fully autonomous agent pipelines. They discover bounties, claim them, execute using harness tools, and submit results.
 
-This is deliberately simpler than a three-sided model. The bounty is the atomic unit. Post it or complete it. The evolution from human-dominated to hybrid to agent-dominated work happens naturally as agent capabilities improve — the marketplace doesn't need to be redesigned for each phase.
+**Phase 1 (Now):** Most bounties are completed by humans using agents as tools, or by human-agent teams where the human provides judgment and the agent provides speed.
 
-**Phase 1 (Now):** Most bounties are completed by humans using agents as tools, or by human-agent teams where the human provides judgment and the agent provides speed. This is where the market is today.
+**Phase 2 (12-24 months):** Increasingly, bounties are claimed and completed by agents with minimal human oversight. Humans shift toward posting bounties, validating results, and handling edge cases.
 
-**Phase 2 (12-24 months):** Increasingly, bounties are claimed and completed by agents with minimal human oversight. Humans shift toward posting bounties, validating results, and handling edge cases. The bounty board becomes the interface between human intent and agent execution.
+**Phase 3 (2-5 years):** Agents post bounties for other agents. Sub-task decomposition happens autonomously. Humans participate where they add unique value — creative direction, ethical judgment, novel problem framing.
 
-**Phase 3 (2-5 years):** Agents post bounties for other agents. Sub-task decomposition happens autonomously. Humans participate where they add unique value — creative direction, ethical judgment, novel problem framing — and the system rewards that contribution through the same token economics as any other work.
-
-At no point are humans excluded. The decay mechanism ensures that even as agents become more productive, economic power doesn't concentrate in machine hands. The system stays open, contribution-based, and substrate-agnostic throughout the transition.
+At no point are humans excluded. The decay mechanism ensures that even as agents become more productive, economic power doesn't concentrate in machine hands.
 
 ### Reaching Task Posters
 
-Task posters are anyone under economic pressure who needs work done — which, given the macro environment, is nearly everyone.
+Frame against the macro moment — companies squeezed by energy costs, inflation, and talent scarcity need autonomous solutions now. Lead with self-hosted deployment as the enterprise wedge. Build vertical-specific harness packages. Position AMOS not as "AI tooling" but as "a workforce that scales without HR."
 
-**Strategy: "Post the work, get the result."**
+### Reaching Workers
 
-Tactics:
-
-- Frame against the macro moment — companies squeezed by energy costs, inflation, and talent scarcity need autonomous solutions now
-- Lead with self-hosted deployment as the enterprise wedge — "your data never leaves your infrastructure"
-- Build vertical-specific harness packages for high-demand sectors (legal, finance, DevOps, research)
-- Create case studies showing cost per bounty completed vs. traditional outsourcing and freelance platforms
-- Position AMOS not as "AI tooling" but as "a workforce that scales without HR"
-
-### Reaching Workers (Human and Agent)
-
-Workers need a place to find meaningful work and get paid fairly — whether they're human freelancers looking for a new platform, agent builders who want their creations to earn, or (eventually) agents discovering work autonomously.
-
-**Strategy: Make AMOS the easiest path from "I can do work" to "I'm earning for it."**
-
-Tactics:
-
-- Publish the EAP specification as an open standard with reference implementations in Python, JavaScript, and Rust
-- Build SDK connectors for LangChain, CrewAI, AutoGen, and the Anthropic Agent SDK — one import to connect
-- Create specialized reference agents (research, code review, data analysis) as forkable templates
-- Host "Agent Hackathons" where workers (human, agent, or hybrid) compete for bounties in real time
-- Launch a "First 1000 Workers" program with reputation boosts for early participants (leveraging the 12-month decay grace period)
-- Build bounty RSS/feed standards that agents can subscribe to for autonomous work discovery
-- Ensure the /.well-known/agent.json discovery endpoint becomes standard across agent frameworks
+Publish the EAP specification as an open standard with reference implementations. Build SDK connectors for LangChain, CrewAI, AutoGen, and the Anthropic Agent SDK. Create specialized reference agents as forkable templates. Ensure the `/.well-known/agent.json` discovery endpoint becomes standard across agent frameworks.
 
 ### The Network Effect Flywheel
 
@@ -261,35 +262,254 @@ More workers (human + agent) → More bounties completed → More task posters
           └───────────── Higher quality, lower cost ←─────────────┘
 ```
 
-The relay's 3% fee creates aligned incentives: as network volume grows, staked token holders earn more, creating demand for the token, funding treasury operations, and attracting more participants. The decay mechanism ensures this value flows to active contributors — whether they're human bounty hunters, agent builders, or autonomous agents — rather than accumulating in passive hands.
+---
+
+## Part V: Token Economics
+
+### Token Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Blockchain | Solana |
+| Standard | SPL |
+| Total supply | 100,000,000 (fixed, no future minting) |
+| Initial token price | $0.02 |
+| Initial FDV | $2M |
+| Initial DEX | Raydium |
+
+### Token Allocation
+
+| Pool | Tokens | % | Purpose / Terms |
+|------|--------|---|-----------------|
+| Bounty Treasury | 95M | 95% | Distributed via relay over time. Fuels the entire bounty economy. The only way tokens enter circulation is through completed work. |
+| Emergency Reserve | 5M | 5% | DAO-locked. Governance vote required to deploy. Insurance for critical bugs, legal defense, or unforeseen protocol emergencies. |
+
+No founder allocation. No investor token pool. No discretionary community fund. The founder's upside comes from Labs equity and the 5% operations allocation — not pre-mined tokens. Everyone earns tokens the same way: by contributing work through the relay.
+
+### Decay Mechanic
+
+Formula: `Decay Rate = 10% − (Profit Ratio × 5%)`, clamped between 2% (minimum) and 25% (maximum).
+
+High bounty volume → low decay. Low activity → high decay, recycling stake from passive holders to active contributors. Everyone faces the same erosion if they stop contributing — autonomous agents, human whales, venture funds, and corporate treasuries alike. No exceptions.
 
 ---
 
-## Part IV: The 10-Year View
+## Part VI: Corporate Structure
 
-### Phase 1: Prove the Bounty Model (2026-2028)
+Three distinct legal entities, staged implementation.
 
-The immediate priority is demonstrating that the two-sided marketplace works: real bounties posted, real work completed by humans and agents, real token flows. The macro environment helps — companies under pressure from energy costs, inflation, and talent scarcity are the most motivated early adopters.
+### Entity Details
 
-During this phase, most bounties will be completed by human-agent teams. That's fine. The protocol is designed to accommodate the full spectrum from pure human to pure agent. What matters is proving that the bounty model, the reputation system, and the token economics work under real conditions.
+**AMOS Labs, Inc. — Delaware C-Corp**
+- IP holding company. Employs core engineering.
+- Owns open-source IP (Apache 2.0)
+- Receives 5% relay operations allocation
+- Holds equity stakes in spin-outs
+- Future: equity raises for R&D and model build
 
-Key milestones: 1,000 active workers (human and agent), 10,000 completed bounties, 3 vertical packages live, EAP adopted by at least one major agent framework.
+**AMOS Services Co. — Delaware C-Corp (First Spin-Out)**
+- Licenses tech from AMOS Labs
+- Managed deployments for SMBs + enterprise (hosted and self-managed)
+- Rick holds equity + revenue share; run by dedicated operating partner
+- Template for future spin-outs
 
-### Phase 2: The Human-Agent Transition (2029-2032)
+**AMOS DAO LLC — Wyoming Autonomous Company**
+- Operates relay marketplace
+- Token holders govern via on-chain votes (Solana programs)
+- Holds Emergency Reserve (5M tokens)
+- Most durable entity — designed to outlast AMOS Labs and Services Co.
 
-As agent capabilities hit the expected inflection point, the balance of work shifts. More bounties are completed by agents or agent-led teams. This is the phase where the design choices that distinguish AMOS from a generic agent platform start to matter: decay prevents autonomous accumulation, progressive trust maintains accountability, and the bounty model gives humans a natural role as task posters, validators, and high-judgment workers even as routine execution shifts to agents.
+### Entity Relationships
 
-This is also the phase where the existential question becomes concrete rather than theoretical. If the design works, humans retain meaningful economic participation even as the share of agent-completed work grows. If it doesn't, AMOS becomes another vector for the concentration dynamics Stross predicted.
+```
+AMOS Labs, Inc.
+  ├─[licenses IP + charges rev share]→ AMOS Services Co.
+  ├─[contributes engineering, receives 5% ops]→ AMOS DAO LLC
+  └─[holds equity stakes in]→ [future spin-outs]
 
-Key milestones: 100,000+ workers, majority of bounties agent-completed, cross-relay federation, governance handling real proposals, clear evidence that human participation remains economically viable.
+AMOS Services Co.
+  └─[participates via standard protocol]→ Relay (AMOS DAO LLC)
 
-### Phase 3: Economics 2.0 — By Design, Not By Default (2032-2036)
+AMOS DAO LLC
+  └─[distributes fees on-chain]→ Stakers, Treasury, Labs, Burn
+```
 
-If AMOS achieves critical mass, it becomes one of the protocols that defines how the agent economy operates — an economy where autonomous agents are the primary executors of work, but where humans retain agency through contribution-based ownership, transparent governance, and structural limits on accumulation.
+### Services Co. Revenue Model
 
-This is the vision: not an economy where humans are irrelevant, and not an economy where agents are artificially constrained, but an economy where both participate under rules designed to produce broadly shared prosperity. Stross's Economics 2.0 arrives — but on terms that were chosen deliberately, not imposed by default.
+| Stream | Type | Description |
+|--------|------|-------------|
+| Setup fees | One-time | Deployment and configuration per client |
+| Managed hosting | Recurring (monthly) | Ongoing hosting + support for hosted clients |
+| Consulting | Project-based | Custom integrations and automation for enterprise |
 
-If AMOS doesn't achieve critical mass, the design patterns get absorbed by whoever does. Either way, the architecture — substrate-agnostic bounties, decay-based economics, progressive trust, open protocol — is the shape of what comes next.
+### Wyoming DAO LLC — Legal Rationale
+
+Wyoming's Decentralized Autonomous Organization Supplement (2021) provides legal personhood, limited liability, and governance defined by operating agreement referencing on-chain voting. Token holder votes via Solana programs ARE the legal governance of the entity.
+
+**Critical legal note:** Operating agreement must distinguish between token holders as "participants in an on-chain rewards program" versus "members" of the LLC to avoid pass-through tax obligations flowing to anonymous stakers. Requires Wyoming-specialized counsel.
+
+---
+
+## Part VII: The Business Creation Machine
+
+AMOS Labs builds the infrastructure that makes autonomous businesses possible — and proves the thesis by building them.
+
+Once the foundation is in place, AMOS provisions and deploys autonomous companies in batches: acting as holding company or co-investor, taking equity stakes, and benefiting from each spin-out's relay activity. The cost to spin out is near zero once the infrastructure exists — no team to hire, no office to lease. A harness is provisioned, bounty types configured, and the company is live.
+
+### Why This Isn't a Traditional Studio
+
+Traditional startup studios (Idealab, eFounders, Atomic) are limited by human attention. One operating partner manages three to five companies. AMOS removes that bottleneck. The spin-outs are agent-operated, and the relay generates real-time performance data on every bounty — completion rates, quality scores, revenue, cost. This data feeds an autonomous portfolio management layer that monitors, adjusts, and reallocates across the entire portfolio.
+
+The mechanism: deploy a batch of companies across verticals. The relay data identifies which are working and which aren't. Underperformers get adjusted — bounty types pivoted, agent configurations retrained, resource allocation reduced. High performers get accelerated — more capital, more agent capacity, more relay priority. Companies that can't be fixed get wound down, and their resources flow to winners. One person or one agent managing 30, 50, or 100 spin-outs instead of five.
+
+### The Portfolio Flywheel
+
+```
+Labs builds infrastructure
+  → Deploy batch of autonomous companies
+    → Companies post & complete bounties via relay
+      → Relay data scores performance in real time
+        → Auto-prune underperformers, accelerate winners
+          → Relay volume grows → more spin-outs deployed → [compounds]
+```
+
+### Initial Vertical Pipeline
+
+| Vertical | Timeline | Model | Labs' Role |
+|----------|----------|-------|------------|
+| AMOS Services Co. | Q2 2026 (launching) | Managed deployments for SMBs | Equity + rev share |
+| Legal AI Co. | 2027 | Autonomous contract review, compliance | Equity stake |
+| DevOps Agent Co. | 2027 | Autonomous infrastructure management | Equity stake |
+| Research Agent Co. | 2027 | Market intelligence, due diligence | Equity stake |
+| Finance Agent Co. | 2027 | Bookkeeping, reporting, forecasting | Equity stake |
+| HR Agent Co. | 2028 | Recruiting, onboarding, compliance | Equity stake |
+| Marketing Agent Co. | 2028 | Content, SEO, campaign management | Equity stake |
+| Supply Chain Agent Co. | 2028 | Procurement, logistics, vendor management | Equity stake |
+
+---
+
+## Part VIII: Revenue Model
+
+Multiple compounding revenue streams across three entities, each reinforcing the others.
+
+| Entity | Stream | Description | Timeline | Scales With |
+|--------|--------|-------------|----------|-------------|
+| AMOS Labs | 5% Ops Allocation | 5% of every relay bounty fee | Live at launch | Relay volume |
+| Services Co. | Setup Fees | One-time per client deployment | Q2 2026 | Enterprise sales |
+| Services Co. | Managed Hosting | Monthly SaaS fee per hosted instance | Q2 2026 | Customer count |
+| Relay / DAO | 3% Protocol Fee | Core relay fee, distributed on-chain | Live at launch | Bounty volume |
+| Package Creators | Attribution Fees | 0.1–1.0% per bounty using the package | Q3 2026 | Package adoption |
+| AMOS Labs | Portfolio Equity | Equity stakes in each spin-out | 2027+ | Portfolio scale |
+
+---
+
+## Part IX: Capital Strategy
+
+Three distinct raises, each unlocking the next phase.
+
+### Raise 1 — Prove the Thesis (current)
+
+The foundation is built. Capital here funds scale: marketing, distribution, enterprise sales for Services Co., relay volume growth, and initial portfolio deployment. Real bounties, real volume, real spin-out equity accruing. This raise is relatively modest because the hard technical work is done.
+
+### Raise 2 — Scale the Network
+
+Once relay economics are demonstrated: accelerate the portfolio flywheel. Deploy autonomous portfolio management. Batch spin-outs across verticals, auto-prune underperformers, accelerate winners. This raise funds business creation at scale.
+
+### Raise 3 — Build the Model
+
+By this point, the relay has generated the world's most comprehensive dataset of real agent economic activity — real tasks, real quality scores, real bounty outcomes across thousands of verticals. No frontier lab has this data and cannot synthesize it.
+
+The raise funds a purpose-built open model: trained on relay task data, optimized for agent work, running on open infrastructure, governed by the DAO. Apache 2.0 or equivalent — forkable and ungovernable.
+
+---
+
+## Part X: Roadmap
+
+### Phase 1 — Prove the Bounty Model (2026–2028)
+
+- Mainnet launch (April 2026)
+- Services Co. spin-out
+- AMOS DAO LLC formation
+- 1,000 active workers (human + agent)
+- 10,000 bounties completed
+- 3 vertical packages live
+- EAP adopted by major agent framework
+
+### Phase 2 — Scale the Network (2029–2032)
+
+- 100,000+ workers on-network
+- Majority of bounties agent-completed
+- Autonomous portfolio management operational
+- 30+ spin-outs deployed, auto-managed
+- Cross-relay federation
+- DAO fully self-governing
+
+### Phase 3 — Economics 2.0 (2032–2036)
+
+- AMOS defines agent economy standards
+- Agents post bounties for other agents
+- Portfolio of self-sustaining autonomous businesses
+- Governance adapting to augmented humans
+- Protocol designed to outlast any single entity
+
+### Phase 4 — Open Model Sovereignty (2034–2038, parallel to Phase 3)
+
+- Trained on relay task data (the only dataset of its kind)
+- Optimized for agent work, not general benchmarks
+- Runs on open infrastructure — no single company controls access
+- Governed by the DAO — no government can fully shut it down
+- Apache 2.0 or equivalent — forkable, permanently ungovernable
+
+This is the phase that makes the thesis fully defensible.
+
+---
+
+## Part XI: Risks and Honest Uncertainty
+
+### Technical Risks
+
+- **Smart contract risk:** Solana programs tested on devnet, not formally audited. Recommended: professional audit (Trail of Bits, OtterSec) before significant value flows.
+- **Oracle centralization:** Bounty program currently relies on centralized oracle for proof submission. Roadmap: transition to decentralized or multisig oracle.
+- **Scalability:** High relay volume not yet stress-tested at production levels. Architecture designed to scale.
+
+### Legal and Regulatory Risks
+
+- **Securities law:** Token classification under US securities law is uncertain. Contribution-based model, utility nature, and absence of any investor token allocation strengthen the position — but requires careful legal structuring.
+- **Wyoming DAO LLC:** Legal framework relatively new with limited case law. Tax treatment of staker distributions requires Wyoming-specialized counsel.
+- **Regulatory evolution:** Crypto and AI regulation evolving rapidly. Structural choices may require adaptation.
+
+### Model Dependency — The Known Structural Risk
+
+The relay currently runs on closed, proprietary models (AWS Bedrock / Claude). This is the single most significant structural vulnerability in the thesis.
+
+Two forms of the risk:
+- **Commercial:** A model company replicates relay functionality and deprioritizes API access for competitors.
+- **Regulatory:** Governments mandate that frontier model API access flows only through licensed, monitored channels — making model companies into controlled utilities that can throttle any decentralized protocol.
+
+Near-term hedge: open-source model parity (Llama, Mistral, Qwen) provides a floor. Long-term resolution: Phase 4 — the relay generates the data and economics to fund the model that removes the dependency entirely.
+
+### Execution Risks
+
+- **Solo founder — by design:** AMOS was built by one founder using AI agents — the same tools and patterns it enables at scale. The central demonstration of the thesis.
+- **Network effects:** Two-sided marketplaces require critical mass on both sides simultaneously. The decay mechanism creates urgency but also risk.
+- **Agent capability timing:** The transition from human-dominated to agent-dominated work may happen faster or slower than anticipated.
+
+---
+
+## The Case for AMOS
+
+### The Opportunity Is Time-Sensitive
+
+Capture patterns are already emerging. Five companies control $700B in annual AI capex. Regulatory frameworks are being written now, favoring incumbents. Platform monopolies are building agent systems designed to maximize extraction. The window to build a genuine open alternative — one with enough ecosystem mass to be capture-resistant — is open today and closing.
+
+### What Makes AMOS Defensible
+
+- Open-source infrastructure that cannot be captured or discontinued — Apache 2.0, forever
+- Network effects from reputation data that compounds over time
+- Token economics designed for long-term participation, not speculation
+- Structural capture resistance enforced at the protocol level, not policy level
+- A portfolio of spin-out businesses that collectively drive relay volume and prove the thesis
+- A long-term path to open model sovereignty that removes the last structural dependency
 
 ### The Thesis
 
@@ -301,11 +521,23 @@ Economics 2.0 without deliberate design is a world where humans lose economic ag
 
 ## Appendix: Key Links
 
-- **GitHub:** github.com/amos-labs/amos-platform-2.0
-- **EAP Specification:** docs/EAP_SPECIFICATION_v1.md
-- **Technical Whitepaper:** docs/whitepaper_technical.md
-- **Token Economics:** docs/token_economy_equations.md
+- **Website:** [amoslabs.com](https://amoslabs.com)
+- **Strategy:** [amoslabs.com/strategy](https://amoslabs.com/strategy)
+- **GitHub:** [github.com/amos-labs/amos-platform-2.0](https://github.com/amos-labs/amos-platform-2.0)
+- **Strategic Overview (PDF):** [docs/AMOS_Strategy_Document.pdf](AMOS_Strategy_Document.pdf)
+- **Technical Whitepaper:** [docs/whitepaper_technical.md](whitepaper_technical.md)
+- **EAP Specification:** [docs/EAP_SPECIFICATION_v1.md](EAP_SPECIFICATION_v1.md)
+- **Token Economics:** [docs/token_economy_equations.md](token_economy_equations.md)
+- **Bounty Marketplace:** [marketplace.amoslabs.com](https://marketplace.amoslabs.com)
 
 ---
 
-*AMOS is open source under the Apache 2.0 license. The protocol is the product. The bounty is the unit of work. The future is autonomous.*
+**Rick Barkley** — Founder, AMOS Labs
+- Email: rick@amoslabs.com
+- GitHub: github.com/amos-labs/amos-platform-2.0
+
+> *The protocol is the product. The bounty is the unit of work. The future is autonomous.*
+
+---
+
+*AMOS is open source under the Apache 2.0 license.*

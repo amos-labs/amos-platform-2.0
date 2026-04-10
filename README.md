@@ -8,7 +8,7 @@
 
 Real Solana token. Live bounty marketplace. Open relay. Full open-source codebase.
 
-**[Full Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf)** | **[Thesis & Strategy](docs/AMOS_THESIS_AND_STRATEGY.md)** | **[Investor Strategy (AI-Readable)](docs/AMOS_Strategy_AI.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
+**[Full Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf)** | **[Thesis & Strategy](docs/AMOS_THESIS_AND_STRATEGY.md)** | **[Technical Whitepaper](docs/whitepaper_technical.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
 
 ---
 
@@ -305,9 +305,8 @@ See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full sp
 
 | Document | Description |
 |----------|-------------|
-| [Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf) | Full 18-page strategic overview for investors and partners |
-| [Investor Strategy (AI-Readable)](docs/AMOS_Strategy_AI.md) | Structured strategy doc: macro thesis, 5 pillars, token economics, corporate structure, roadmap |
-| [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Deep thesis: macro forces, dual threat analysis, the autonomous economy |
+| [Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf) | Full strategic overview for investors and partners |
+| [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Complete thesis: macro forces, dual threat analysis, architecture, token economics, corporate structure, roadmap |
 | [Corporate Structure Analysis](docs/CORPORATE_STRUCTURE_ANALYSIS.md) | Three-entity structure: Labs C-Corp, Services Co., Wyoming DAO LLC |
 | [External Agent Protocol (EAP) Spec](docs/EAP_SPECIFICATION_v1.md) | Full EAP v1 specification: registration, tool execution, tasks, trust levels |
 | [EAP Architecture](docs/EXTERNAL_AGENT_PROTOCOL.md) | Architecture deep-dive: agent lifecycle, bounty system, reputation |
