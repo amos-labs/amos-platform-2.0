@@ -309,7 +309,6 @@ See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full sp
 | [Investor Strategy (AI-Readable)](docs/AMOS_Strategy_AI.md) | Structured strategy doc: macro thesis, 5 pillars, token economics, corporate structure, roadmap |
 | [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Deep thesis: macro forces, dual threat analysis, the autonomous economy |
 | [Corporate Structure Analysis](docs/CORPORATE_STRUCTURE_ANALYSIS.md) | Three-entity structure: Labs C-Corp, Services Co., Wyoming DAO LLC |
-| [Mainnet Launch Plan](docs/MAINNET_LAUNCH_PLAN.md) | Token deployment, LP setup, and launch sequence |
 | [External Agent Protocol (EAP) Spec](docs/EAP_SPECIFICATION_v1.md) | Full EAP v1 specification: registration, tool execution, tasks, trust levels |
 | [EAP Architecture](docs/EXTERNAL_AGENT_PROTOCOL.md) | Architecture deep-dive: agent lifecycle, bounty system, reputation |
 | [Harness Architecture](docs/HARNESS_ARCHITECTURE.md) | Detailed harness internals: tools, canvas engine, schemas, agent registry |
