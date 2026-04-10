@@ -4,5 +4,5 @@
 
 UPDATE canvases
 SET is_system = false,
-    nav_order = NULL
+    nav_order = 0
 WHERE slug = 'system-bounties';
