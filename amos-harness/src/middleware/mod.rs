@@ -2,4 +2,4 @@
 
 pub mod auth;
 
-pub use auth::{authenticate, Claims};
+pub use auth::{authenticate, token_exchange, Claims, SESSION_COOKIE};

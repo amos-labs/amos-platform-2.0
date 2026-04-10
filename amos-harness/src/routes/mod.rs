@@ -16,29 +16,52 @@ pub mod revisions;
 pub mod sites;
 pub mod uploads;
 
+use crate::middleware;
 use crate::state::AppState;
 use axum::{extract::DefaultBodyLimit, extract::State, routing::get, Json, Router};
 use std::sync::Arc;
 
 /// Build all application routes
 pub fn build_routes(state: Arc<AppState>) -> Router {
-    Router::new()
+    // ── Public routes (no auth required) ────────────────────────────
+    let public_routes = Router::new()
         // Health check
         .route("/health", get(health::health_check))
         .route("/ready", get(health::readiness_check))
         // EAP discovery endpoints
         .route("/.well-known/agent.json", get(well_known_agent_json))
         .route("/api/v1/tools", get(list_tools))
-        // Auth page routes (served as standalone HTML pages from system canvases)
+        // Auth page routes (login/register pages must be accessible)
         .route("/login", get(canvas::serve_login))
         .route("/register", get(canvas::serve_register))
         .route("/forgot-password", get(canvas::serve_forgot_password))
-        // Canvas routes
-        .nest("/api/v1/canvases", canvas::routes(state.clone()))
+        // Token exchange: platform redirects here with ?token=<jwt>
+        .route(
+            "/auth/callback",
+            get(middleware::token_exchange),
+        )
+        // OpenClaw agent management (agent sidecar uses these internally)
+        .nest("/api/v1/agents", bots::routes(state.clone()))
         // Public canvas route
         .route("/c/{slug}", get(canvas::serve_public_canvas))
-        // OpenClaw agent management routes
-        .nest("/api/v1/agents", bots::routes(state.clone()))
+        // Public site serving
+        .route("/s/{slug}", axum::routing::get(sites::serve_site_index))
+        .route(
+            "/s/{slug}/{*path}",
+            axum::routing::get(sites::serve_site_page),
+        )
+        .route(
+            "/s/{slug}/submit/{collection}",
+            axum::routing::post(sites::handle_form_submit),
+        )
+        // Webhook ingress routes (external triggers, auth via webhook secret)
+        .nest("/api/v1/hooks", hooks::routes(state.clone()))
+        .with_state(state.clone());
+
+    // ── Protected routes (require auth) ─────────────────────────────
+    let protected_routes = Router::new()
+        // Canvas routes
+        .nest("/api/v1/canvases", canvas::routes(state.clone()))
         // Agent proxy routes (forward chat to agent sidecar service)
         .nest("/api/v1/agent", agent_proxy::routes(state.clone()))
         // Upload routes (25 MB body limit for file uploads)
@@ -59,8 +82,6 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1", revisions::routes(state.clone()))
         // Data API routes (collection/record CRUD for canvas components)
         .nest("/api/v1/data", data::routes(state.clone()))
-        // Webhook ingress routes (automation triggers)
-        .nest("/api/v1/hooks", hooks::routes(state.clone()))
         // Harness info route (multi-harness discovery)
         .nest("/api/v1/harness", harness_info::routes(state.clone()))
         // Bounty proxy routes (forwards to AMOS Network Relay)
@@ -69,17 +90,16 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/packages", packages::routes(state.clone()))
         // Site management routes
         .nest("/api/v1/sites", sites::routes(state.clone()))
-        // Public site serving
-        .route("/s/{slug}", axum::routing::get(sites::serve_site_index))
-        .route(
-            "/s/{slug}/{*path}",
-            axum::routing::get(sites::serve_site_page),
-        )
-        .route(
-            "/s/{slug}/submit/{collection}",
-            axum::routing::post(sites::handle_form_submit),
-        )
-        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::authenticate,
+        ))
+        .with_state(state.clone());
+
+    // Merge: public routes first, then protected
+    Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
 }
 
 /// `GET /.well-known/agent.json` — EAP Agent Card discovery endpoint.

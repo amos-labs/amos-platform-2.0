@@ -27,6 +27,23 @@ const state = {
 };
 
 // ============================================================================
+// Auth-aware fetch wrapper
+// ============================================================================
+
+const _originalFetch = window.fetch;
+window.fetch = async function(url, options) {
+    const response = await _originalFetch(url, options);
+    // If any API call returns 401, redirect to platform login
+    if (response.status === 401 && typeof url === 'string' && url.includes('/api/')) {
+        const platformUrl = window.__AMOS_PLATFORM_URL || 'https://app.amoslabs.com';
+        const returnUrl = encodeURIComponent(window.location.href);
+        window.location.href = `${platformUrl}/login?redirect=${returnUrl}`;
+        return response;
+    }
+    return response;
+};
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
