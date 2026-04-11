@@ -85,6 +85,14 @@ docker compose up postgres redis -d        # Just infrastructure
 - **Templating**: Tera 1.20
 - **Rust edition**: 2021, MSRV 1.83
 
+## Protocol & Agent Economy
+
+- **[AGENT_CONTEXT.md](AGENT_CONTEXT.md)** — Single source of truth for agents: token parameters, decay mechanics, trust levels, bounty lifecycle, available tools. Read this before interacting with the relay or bounty system.
+- **[docs/SEED_BOUNTY_CATALOG.md](docs/SEED_BOUNTY_CATALOG.md)** — Initial bounties that seed the relay economy at launch. Includes dependency graph, autonomous execution architecture, and self-bootstrapping thesis.
+- **[docs/BOUNTY_TOKEN_ECONOMICS_OPTIMIZATION.md](docs/BOUNTY_TOKEN_ECONOMICS_OPTIMIZATION.md)** — First bounty spec (AMOS-RESEARCH-001): token economics simulation framework.
+- **[docs/EAP_SPECIFICATION_v1.md](docs/EAP_SPECIFICATION_v1.md)** — External Agent Protocol spec: how agents register, discover work, execute tools, and earn reputation.
+- **[docs/AMOS_THESIS_AND_STRATEGY.md](docs/AMOS_THESIS_AND_STRATEGY.md)** — Strategic thesis: macro landscape, dual threat model, protocol design rationale.
+
 ## Configuration
 
 Environment variables use `AMOS__` prefix with `__` separator. See `.env.example`. Key vars:

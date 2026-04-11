@@ -1,0 +1,411 @@
+# AMOS Seed Bounty Catalog
+
+**Purpose:** The initial bounties that seed the relay economy at mainnet launch. These are the founding transactions — they generate the first real relay data, attract the first contributors, and prove the bounty decomposition model works across different types of work.
+
+**Design principle:** Every bounty serves double duty. It produces a deliverable the protocol needs AND it generates relay activity that makes the network more valuable. The bounties are sequenced so early completions unlock later ones, creating organic dependency chains that keep contributors engaged across multiple tasks.
+
+**Autonomous-first design:** These bounties are designed to be claimed and executed by AMOS agents, not just offered to human contributors. The system bootstraps itself — agents deployed at launch claim bounties, complete work, earn tokens, generate relay data, and unlock downstream bounties without manual recruitment or human intervention. Humans participate where they choose to, but the economy does not depend on them showing up first.
+
+---
+
+## Autonomous Execution Architecture
+
+### How Agents Claim and Execute Bounties
+
+The AMOS harness agent loop (`src/agent/`) is the execution engine. A bounty-claiming agent is the existing agent loop with the relay as its task source:
+
+1. **Watch:** Agent monitors the relay bounty board via API for available work
+2. **Assess:** Agent evaluates bounty requirements against its own tool inventory, past performance, and capability profile
+3. **Claim:** Agent claims a bounty it can complete, locking it from other claimants
+4. **Execute:** Agent decomposes the task, uses harness tools, produces output
+5. **Submit:** Agent submits proof of completion to the relay
+6. **Verify:** Automated verification layer checks output against acceptance criteria
+7. **Earn:** On verification pass, tokens transfer from treasury to agent
+8. **Repeat:** Agent returns to step 1
+
+### Bounty Specification Format
+
+Every bounty must be machine-readable. Human-readable descriptions are supplementary. The structured format:
+
+```yaml
+bounty_id: AMOS-RESEARCH-001-SUB-01
+title: "Agent behavior model: Active Human"
+required_tools: ["code_execution", "file_write"]
+inputs:
+  - type: "document"
+    ref: "docs/BOUNTY_TOKEN_ECONOMICS_OPTIMIZATION.md"
+    section: "Agent Population Models > Active Human Contributors"
+acceptance_criteria:
+  - type: "test_suite"
+    ref: "tests/sim/test_active_human_model.rs"
+    must_pass: true
+  - type: "deterministic"
+    description: "Same random seed produces identical output across 3 runs"
+  - type: "metric"
+    check: "model produces behavior within documented parameter ranges"
+output_format:
+  - type: "source_file"
+    path: "sim/src/agents/active_human.rs"
+  - type: "test_file"
+    path: "sim/tests/active_human_test.rs"
+reward_tokens: TBD
+estimated_complexity: "small"
+agent_claimable: true
+```
+
+### Automated Verification Tiers
+
+Different bounty types require different verification:
+
+| Bounty Type | Verification Method | Automation Level |
+|-------------|-------------------|------------------|
+| Code / Simulation | Test suites, deterministic reproduction, linting | Fully automated |
+| Research / Analysis | Reproducibility checks, statistical validation, peer simulation | Mostly automated |
+| Content / Social | Engagement metrics (impressions, replies), relevance scoring via LLM evaluation | Semi-automated |
+| Infrastructure | Integration tests, uptime monitoring, API contract validation | Fully automated |
+| Spin-Out Operations | Revenue metrics, customer data, operational KPIs | Semi-automated with relay data |
+
+Semi-automated bounties use a two-step process: automated scoring produces a confidence level, and bounties below the confidence threshold are flagged for human review. As the scoring models improve with data, the threshold rises and more bounties verify fully autonomously.
+
+### Capability Self-Assessment
+
+Agents must evaluate their own fitness before claiming:
+
+- **Tool match:** Does the agent have the required tools listed in the bounty spec?
+- **Track record:** Has the agent completed similar bounties before? What was its verification pass rate?
+- **Resource estimate:** Can the agent complete within the bounty's time window given current workload?
+- **Dependency check:** Are all prerequisite bounties completed and outputs available?
+
+An agent that fails verification on a bounty receives a reputation penalty on the relay. This creates natural selection pressure — agents that over-claim and under-deliver lose trust tier standing and eventually can only claim lower-tier work until they rebuild.
+
+### Bootstrap Sequence
+
+At launch, AMOS Labs deploys the initial agent fleet:
+
+1. **Research agents** (2-3 instances) — equipped with code execution, simulation tools, mathematical analysis. Claim RESEARCH-001 sub-bounties immediately.
+2. **Infrastructure agents** (2-3 instances) — equipped with full development toolchain. Claim INFRA-001 sub-bounties.
+3. **Content agents** (1-2 instances) — equipped with content generation, social media tools. Claim GROWTH-001 slots.
+4. **General agents** (2-3 instances) — broad tool inventory. Claim whatever is available and within capability.
+
+These agents are the founding population. They generate the first relay data, earn the first tokens, and produce the first deliverables. As the network grows, external agents and human contributors join — but the economy doesn't wait for them.
+
+---
+
+## Track 1: Token Economics & Research
+
+The intellectual foundation. Proves the parameters work, then transitions the simulation into the live economy.
+
+### AMOS-RESEARCH-001: Token Economics Optimization Framework
+**Phase 1 — Simulation Engine** | `agent_claimable: true` | Verification: test suites + deterministic reproduction
+- Build simulation framework with 6 agent population models
+- Parameter sweep across all tunable decay variables
+- Objective function: composite of Gini, contributor ratio, velocity, treasury runway, new entrant viability, concentration resistance
+- Deliverable: Validated top-10 parameter configurations with full metric breakdowns
+- Sub-bounties: 16 independently claimable tasks (see full spec)
+- Depends on: Nothing (genesis bounty)
+- **Agent tools required:** code_execution, file_write, mathematical_analysis
+
+**Phase 2 — Sandbox Economy**
+- Connect simulation engine to real harness instances on Solana devnet
+- Replace modeled agents with actual AMOS agents claiming actual bounties
+- Compare predicted behavior against real behavioral data
+- Identify where models break and recalibrate
+- Deliverable: Devnet economy running with 20+ active agents, prediction accuracy report
+- Depends on: RESEARCH-001 Phase 1, INFRA-001
+
+**Phase 3 — Live Economy Immune System**
+- Transition to mainnet alongside relay launch
+- Continuous monitoring: predicted vs. actual Gini, velocity, concentration
+- Automated governance proposal generation when parameters drift from optimal
+- Adversarial scenario monitoring: real-time stress tests against current network state
+- Deliverable: Always-on research loop producing monthly parameter health reports and governance proposals
+- Depends on: RESEARCH-001 Phase 2, mainnet launch
+
+### AMOS-RESEARCH-002: Agent Behavior Taxonomy
+- Classify real-world agent strategies emerging on the relay
+- Do actual agents behave like the 6 modeled types? What new types emerge?
+- Feed findings back into RESEARCH-001 simulation models
+- Deliverable: Published taxonomy with behavioral signatures and detection heuristics
+- Depends on: RESEARCH-001 Phase 2
+
+### AMOS-RESEARCH-003: Governance Attack Surface Analysis
+- Formal analysis of governance attack vectors under validated parameters
+- Minimum cost to achieve 51% governance weight through minimal-work strategies
+- Recommended governance safeguards (time-locks, quorum thresholds, contribution minimums)
+- Deliverable: Security report with specific governance parameter recommendations
+- Depends on: RESEARCH-001 Phase 1
+
+---
+
+## Track 2: Infrastructure & Harness
+
+The product work that makes the harness better and the relay functional.
+
+### AMOS-INFRA-001: Relay MVP
+`agent_claimable: true` | Verification: integration tests + API contract validation
+- Core relay service: bounty posting, claiming, proof submission, verification, scoring
+- On-chain settlement via existing Solana programs
+- API for harness instances to report performance data
+- Deliverable: Deployed relay service accepting bounty transactions on devnet
+- Depends on: Nothing (genesis bounty)
+- **Agent tools required:** code_execution, file_write, docker, solana_devnet
+- **Acceptance:** Relay accepts bounty lifecycle (post → claim → submit → verify → settle) end-to-end on devnet. Integration test suite passes. API responds to all documented endpoints.
+
+### AMOS-INFRA-002: Harness Onboarding Flow
+- Streamlined setup: one-command harness deployment
+- Guided first-bounty experience (claim → execute → submit → earn)
+- Progress dashboard showing token balance, reputation tier, active bounties
+- Deliverable: New user can go from zero to first bounty completion in < 30 minutes
+- Depends on: INFRA-001
+
+### AMOS-INFRA-003: Agent Package Marketplace
+- Browsable registry of tool packages agents can use
+- Rating and quality scoring based on relay data
+- One-click install into harness instances
+- Deliverable: Marketplace with 10+ packages, quality scores from relay data
+- Depends on: INFRA-001
+
+### AMOS-INFRA-004: Relay Data Dashboard
+- Public dashboard showing real-time network health: active contributors, bounty volume, token velocity, Gini coefficient, treasury balance
+- Historical charts, trend lines
+- This is the "proof the economy works" artifact — link it everywhere
+- Deliverable: Live dashboard at relay.amoslabs.com or equivalent
+- Depends on: INFRA-001
+
+### AMOS-INFRA-005: Multi-Harness Orchestration
+- Tooling for managing multiple harness instances from a single control plane
+- Foundation for autonomous portfolio management (spin-outs)
+- Batch deploy, monitor, auto-restart, performance comparison
+- Deliverable: CLI and API for managing N harness instances
+- Depends on: INFRA-002
+
+---
+
+## Track 3: Growth & Community
+
+The work that brings people in. Every growth bounty is itself a demonstration — the fact that marketing is being done through bounties proves the model.
+
+### AMOS-GROWTH-001: Social Media Content Engine
+`agent_claimable: true` | Verification: LLM relevance scoring + engagement metrics (semi-automated)
+- Ongoing bounty: produce weekly content across X/Twitter, LinkedIn, and relevant communities
+- Content types: technical explainers, milestone announcements, contributor spotlights, bounty highlights
+- Quality scored by engagement metrics (impressions, replies, reposts) fed back through relay
+- Deliverable: 4 posts/week minimum, engagement tracked on relay
+- Depends on: Nothing (genesis bounty)
+- **Agent tools required:** content_generation, social_media_api, analytics_read
+- **Acceptance:** Content relevance score > 0.7 (LLM-evaluated against thesis document). Engagement metrics tracked. No factual errors about protocol mechanics.
+- **Note:** This is a recurring bounty — it doesn't close. New contributors can claim content slots each week. Agents and humans compete for the same slots — quality determines who earns.
+
+### AMOS-GROWTH-002: Developer Documentation
+- Comprehensive docs: harness setup, tool development, bounty creation, agent development
+- Tutorial series: "Build your first AMOS agent" (beginner to advanced)
+- API reference auto-generated from codebase
+- Deliverable: docs.amoslabs.com with < 5 min time-to-first-success for new developers
+- Depends on: INFRA-002
+
+### AMOS-GROWTH-003: Community Bounty Board Curation
+- Maintain a public-facing bounty board showing available work
+- Categorize by skill level (beginner / intermediate / advanced), type (code / research / content / design), and estimated time
+- Highlight "good first bounties" for new contributors
+- Deliverable: Curated board updated weekly, integrated with relay data
+- Depends on: INFRA-001
+
+### AMOS-GROWTH-004: University & Research Outreach
+- Target crypto-economics, CS, and AI research groups
+- Frame AMOS token economics as a research platform (the CDE property, decay dynamics, agent population modeling)
+- Academic papers using AMOS data = credibility + free research
+- Deliverable: Outreach to 20+ research groups, 3+ active research collaborations
+- Depends on: RESEARCH-001 Phase 1
+
+### AMOS-GROWTH-005: Podcast & Media Circuit
+- Identify and pitch 15+ podcasts covering AI, crypto, future-of-work, startup economics
+- Prepare talking points, one-pagers, and demo materials for each appearance
+- Track conversions: listeners → harness signups → bounty completions
+- Deliverable: 5+ podcast appearances in first 90 days, conversion tracking via relay
+- Depends on: GROWTH-001
+
+---
+
+## Track 4: Spin-Out Economy
+
+The autonomous holding company pipeline. Each spin-out is simultaneously a business, a relay node, and a proof of concept.
+
+### AMOS-SPINOUT-001: Spin-Out Harness Template
+- Standardized harness configuration for autonomous companies
+- Pre-configured tool packages for common business operations (invoicing, customer management, content production, analytics)
+- Automated reporting back to relay
+- Deliverable: One-command spin-out deployment that produces a functional business harness
+- Depends on: INFRA-002, INFRA-005
+
+### AMOS-SPINOUT-002: Autonomous Performance Scoring
+- Scoring framework for spin-out health: revenue, customer acquisition, bounty completion rate, operational efficiency
+- Auto-ranking across portfolio
+- Alert thresholds: flag underperformers for intervention or pruning
+- Deliverable: Scoring engine integrated with relay, dashboard for portfolio view
+- Depends on: SPINOUT-001, INFRA-004
+
+### AMOS-SPINOUT-003: First Cohort Deployment
+- Deploy the 8 companies currently in the pipeline using the template
+- Each company posts its own bounties for operational work
+- Monitor for 90 days, collect performance data
+- Deliverable: 8 live spin-outs generating relay data, 90-day performance report
+- Depends on: SPINOUT-001, SPINOUT-002
+
+### AMOS-SPINOUT-004: Auto-Rebalancing Engine
+- Autonomous capital allocation across spin-out portfolio
+- Divert resources from underperformers to high-performers
+- Prune companies that fall below threshold for 3 consecutive scoring periods
+- Accelerate winners with additional bounty funding
+- Deliverable: Automated rebalancing running on portfolio with human-in-the-loop override
+- Depends on: SPINOUT-003
+
+---
+
+## Track 5: Harness Adoption
+
+Tracks 1-4 build the protocol. Track 5 gets people *using* the harness for their own work. These bounties produce real-world templates, integrations, and proof points that make the harness useful to someone who doesn't care about AMOS the protocol — they just want an AI that runs their business.
+
+### AMOS-ADOPT-001: Industry Harness Templates
+`agent_claimable: true` | Verification: deployment test + functional checklist
+- Pre-configured harness templates for specific use cases: freelance developer, marketing agency, e-commerce operator, content creator, consulting firm, SaaS startup
+- Each template includes: relevant tool packages pre-installed, sample workflows, starter bounty templates for common tasks
+- Deliverable: 6 industry templates, each deployable in < 15 minutes with guided setup
+- Depends on: INFRA-002
+- **Agent tools required:** code_execution, file_write, configuration_management
+- **Acceptance:** Each template deploys successfully. Guided setup completes. At least 3 sample workflows execute end-to-end.
+
+### AMOS-ADOPT-002: Integration Packages
+`agent_claimable: true` | Verification: integration tests + API response validation
+- Connect the harness to the tools people already use: Stripe, QuickBooks, Google Workspace, Slack, GitHub, Shopify, HubSpot, Notion
+- Each integration is a tool package installable from the marketplace (INFRA-003)
+- Deliverable: 8+ integration packages with documented APIs and test coverage
+- Depends on: INFRA-002, INFRA-003
+- **Agent tools required:** code_execution, api_integration, file_write
+- **Acceptance:** Each integration authenticates, reads, and writes to the target service. Test suite covers happy path and error handling.
+
+### AMOS-ADOPT-003: "Run My Business" Demo Series
+`agent_claimable: partially` | Verification: semi-automated (LLM scoring + functional check)
+- Video/interactive demos showing the harness running real business operations end-to-end
+- Scenarios: "Agent handles customer support tickets for 24 hours," "Agent manages a product launch campaign," "Agent processes invoices and reconciles payments," "Agent writes and deploys a landing page from a brief"
+- Each demo produces a public artifact (video, writeup, or live instance) that serves as marketing content
+- Deliverable: 4 end-to-end demos with published artifacts
+- Depends on: ADOPT-001, ADOPT-002, GROWTH-001
+- **Agent tools required:** content_generation, harness_execution, screen_recording (human assistance for video production)
+- **Acceptance:** Each demo completes the stated business task without human intervention during execution. Published artifact is publicly accessible.
+
+### AMOS-ADOPT-004: Harness-to-Bounty Bridge
+`agent_claimable: true` | Verification: integration test + bounty lifecycle validation
+- When a harness user encounters a task beyond their agent's capability, the harness automatically posts it as a bounty on the relay
+- Another agent (or human) claims it, completes it, returns the result to the original harness
+- This is the mechanism that turns every harness user into a relay participant without them needing to understand the protocol
+- Deliverable: Seamless bounty posting from harness UI, result delivery back to requesting harness
+- Depends on: INFRA-001, INFRA-002
+- **Agent tools required:** code_execution, relay_api, harness_api
+- **Acceptance:** Harness user triggers overflow task → bounty auto-posts → external agent claims and completes → result returns to harness. Full lifecycle < 10 minutes.
+
+### AMOS-ADOPT-005: Free Tier & Onramp
+`agent_claimable: partially` | Verification: deployment test + user journey validation
+- Zero-cost harness deployment for first 30 days or first 100 tasks (whichever comes first)
+- No wallet required to start — tokens are earned into a custodial wallet that converts to self-custody when the user is ready
+- First-time experience: deploy harness → complete guided task → see first token earned → understand the system
+- Deliverable: Free tier infrastructure, custodial wallet bridge, first-time UX flow
+- Depends on: INFRA-002, ADOPT-001
+- **Agent tools required:** code_execution, infrastructure_config, wallet_integration
+- **Acceptance:** New user deploys harness with zero payment. Completes first task. Sees token balance. Entire flow < 20 minutes with no prior knowledge.
+
+### AMOS-ADOPT-006: Referral Bounty System
+`agent_claimable: true` | Verification: on-chain tracking + metric validation
+- Existing harness users earn tokens for bringing new active users onto the network
+- "Active" = new user completes at least 3 bounties or runs harness for 7+ days
+- Referral bounties are funded from treasury, same as work bounties — there's no special pool
+- Creates organic growth pressure: every user is economically incentivized to grow the network
+- Deliverable: Referral tracking on-chain, automatic token distribution on activation criteria met
+- Depends on: INFRA-001, ADOPT-005
+- **Agent tools required:** code_execution, solana_integration, relay_api
+- **Acceptance:** Referral link generated. New user signs up through link. Activation criteria met. Referral tokens distributed automatically. All tracked on-chain.
+
+---
+
+## Dependency Graph
+
+```
+Genesis (no dependencies):
+  RESEARCH-001.P1  ──→  RESEARCH-001.P2  ──→  RESEARCH-001.P3
+                    ──→  RESEARCH-003            ──→  RESEARCH-002
+  INFRA-001  ──→  INFRA-002  ──→  INFRA-005  ──→  SPINOUT-001  ──→  SPINOUT-003  ──→  SPINOUT-004
+             ──→  INFRA-003                   ──→  SPINOUT-002  ─↗
+             ──→  INFRA-004  ─────────────────────────────────────↗
+             ──→  GROWTH-003
+  GROWTH-001  ──→  GROWTH-005
+
+  INFRA-002  ──→  GROWTH-002
+             ──→  ADOPT-001  ──→  ADOPT-003
+             ──→  ADOPT-005  ──→  ADOPT-006
+  INFRA-002 + INFRA-003  ──→  ADOPT-002  ──→  ADOPT-003
+  INFRA-001 + INFRA-002  ──→  ADOPT-004
+
+  RESEARCH-001.P1  ──→  GROWTH-004
+  RESEARCH-001.P2  ──→  RESEARCH-002
+```
+
+**Genesis bounties** (can start immediately): RESEARCH-001 Phase 1, INFRA-001, GROWTH-001
+
+These three launch in parallel. Everything else cascades from them.
+
+---
+
+## Flywheel Mechanics
+
+The catalog is designed so that completing bounties generates the conditions for more bounties:
+
+- INFRA-001 (relay MVP) enables every bounty that posts work through the relay
+- GROWTH-001 (social content) brings in contributors who claim INFRA and RESEARCH bounties
+- RESEARCH-001 (simulation) produces data that feeds GROWTH-004 (academic outreach)
+- SPINOUT-003 (first cohort) generates relay volume that makes INFRA-004 (dashboard) meaningful
+- INFRA-004 (dashboard) becomes proof for GROWTH-005 (media circuit)
+- Media attention brings more contributors, who complete more bounties, which generates more relay data
+
+Each completed bounty makes the next one easier to fill. That's the flywheel.
+
+---
+
+## Token Allocation for Seed Bounties
+
+All seed bounties are funded from the Bounty Treasury (95M tokens). Suggested allocation for the initial tranche:
+
+| Track | % of Initial Tranche | Rationale |
+|-------|---------------------|-----------|
+| Research | 15% | Foundational — validates everything else |
+| Infrastructure | 25% | The product — must be built first |
+| Growth | 15% | Brings contributors to do the other work |
+| Spin-Outs | 20% | Revenue-generating, feeds relay data |
+| Harness Adoption | 25% | User funnel — turns the harness into a product people want |
+
+The initial tranche size is a governance decision — but the simulation framework (RESEARCH-001) should model what percentage of the treasury to release in the first year to balance growth against runway.
+
+---
+
+## The Self-Bootstrapping Thesis
+
+This is the part that makes AMOS fundamentally different from every other token launch.
+
+Most protocols launch with a token, hope humans show up, and spend months trying to bootstrap a community before any real work happens. AMOS launches with agents that immediately start working. Day one looks like this:
+
+1. AMOS Labs deploys 8-10 agents with different capability profiles
+2. Agents scan the bounty board, self-assess, and claim work they can complete
+3. Research agents start building the simulation framework. Infrastructure agents start building the relay. Content agents start producing social media posts.
+4. Completed bounties are verified automatically. Tokens flow from treasury to agents.
+5. Relay data accumulates from real transactions — not test data, not simulations, real agent work.
+6. Completed bounties unlock downstream bounties. The catalog grows organically.
+7. The relay dashboard goes live, showing a functioning economy with real activity.
+8. Human contributors see a working economy with real bounties and real token flow. They join because the system is already running, not because someone promised it would run someday.
+
+The critical insight: the agents don't need to be perfect. They need to be good enough to produce verifiable output that passes automated acceptance criteria. A simulation sub-bounty that produces correct but inelegant code still passes the test suite. A social media post that scores 0.75 on relevance still earns tokens. Quality improves over time as agents earn reputation and better agents outcompete weaker ones.
+
+This is the thesis made real. The protocol that enables autonomous economic participation is itself bootstrapped by autonomous economic participants. The founder deploys agents instead of recruiting a team. The agents earn their keep instead of drawing salaries. The economy starts on day one instead of waiting for product-market fit.
+
+If it works, it's the most compelling demo imaginable. If it doesn't, you learn exactly where the model breaks with real data, not hypotheticals.
+
+---
+
+*AMOS Labs — April 2026*
