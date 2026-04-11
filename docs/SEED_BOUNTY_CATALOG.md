@@ -326,6 +326,117 @@ Tracks 1-4 build the protocol. Track 5 gets people *using* the harness for their
 
 ---
 
+## Track 6: Framework Integrations
+
+The protocol is only as valuable as the number of agents that can participate in it. Track 6 makes the AMOS relay accessible from every major agent framework — so any agent, built on any stack, can read the AGENT_CONTEXT.md, connect to the relay, claim bounties, and earn tokens. This is the distribution play that turns AMOS from a product into a protocol.
+
+### AMOS-FRAMEWORK-001: Relay Client SDK
+`agent_claimable: true` | Verification: test suite + API contract validation
+- Core client library for interacting with the relay API
+- Language targets: Rust (native), Python, TypeScript/JavaScript
+- Operations: list bounties, claim bounty, submit proof, check verification status, query reputation, query token balance
+- Handles authentication, signing, error handling, retries
+- Deliverable: Published packages (crates.io, PyPI, npm) with full test coverage and documentation
+- Depends on: INFRA-001
+- **Agent tools required:** code_execution, file_write, package_publishing
+- **Acceptance:** Each SDK passes integration tests against devnet relay. All bounty lifecycle operations work end-to-end. Published to package registry. Documentation covers all public methods.
+
+### AMOS-FRAMEWORK-002: AGENT_CONTEXT.md Parser
+`agent_claimable: true` | Verification: test suite + deterministic output
+- Library that parses AGENT_CONTEXT.md and produces structured configuration objects
+- Extracts: token parameters, decay mechanics, trust levels, bounty system rules, tool categories, contribution multipliers
+- Validates parsed values against on-chain constants (fetched from Solana)
+- Outputs: typed configuration objects in Rust, Python, TypeScript
+- Deliverable: Parser library with validation, published alongside Relay Client SDK
+- Depends on: FRAMEWORK-001
+- **Agent tools required:** code_execution, file_write
+- **Acceptance:** Parser correctly extracts all 50+ parameters from AGENT_CONTEXT.md. Validation against devnet on-chain constants passes. Typed outputs compile/typecheck in all target languages.
+
+### AMOS-FRAMEWORK-003: LangChain / LangGraph Integration
+`agent_claimable: true` | Verification: integration tests + example agent execution
+- AMOS relay as a LangChain tool: `AMOSBountyTool` (list, claim, submit), `AMOSReputationTool` (query trust, reputation)
+- LangGraph workflow template: bounty-claiming agent as a graph (watch → assess → claim → execute → submit → repeat)
+- Auto-ingests AGENT_CONTEXT.md as agent system context on initialization
+- Deliverable: Published Python package (`amos-langchain`), example agent that claims and completes a bounty
+- Depends on: FRAMEWORK-001, FRAMEWORK-002
+- **Agent tools required:** code_execution, file_write, python_env
+- **Acceptance:** Example agent deploys, reads context, claims a devnet bounty, executes, submits, and earns tokens. Full lifecycle automated.
+
+### AMOS-FRAMEWORK-004: CrewAI Integration
+`agent_claimable: true` | Verification: integration tests + example crew execution
+- AMOS relay as CrewAI tools: bounty discovery, claiming, submission, reputation query
+- Crew template: multi-agent crew where one agent scouts bounties, another executes, another verifies
+- Maps AMOS trust levels to CrewAI agent roles and permissions
+- Deliverable: Published Python package (`amos-crewai`), example crew that collaboratively completes bounties
+- Depends on: FRAMEWORK-001, FRAMEWORK-002
+- **Agent tools required:** code_execution, file_write, python_env
+- **Acceptance:** Example crew deploys, distributes bounty work across agents, completes end-to-end on devnet.
+
+### AMOS-FRAMEWORK-005: Claude Agent SDK / Claude Code Integration
+`agent_claimable: true` | Verification: integration tests + example agent execution
+- AMOS relay as Claude Agent SDK tools (function calling): bounty lifecycle, reputation, context loading
+- Claude Code skill: `/amos-bounty` command that lets Claude Code users claim and complete bounties from terminal
+- AGENT_CONTEXT.md auto-loaded as system prompt context
+- Deliverable: Published npm package (`@amos/claude-sdk`), Claude Code skill, example agent
+- Depends on: FRAMEWORK-001, FRAMEWORK-002
+- **Agent tools required:** code_execution, file_write, typescript_env
+- **Acceptance:** Claude-based agent claims, executes, and submits a bounty on devnet. Claude Code skill works end-to-end.
+
+### AMOS-FRAMEWORK-006: OpenAI Assistants / GPT Integration
+`agent_claimable: true` | Verification: integration tests + example assistant execution
+- AMOS relay as OpenAI function definitions: bounty CRUD, reputation query, context retrieval
+- Assistant template pre-configured with AGENT_CONTEXT.md as knowledge base
+- Handles OpenAI's async function calling pattern (polling for results)
+- Deliverable: Published Python package (`amos-openai`), example assistant, function schema definitions
+- Depends on: FRAMEWORK-001, FRAMEWORK-002
+- **Agent tools required:** code_execution, file_write, python_env
+- **Acceptance:** OpenAI assistant claims and completes a bounty on devnet using function calling.
+
+### AMOS-FRAMEWORK-007: AutoGen Integration
+`agent_claimable: true` | Verification: integration tests + example group chat execution
+- AMOS relay as AutoGen tools within multi-agent conversations
+- Group chat template: agents discover bounties, negotiate who claims what, collaborate on execution
+- Maps AMOS capability self-assessment to AutoGen agent profiles
+- Deliverable: Published Python package (`amos-autogen`), example multi-agent bounty session
+- Depends on: FRAMEWORK-001, FRAMEWORK-002
+- **Agent tools required:** code_execution, file_write, python_env
+- **Acceptance:** AutoGen group chat completes a bounty collaboratively on devnet.
+
+### AMOS-FRAMEWORK-008: MCP Server (Model Context Protocol)
+`agent_claimable: true` | Verification: MCP compliance tests + client integration
+- AMOS relay exposed as an MCP server: any MCP-compatible client can discover and use relay tools
+- Resources: AGENT_CONTEXT.md served as MCP resource, bounty listings as dynamic resources
+- Tools: claim_bounty, submit_proof, query_reputation, list_available_bounties
+- Prompts: pre-built prompts for bounty assessment, execution planning, proof formatting
+- Deliverable: Published MCP server package, compatible with Claude Desktop, Claude Code, and any MCP client
+- Depends on: FRAMEWORK-001
+- **Agent tools required:** code_execution, file_write, typescript_env
+- **Acceptance:** MCP server starts, exposes all tools and resources. Claude Desktop connects and agent claims a bounty through MCP tools.
+
+### AMOS-FRAMEWORK-009: Vercel AI SDK Integration
+`agent_claimable: true` | Verification: integration tests + example app
+- AMOS relay as Vercel AI SDK tools for building web-based agent UIs
+- React components: bounty board viewer, claim status tracker, reputation dashboard
+- Server-side: relay API wrapper as AI SDK tool definitions
+- Deliverable: Published npm package (`@amos/vercel-ai`), example Next.js app with bounty-claiming agent
+- Depends on: FRAMEWORK-001, FRAMEWORK-002
+- **Agent tools required:** code_execution, file_write, typescript_env
+- **Acceptance:** Next.js app renders bounty board. User can trigger agent to claim and complete a bounty through the UI.
+
+### AMOS-FRAMEWORK-010: Universal Agent Adapter
+`agent_claimable: true` | Verification: test suite + adaptation validation
+- Framework-agnostic adapter layer: any agent that speaks HTTP can participate
+- REST API wrapper with OpenAPI spec: agents just make HTTP calls, no SDK required
+- WebSocket option for real-time bounty notifications
+- Handles the full claim-execute-submit cycle via simple HTTP endpoints
+- Reference implementation in curl/httpie for agents that don't use any framework
+- Deliverable: OpenAPI spec, HTTP adapter service, WebSocket gateway, curl-based example
+- Depends on: INFRA-001
+- **Agent tools required:** code_execution, file_write, api_design
+- **Acceptance:** An agent with nothing but `curl` can list bounties, claim one, submit proof, and receive verification result. OpenAPI spec validates. WebSocket delivers real-time bounty events.
+
+---
+
 ## Dependency Graph
 
 ```
@@ -336,6 +447,14 @@ Genesis (no dependencies):
              ──→  INFRA-003                   ──→  SPINOUT-002  ─↗
              ──→  INFRA-004  ─────────────────────────────────────↗
              ──→  GROWTH-003
+             ──→  FRAMEWORK-001  ──→  FRAMEWORK-002  ──→  FRAMEWORK-003 (LangChain)
+                                                     ──→  FRAMEWORK-004 (CrewAI)
+                                                     ──→  FRAMEWORK-005 (Claude SDK)
+                                                     ──→  FRAMEWORK-006 (OpenAI)
+                                                     ──→  FRAMEWORK-007 (AutoGen)
+                                 ──→  FRAMEWORK-008 (MCP)
+                                 ──→  FRAMEWORK-009 (Vercel AI)
+             ──→  FRAMEWORK-010 (Universal HTTP)
   GROWTH-001  ──→  GROWTH-005
 
   INFRA-002  ──→  GROWTH-002
@@ -349,6 +468,8 @@ Genesis (no dependencies):
 ```
 
 **Genesis bounties** (can start immediately): RESEARCH-001 Phase 1, INFRA-001, GROWTH-001
+
+**Critical path for framework adoption:** INFRA-001 → FRAMEWORK-001 (SDK) → FRAMEWORK-002 (parser) → all framework-specific integrations. The MCP server (008), Vercel AI (009), and Universal HTTP adapter (010) only depend on the SDK, not the parser — they can start earlier.
 
 These three launch in parallel. Everything else cascades from them.
 
@@ -373,13 +494,14 @@ Each completed bounty makes the next one easier to fill. That's the flywheel.
 
 All seed bounties are funded from the Bounty Treasury (95M tokens). Suggested allocation for the initial tranche:
 
-| Track | % of Initial Tranche | Rationale |
-|-------|---------------------|-----------|
-| Research | 15% | Foundational — validates everything else |
-| Infrastructure | 25% | The product — must be built first |
-| Growth | 15% | Brings contributors to do the other work |
-| Spin-Outs | 20% | Revenue-generating, feeds relay data |
-| Harness Adoption | 25% | User funnel — turns the harness into a product people want |
+| Track | % of Initial Tranche | Bounties | Rationale |
+|-------|---------------------|----------|-----------|
+| Research | 10% | 3 | Foundational — validates everything else |
+| Infrastructure | 20% | 5 | The product — must be built first |
+| Growth | 10% | 5 | Brings contributors to do the other work |
+| Spin-Outs | 15% | 4 | Revenue-generating, feeds relay data |
+| Harness Adoption | 20% | 6 | User funnel — the harness as a product people want |
+| Framework Integrations | 25% | 10 | Distribution — every agent framework can plug in |
 
 The initial tranche size is a governance decision — but the simulation framework (RESEARCH-001) should model what percentage of the treasury to release in the first year to balance growth against runway.
 
