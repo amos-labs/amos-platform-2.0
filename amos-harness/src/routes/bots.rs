@@ -278,32 +278,21 @@ async fn eap_tool_execute(
     if let Some(tool) = state.tool_registry.get(&req.tool_name) {
         let required_trust = super::trust_level_for_category(tool.category());
 
-        // Look up agent trust level. The built-in sidecar agent (amos-agent)
-        // gets full access. Check by agent name in the DB since the path
-        // parameter is always a UUID, never "sidecar" or "eap-internal".
+        // Look up agent trust level from external_agents table.
+        // The built-in sidecar agent registers via eap_register() which gives
+        // it a random UUID that is NOT in external_agents. If the agent_id is
+        // not found in the table, it's the sidecar and gets full access (level 5).
+        // External agents that ARE in the table use their stored trust_level.
         let agent_trust: i16 = {
-            let agent_name: Option<String> = sqlx::query_scalar(
-                "SELECT name FROM external_agents WHERE id::text = $1",
+            sqlx::query_scalar::<_, i16>(
+                "SELECT trust_level FROM external_agents WHERE id::text = $1 OR name = $1",
             )
             .bind(&agent_id)
             .fetch_optional(&state.db_pool)
             .await
             .ok()
-            .flatten();
-
-            if agent_name.as_deref() == Some("amos-agent") {
-                5 // Built-in sidecar agent gets full access
-            } else {
-                sqlx::query_scalar::<_, i16>(
-                    "SELECT trust_level FROM external_agents WHERE id::text = $1 OR name = $1",
-                )
-                .bind(&agent_id)
-                .fetch_optional(&state.db_pool)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or(1)
-            }
+            .flatten()
+            .unwrap_or(5) // Not in external_agents = built-in sidecar = full access
         };
 
         if (agent_trust as u8) < required_trust {
