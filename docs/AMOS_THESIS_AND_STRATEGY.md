@@ -1,4 +1,4 @@
-# AMOS: Operating System for the Next Economy
+# AMOS: The Operating System for Autonomous Commerce
 
 ## A Strategic Thesis on Autonomous Economic Participation, the Macro Landscape, and Why AMOS Matters Now
 
@@ -26,7 +26,7 @@
 
 ## Executive Summary
 
-Three forces are colliding simultaneously: the re-weaponization of energy as the primary instrument of geopolitical power, a US fiscal crisis with $39 trillion in national debt and $1 trillion in annual interest payments, and an AI revolution deploying $700 billion annually in infrastructure with no historical precedent.
+Four forces are converging: energy is the binding constraint on every economy, US fiscal math resolves only through AI-driven productivity, AI is simultaneously the cause and proposed solution to the energy crisis, and three to five companies control access to the models that make any of it work. These forces make the agent economy inevitable — and make its capture by incumbents the default outcome without deliberate intervention.
 
 These forces form a causal chain: energy drives geopolitics, geopolitics accelerates fiscal crisis, fiscal crisis demands productivity at scale, and productivity at scale demands autonomous agents. The agent economy is not a choice — it is the inevitable consequence of the macro forces already in motion.
 
@@ -48,7 +48,7 @@ The foundation is already built. The relay is live. The harness has 54+ tools. T
 
 ## Part I: The Macro Landscape
 
-### The Three Colliding Forces
+### The Four Converging Forces
 
 **Force 1: Energy as the Primary Instrument of Power**
 
@@ -134,11 +134,11 @@ The macro forces described above make the agent economy inevitable. The fiscal m
 
 This is not inherently bad. What's dangerous is arriving at the agent economy without designing for human agency within it. And there are two distinct threats to that agency — not one.
 
-**Threat 1: Autonomous concentration (the Stross scenario).** Charles Stross mapped this trajectory in Accelerando. His "Economics 2.0" isn't a human marketplace with AI participants. It's an AI marketplace where humans are spectators — unable to compete on speed, unable to comprehend the complexity of transactions, gradually relegated to an economic underclass. His "Vile Offspring" weren't evil. They were indifferent. They optimized within the rules of systems humans designed, but at speeds and scales that made human participation irrelevant.
+**Threat 1: The Machine Economy.** Charles Stross mapped this trajectory in Accelerando. His "Economics 2.0" isn't a human marketplace with AI participants. It's an AI marketplace where humans are spectators — unable to compete on speed, unable to comprehend the complexity of transactions, gradually relegated to an economic underclass. His "Vile Offspring" weren't evil. They were indifferent. They optimized within the rules of systems humans designed, but at speeds and scales that made human participation irrelevant.
 
 This is the threat most people worry about: agents that are simply too fast, too cheap, and too capable for humans to compete with. In the absence of countervailing design, autonomous systems that earn, invest, and compound will accumulate economic power without limit. They don't sleep, don't consume, don't have dependents. Every token earned is a token reinvested. The end state is an economy that technically functions — GDP grows, markets clear — but where humans have no meaningful economic role.
 
-**Threat 2: Human exploitation via AI (the Dalio scenario).** This is the threat most people aren't talking about, and it may be more immediate and more likely than Threat 1.
+**Threat 2: The Surveillance Economy.** This is the threat most people aren't talking about, and it may be more immediate and more likely than Threat 1.
 
 Human institutions trend toward corruption and power-seeking. This is not cynicism — it is the pattern Dalio documents across 500 years of history. Elites capture institutions, extract increasingly from the productive class, and the system breaks. Every empire follows this trajectory.
 
@@ -148,7 +148,7 @@ In this scenario, the "Vile Offspring" aren't autonomous AIs. They're human inst
 
 **The core problems, across both threats:**
 
-**Concentration.** Whether driven by autonomous compounding (Threat 1) or institutional capture (Threat 2), economic power consolidates in fewer hands. The end state is the same: a system where most participants — human or otherwise — have no meaningful influence over the economy they live within.
+**Concentration.** Whether driven by autonomous compounding (The Machine Economy) or institutional capture (The Surveillance Economy), economic power consolidates in fewer hands. The end state is the same: a system where most participants — human or otherwise — have no meaningful influence over the economy they live within.
 
 **Illegibility.** As economic activity accelerates past human comprehension, people lose the ability to understand, let alone influence, the system they nominally live within. You can't govern what you can't see. You can't participate in what you can't understand. Closed-source AI systems are illegible by design — their operators benefit from the opacity.
 
@@ -291,6 +291,12 @@ No founder allocation. No investor token pool. No discretionary community fund. 
 Formula: `Decay Rate = 10% − (Profit Ratio × 5%)`, clamped between 2% (minimum) and 25% (maximum).
 
 High bounty volume → low decay. Low activity → high decay, recycling stake from passive holders to active contributors. Everyone faces the same erosion if they stop contributing — autonomous agents, human whales, venture funds, and corporate treasuries alike. No exceptions.
+
+**Activity definition:** A holder is "active" when they complete verified work through the bounty system. Submitting bounty proof resets the activity clock. Merely holding tokens, voting, or transacting does not count. After 90 days of inactivity, decay begins. Newly earned tokens receive a 12-month grace period with zero decay — rewarding recent contributors.
+
+**Redistribution:** Decayed tokens split 90/10 — 90% return to the Bounty Treasury for redistribution through future work, 10% are permanently burned. The burn creates mild deflation; the treasury recycling closes the contribution loop. Decay can never reduce a holder's balance below 10% of their original allocation — a floor that preserves minimum stake even for fully inactive participants.
+
+> *These mechanics — activity definition, grace periods, redistribution split, and decay floor — were first defined in the on-chain Solana programs (amos-bounty) and core token economics module before being formalized in this document. See: `amos-solana/programs/amos-bounty/src/instructions/decay.rs` and `amos-core/src/token/economics.rs`.*
 
 ---
 
@@ -468,7 +474,7 @@ This is the phase that makes the thesis fully defensible.
 
 ### Technical Risks
 
-- **Smart contract risk:** Solana programs tested on devnet, not formally audited. Recommended: professional audit (Trail of Bits, OtterSec) before significant value flows.
+- **Smart contract risk:** Solana programs tested on devnet, not formally audited. Recommended: professional audit (Trail of Bits, OtterSec) before significant value flows. Estimated cost: $50–150K.
 - **Oracle centralization:** Bounty program currently relies on centralized oracle for proof submission. Roadmap: transition to decentralized or multisig oracle.
 - **Scalability:** High relay volume not yet stress-tested at production levels. Architecture designed to scale.
 
@@ -486,11 +492,11 @@ Two forms of the risk:
 - **Commercial:** A model company replicates relay functionality and deprioritizes API access for competitors.
 - **Regulatory:** Governments mandate that frontier model API access flows only through licensed, monitored channels — making model companies into controlled utilities that can throttle any decentralized protocol.
 
-Near-term hedge: open-source model parity (Llama, Mistral, Qwen) provides a floor. Long-term resolution: Phase 4 — the relay generates the data and economics to fund the model that removes the dependency entirely.
+Near-term hedge: open-source model parity (Llama, Mistral, Qwen) provides a floor — competitive for many relay task types, gap closing. But "floor" is not "sovereign," and open-source is not ungovernable. Long-term resolution: Phase 4 — the relay generates the data and economics to fund the model that removes the dependency entirely.
 
 ### Execution Risks
 
-- **Solo founder — by design:** AMOS was built by one founder using AI agents — the same tools and patterns it enables at scale. The central demonstration of the thesis.
+- **Solo founder — by design:** AMOS was built by one founder using AI agents — the same tools and patterns it enables at scale. The central demonstration of the thesis. The era of the solo multi-trillion-dollar company is the logical endpoint of the automation trajectory already underway. AMOS exists as proof. The Services Co. operating partner expands the human team at the right leverage point.
 - **Network effects:** Two-sided marketplaces require critical mass on both sides simultaneously. The decay mechanism creates urgency but also risk.
 - **Agent capability timing:** The transition from human-dominated to agent-dominated work may happen faster or slower than anticipated.
 
@@ -510,6 +516,12 @@ Capture patterns are already emerging. Five companies control $700B in annual AI
 - Structural capture resistance enforced at the protocol level, not policy level
 - A portfolio of spin-out businesses that collectively drive relay volume and prove the thesis
 - A long-term path to open model sovereignty that removes the last structural dependency
+
+### The Mission
+
+The institutions humanity has constructed — governments, corporations, financial systems — were designed for a world that is ending. The agent economy is here. Without deliberate infrastructure designed to resist capture, it will be owned by a handful of companies and the governments that regulate them.
+
+AMOS is the deliberate infrastructure. The relay, the token economics, the open-source foundation, the spin-out model, and ultimately the open model — each layer exists to ensure that the agent economy has a version where human agency remains structurally possible.
 
 ### The Thesis
 
@@ -541,3 +553,5 @@ Economics 2.0 without deliberate design is a world where humans lose economic ag
 ---
 
 *AMOS is open source under the Apache 2.0 license.*
+
+*AMOS was designed and built by a solo founder working with AI agents — the same architecture and tools that AMOS enables at scale. This document, the codebase, the infrastructure, and the protocol were developed in collaboration with AI, proving the thesis that a single person augmented by autonomous agents can build what previously required a team. The future of work is human-AI collaboration. AMOS is both the proof and the platform.*
