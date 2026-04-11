@@ -58,6 +58,14 @@ struct HeartbeatPayload {
     timestamp: String,
 }
 
+/// Per-model token usage entry for metered billing.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelUsageEntry {
+    pub model_id: String,
+    pub tokens_input: u64,
+    pub tokens_output: u64,
+}
+
 /// Activity report sent to platform.
 #[derive(Debug, Serialize)]
 struct ActivityReport {
@@ -69,7 +77,13 @@ struct ActivityReport {
     tokens_output: u64,
     tools_executed: u64,
     models_used: Vec<String>,
+    /// Per-model token breakdown for metered billing.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    model_usage: Vec<ModelUsageEntry>,
     timestamp: String,
+    /// Harness ID for per-harness billing (from AMOS_HARNESS_ID env var).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    harness_id: Option<String>,
 }
 
 /// Accumulated activity counters (reset after each report).
@@ -80,6 +94,32 @@ pub struct ActivityCounters {
     pub tokens_input: std::sync::atomic::AtomicU64,
     pub tokens_output: std::sync::atomic::AtomicU64,
     pub tools_executed: std::sync::atomic::AtomicU64,
+    /// Per-model token usage (model_id → (input, output)).
+    pub model_usage: tokio::sync::RwLock<std::collections::HashMap<String, (u64, u64)>>,
+}
+
+impl ActivityCounters {
+    /// Record token usage for a specific model.
+    pub async fn record_model_usage(&self, model_id: &str, input: u64, output: u64) {
+        let mut map = self.model_usage.write().await;
+        let entry = map.entry(model_id.to_string()).or_insert((0, 0));
+        entry.0 += input;
+        entry.1 += output;
+    }
+
+    /// Drain and return per-model usage, resetting to empty.
+    pub async fn drain_model_usage(&self) -> Vec<ModelUsageEntry> {
+        let mut map = self.model_usage.write().await;
+        let entries: Vec<ModelUsageEntry> = map
+            .drain()
+            .map(|(model_id, (tokens_input, tokens_output))| ModelUsageEntry {
+                model_id,
+                tokens_input,
+                tokens_output,
+            })
+            .collect();
+        entries
+    }
 }
 
 impl PlatformSyncClient {
@@ -263,6 +303,8 @@ impl PlatformSyncClient {
 
             // Swap counters to zero and capture values
             use std::sync::atomic::Ordering::Relaxed;
+            let model_usage = counters.drain_model_usage().await;
+            let models_used: Vec<String> = model_usage.iter().map(|e| e.model_id.clone()).collect();
             let report = ActivityReport {
                 period_start: last_report.to_rfc3339(),
                 period_end: now.to_rfc3339(),
@@ -271,8 +313,10 @@ impl PlatformSyncClient {
                 tokens_input: counters.tokens_input.swap(0, Relaxed),
                 tokens_output: counters.tokens_output.swap(0, Relaxed),
                 tools_executed: counters.tools_executed.swap(0, Relaxed),
-                models_used: Vec::new(), // TODO: track model usage
+                models_used,
+                model_usage,
                 timestamp: now.to_rfc3339(),
+                harness_id: std::env::var("AMOS_HARNESS_ID").ok(),
             };
 
             // Skip empty reports

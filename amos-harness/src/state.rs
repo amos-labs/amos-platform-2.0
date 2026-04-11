@@ -80,6 +80,9 @@ pub struct AppState {
     /// Multi-harness orchestrator (primary harness only).
     /// Provides discovery cache and proxy for specialist harness management.
     pub orchestrator: Option<Arc<HarnessOrchestrator>>,
+
+    /// Activity counters for platform telemetry (token usage, conversations, etc.)
+    pub activity_counters: Arc<crate::platform_sync::ActivityCounters>,
 }
 
 impl AppState {

@@ -13,6 +13,7 @@ pub mod integrations;
 pub mod llm_providers;
 pub mod packages;
 pub mod revisions;
+pub mod settings;
 pub mod sites;
 pub mod uploads;
 
@@ -86,6 +87,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/harness", harness_info::routes(state.clone()))
         // Bounty proxy routes (forwards to AMOS Network Relay)
         .nest("/api/v1/bounties", bounties::routes(state.clone()))
+        // Harness settings routes (model selection, provider mode)
+        .nest("/api/v1/settings", settings::routes(state.clone()))
         // Package management routes
         .nest("/api/v1/packages", packages::routes(state.clone()))
         // Site management routes

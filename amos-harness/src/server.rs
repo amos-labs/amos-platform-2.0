@@ -176,6 +176,9 @@ pub async fn create_server(
     // Create event channel for schema → automation decoupling
     let automation_event_tx = automation_engine.create_event_channel();
 
+    // Create shared activity counters for telemetry
+    let activity_counters = Arc::new(crate::platform_sync::ActivityCounters::default());
+
     // Create application state
     let state = Arc::new(AppState {
         db_pool,
@@ -196,6 +199,7 @@ pub async fn create_server(
         automation_engine: automation_engine.clone(),
         automation_event_tx,
         orchestrator,
+        activity_counters,
     });
 
     // Activate packages (bootstrap schemas, collect routes)

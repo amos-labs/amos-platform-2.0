@@ -73,8 +73,16 @@
                 </div>
             </nav>
 
-            <!-- Bottom: Dark Mode Toggle -->
+            <!-- Bottom: Model Selector + Dark Mode -->
             <div class="p-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
+                <!-- Model Selector -->
+                <div id="modelSelectorContainer" class="mb-1">
+                    <label class="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 px-3 mb-1">Model</label>
+                    <select id="modelSelector" onchange="onModelChange(this.value)"
+                        class="w-full px-3 py-1.5 rounded-lg text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 cursor-pointer">
+                        <!-- Populated by JS from /api/v1/settings -->
+                    </select>
+                </div>
                 <button onclick="toggleDarkMode()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
                     <i data-lucide="moon" class="w-4 h-4" id="darkModeIcon"></i>
                     <span id="darkModeLabel">Dark Mode</span>

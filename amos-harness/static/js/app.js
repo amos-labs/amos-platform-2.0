@@ -57,6 +57,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load system canvases for navigation
     loadSystemNav();
 
+    // Load settings (model selector, provider mode)
+    loadSettings();
+
     // Listen for postMessage from canvas iframes
     window.addEventListener('message', handleCanvasMessage);
 
@@ -134,6 +137,58 @@ function restoreState() {
 }
 
 // ============================================================================
+// Settings / Model Selector
+// ============================================================================
+
+async function loadSettings() {
+    try {
+        const resp = await fetch('/api/v1/settings', { credentials: 'include' });
+        if (!resp.ok) return;
+        const settings = await resp.json();
+
+        const selector = document.getElementById('modelSelector');
+        const container = document.getElementById('modelSelectorContainer');
+        if (!selector || !container) return;
+
+        // Hide model selector if no shared Bedrock and no models to choose
+        if (!settings.shared_bedrock_available && settings.llm_provider_mode !== 'shared_bedrock') {
+            container.style.display = 'none';
+            return;
+        }
+
+        // Populate model options
+        selector.innerHTML = '';
+        for (const model of settings.available_models) {
+            const opt = document.createElement('option');
+            opt.value = model.id;
+            const price = `$${model.input_price_per_mtok}/$${model.output_price_per_mtok} per MTok`;
+            opt.textContent = `${model.display_name} (${model.tier})`;
+            opt.title = price;
+            if (model.id === settings.llm_model) opt.selected = true;
+            selector.appendChild(opt);
+        }
+
+        // Also store in localStorage for canvas compat
+        localStorage.setItem('amos-model', settings.llm_model);
+    } catch (e) {
+        console.warn('Failed to load settings:', e);
+    }
+}
+
+async function onModelChange(modelId) {
+    try {
+        await fetch('/api/v1/settings', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ llm_model: modelId }),
+        });
+        localStorage.setItem('amos-model', modelId);
+    } catch (e) {
+        console.warn('Failed to update model:', e);
+    }
+}
+
 // System Canvas Navigation
 // ============================================================================
 
@@ -394,6 +449,7 @@ async function sendMessage() {
         const decoder = new TextDecoder();
         let buffer = '';
         let fullText = '';
+        let hasError = false;
         let currentToolIndicator = null;
 
         while (true) {
@@ -530,7 +586,17 @@ async function sendMessage() {
                         }
                         // Handle error event
                         else if (data.type === 'error') {
-                            throw new Error(data.message || 'Unknown error');
+                            console.error('Agent error:', data.message);
+                            const content = assistantEl.querySelector('.message-content');
+                            if (content) {
+                                // Show user-friendly error for rate limits
+                                let userMsg = data.message || 'Unknown error';
+                                if (userMsg.includes('429') || userMsg.includes('rate_limit') || userMsg.includes('Too Many Requests')) {
+                                    userMsg = 'Your API provider rate limit was exceeded. Try starting a new conversation to reduce context size, or wait a minute before retrying.';
+                                }
+                                content.innerHTML = `<div class="error-message"><strong>Error:</strong> ${escapeHtml(userMsg)}</div>`;
+                            }
+                            hasError = true;
                         }
                     } catch (parseError) {
                         // Ignore AbortError from stop
@@ -541,8 +607,8 @@ async function sendMessage() {
             }
         }
 
-        // If no text was received, show a default message
-        if (!fullText) {
+        // If no text was received and no error occurred, show a default message
+        if (!fullText && !hasError) {
             const content = assistantEl.querySelector('.message-content');
             if (content && !content.innerHTML.trim()) {
                 content.innerHTML = '<p class="text-gray-500">I completed your request.</p>';

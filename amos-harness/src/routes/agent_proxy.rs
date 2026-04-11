@@ -235,10 +235,10 @@ async fn proxy_chat(
         }
     };
 
-    let enriched_body = match inject_byok_provider(&state, &body).await {
+    let enriched_body = match inject_llm_provider(&state, &body).await {
         Ok(b) => b,
         Err(e) => {
-            warn!("BYOK injection skipped ({}), forwarding original body", e);
+            warn!("LLM provider injection skipped ({}), forwarding original body", e);
             body
         }
     };
@@ -296,7 +296,13 @@ async fn proxy_chat(
 
     let data_stream = agent_response.bytes_stream();
     let stream =
-        sse_with_keepalive_and_persist(data_stream, chat_meta, state.db_pool.clone(), session_id);
+        sse_with_keepalive_and_persist(
+            data_stream,
+            chat_meta,
+            state.db_pool.clone(),
+            session_id,
+            state.activity_counters.clone(),
+        );
 
     let body = Body::from_stream(stream);
 
@@ -315,7 +321,7 @@ async fn proxy_chat(
 ///
 /// Returns the enriched JSON string, or an error string if no provider is
 /// configured or decryption fails.
-async fn inject_byok_provider(state: &AppState, body: &str) -> Result<String, String> {
+async fn inject_llm_provider(state: &AppState, body: &str) -> Result<String, String> {
     // Parse the incoming JSON body
     let mut json: serde_json::Value =
         serde_json::from_str(body).map_err(|e| format!("invalid JSON: {e}"))?;
@@ -325,47 +331,82 @@ async fn inject_byok_provider(state: &AppState, body: &str) -> Result<String, St
         return Ok(body.to_string());
     }
 
-    // Look up the active LLM provider
-    let provider = sqlx::query_as::<_, crate::routes::llm_providers::LlmProviderRow>(
-        "SELECT * FROM llm_providers WHERE is_active = true LIMIT 1",
-    )
-    .fetch_optional(&state.db_pool)
-    .await
-    .map_err(|e| format!("DB error: {e}"))?
-    .ok_or_else(|| "no active provider".to_string())?;
-
-    let credential_id = provider
-        .credential_id
-        .ok_or_else(|| "active provider has no credential".to_string())?;
-
-    // Decrypt the API key from the credential vault
-    let api_key = credentials::decrypt_credential(&state.db_pool, &state.vault, credential_id)
+    // Check the configured provider mode from harness_settings
+    let provider_mode = super::settings::get_setting(state, "llm_provider_mode")
         .await
-        .map_err(|status| format!("decrypt failed: HTTP {}", status.as_u16()))?;
+        .unwrap_or_else(|| "shared_bedrock".to_string());
 
-    // Inject BYOK fields into the JSON body
     let obj = json
         .as_object_mut()
         .ok_or_else(|| "body is not a JSON object".to_string())?;
-    obj.insert(
-        "provider_type".to_string(),
-        serde_json::Value::String(provider.name.clone()),
-    );
-    obj.insert(
-        "api_base".to_string(),
-        serde_json::Value::String(provider.api_base.clone()),
-    );
-    obj.insert("api_key".to_string(), serde_json::Value::String(api_key));
-    obj.insert(
-        "model_id".to_string(),
-        serde_json::Value::String(provider.default_model.clone()),
-    );
 
-    info!(
-        provider = %provider.name,
-        model = %provider.default_model,
-        "Injected BYOK provider config into chat request"
-    );
+    match provider_mode.as_str() {
+        "shared_bedrock" => {
+            // Shared Bedrock: inject provider_type and model_id only.
+            // The agent picks up AWS creds from its environment (ECS task role).
+            let model = super::settings::get_setting(state, "llm_model")
+                .await
+                .unwrap_or_else(|| {
+                    "us.anthropic.claude-sonnet-4-6-20250514-v1:0".to_string()
+                });
+
+            obj.insert(
+                "provider_type".to_string(),
+                serde_json::Value::String("bedrock".to_string()),
+            );
+            obj.insert(
+                "model_id".to_string(),
+                serde_json::Value::String(model.clone()),
+            );
+
+            info!(
+                provider = "bedrock",
+                model = %model,
+                "Injected shared Bedrock provider config"
+            );
+        }
+        "byok" | _ => {
+            // BYOK: look up the active LLM provider and inject full credentials.
+            let provider =
+                sqlx::query_as::<_, crate::routes::llm_providers::LlmProviderRow>(
+                    "SELECT * FROM llm_providers WHERE is_active = true LIMIT 1",
+                )
+                .fetch_optional(&state.db_pool)
+                .await
+                .map_err(|e| format!("DB error: {e}"))?
+                .ok_or_else(|| "no active BYOK provider configured".to_string())?;
+
+            let credential_id = provider
+                .credential_id
+                .ok_or_else(|| "active provider has no credential".to_string())?;
+
+            // Decrypt the API key from the credential vault
+            let api_key =
+                credentials::decrypt_credential(&state.db_pool, &state.vault, credential_id)
+                    .await
+                    .map_err(|status| format!("decrypt failed: HTTP {}", status.as_u16()))?;
+
+            obj.insert(
+                "provider_type".to_string(),
+                serde_json::Value::String(provider.name.clone()),
+            );
+            obj.insert(
+                "api_base".to_string(),
+                serde_json::Value::String(provider.api_base.clone()),
+            );
+            obj.insert("api_key".to_string(), serde_json::Value::String(api_key));
+            obj.insert(
+                "model_id".to_string(),
+                serde_json::Value::String(provider.default_model.clone()),
+            );
+
+            info!(
+                provider = %provider.name,
+                model = %provider.default_model,
+                "Injected BYOK provider config into chat request"
+            );
+        }
+    }
 
     serde_json::to_string(&json).map_err(|e| format!("JSON serialize: {e}"))
 }
@@ -711,6 +752,7 @@ fn sse_with_keepalive_and_persist(
     chat_meta_event: String,
     db_pool: sqlx::PgPool,
     session_id: Uuid,
+    activity_counters: std::sync::Arc<crate::platform_sync::ActivityCounters>,
 ) -> impl futures::Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static {
     use futures::StreamExt;
 
@@ -727,6 +769,10 @@ fn sse_with_keepalive_and_persist(
 
         // Accumulate assistant text from message_delta events.
         let mut assistant_text = String::new();
+        // Token usage from agent_end event.
+        let mut final_input_tokens: i64 = 0;
+        let mut final_output_tokens: i64 = 0;
+        let mut final_model_id: Option<String> = None;
         // Buffer for incomplete SSE lines across chunk boundaries.
         let mut line_buffer = String::new();
 
@@ -745,14 +791,29 @@ fn sse_with_keepalive_and_persist(
                                 if let Ok(data) =
                                     serde_json::from_str::<serde_json::Value>(json_str)
                                 {
-                                    if data.get("type").and_then(|t| t.as_str())
-                                        == Some("message_delta")
-                                    {
-                                        if let Some(content) =
-                                            data.get("content").and_then(|c| c.as_str())
-                                        {
-                                            assistant_text.push_str(content);
+                                    match data.get("type").and_then(|t| t.as_str()) {
+                                        Some("message_delta") => {
+                                            if let Some(content) =
+                                                data.get("content").and_then(|c| c.as_str())
+                                            {
+                                                assistant_text.push_str(content);
+                                            }
                                         }
+                                        Some("agent_end") => {
+                                            final_input_tokens = data
+                                                .get("total_input_tokens")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or(0);
+                                            final_output_tokens = data
+                                                .get("total_output_tokens")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or(0);
+                                            final_model_id = data
+                                                .get("model_id")
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }
@@ -803,8 +864,36 @@ fn sse_with_keepalive_and_persist(
             {
                 tracing::warn!("Failed to save assistant message: {e}");
             }
-            // Update session stats.
-            let _ = crate::sessions::touch_session(&db_pool, session_id, 2, 0, 0).await;
+            // Update session stats with actual token usage from agent_end event.
+            let _ = crate::sessions::touch_session(
+                &db_pool,
+                session_id,
+                2,
+                final_input_tokens,
+                final_output_tokens,
+            )
+            .await;
+
+            // Record per-model usage on activity counters for platform billing.
+            if final_input_tokens > 0 || final_output_tokens > 0 {
+                use std::sync::atomic::Ordering::Relaxed;
+                activity_counters
+                    .tokens_input
+                    .fetch_add(final_input_tokens as u64, Relaxed);
+                activity_counters
+                    .tokens_output
+                    .fetch_add(final_output_tokens as u64, Relaxed);
+                activity_counters.messages.fetch_add(2, Relaxed);
+                if let Some(model) = &final_model_id {
+                    activity_counters
+                        .record_model_usage(
+                            model,
+                            final_input_tokens as u64,
+                            final_output_tokens as u64,
+                        )
+                        .await;
+                }
+            }
         }
     });
 
