@@ -30,6 +30,8 @@ struct SettingsResponse {
     llm_model: String,
     /// Whether shared Bedrock is available (false for self-hosted)
     shared_bedrock_available: bool,
+    /// Whether billing is verified (required for shared Bedrock)
+    billing_verified: bool,
     /// Available models for shared Bedrock
     available_models: Vec<ModelInfo>,
 }
@@ -90,6 +92,10 @@ async fn get_settings(
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
 
+    let billing_verified = std::env::var("BILLING_VERIFIED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
     let provider_mode = get_setting(&state, "llm_provider_mode")
         .await
         .unwrap_or_else(|| {
@@ -108,6 +114,7 @@ async fn get_settings(
         llm_provider_mode: provider_mode,
         llm_model: model,
         shared_bedrock_available,
+        billing_verified,
         available_models: AVAILABLE_MODELS
             .iter()
             .map(|m| ModelInfo {
@@ -135,6 +142,16 @@ async fn update_settings(
         }
         if mode == "shared_bedrock" && !shared_bedrock_available {
             return Err(StatusCode::BAD_REQUEST);
+        }
+        // Shared Bedrock requires verified billing (active subscription or admin)
+        if mode == "shared_bedrock" {
+            let billing_verified = std::env::var("BILLING_VERIFIED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false);
+            if !billing_verified {
+                tracing::warn!("Shared Bedrock rejected: billing not verified");
+                return Err(StatusCode::PAYMENT_REQUIRED);
+            }
         }
         set_setting(&state, "llm_provider_mode", mode).await?;
     }

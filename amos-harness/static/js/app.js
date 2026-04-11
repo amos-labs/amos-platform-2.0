@@ -156,6 +156,18 @@ async function loadSettings() {
             return;
         }
 
+        // Show billing notice if Bedrock is available but billing not verified
+        if (settings.shared_bedrock_available && !settings.billing_verified && settings.llm_provider_mode !== 'byok') {
+            selector.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.textContent = 'Add payment method to enable AI';
+            opt.disabled = true;
+            opt.selected = true;
+            selector.appendChild(opt);
+            selector.disabled = true;
+            return;
+        }
+
         // Populate model options
         selector.innerHTML = '';
         for (const model of settings.available_models) {

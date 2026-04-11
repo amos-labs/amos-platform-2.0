@@ -19,7 +19,7 @@ COPY amos-packages ./amos-packages
 
 # Build harness with all package features compiled in.
 # Runtime control via AMOS_PACKAGES env var determines which packages are active.
-RUN SQLX_OFFLINE=true cargo build --release --bin amos-harness \
+RUN RUST_MIN_STACK=16777216 SQLX_OFFLINE=true cargo build --release --bin amos-harness \
     --features "pkg-education,pkg-autoresearch"
 
 # Stage 2: Runtime
