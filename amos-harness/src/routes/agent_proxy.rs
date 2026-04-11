@@ -864,35 +864,36 @@ fn sse_with_keepalive_and_persist(
             {
                 tracing::warn!("Failed to save assistant message: {e}");
             }
-            // Update session stats with actual token usage from agent_end event.
-            let _ = crate::sessions::touch_session(
-                &db_pool,
-                session_id,
-                2,
-                final_input_tokens,
-                final_output_tokens,
-            )
-            .await;
+        }
 
-            // Record per-model usage on activity counters for platform billing.
-            if final_input_tokens > 0 || final_output_tokens > 0 {
-                use std::sync::atomic::Ordering::Relaxed;
+        // Always record token usage — even for tool-only responses with no text.
+        // This is critical for metered billing: every token must be counted.
+        let _ = crate::sessions::touch_session(
+            &db_pool,
+            session_id,
+            2,
+            final_input_tokens,
+            final_output_tokens,
+        )
+        .await;
+
+        if final_input_tokens > 0 || final_output_tokens > 0 {
+            use std::sync::atomic::Ordering::Relaxed;
+            activity_counters
+                .tokens_input
+                .fetch_add(final_input_tokens as u64, Relaxed);
+            activity_counters
+                .tokens_output
+                .fetch_add(final_output_tokens as u64, Relaxed);
+            activity_counters.messages.fetch_add(2, Relaxed);
+            if let Some(model) = &final_model_id {
                 activity_counters
-                    .tokens_input
-                    .fetch_add(final_input_tokens as u64, Relaxed);
-                activity_counters
-                    .tokens_output
-                    .fetch_add(final_output_tokens as u64, Relaxed);
-                activity_counters.messages.fetch_add(2, Relaxed);
-                if let Some(model) = &final_model_id {
-                    activity_counters
-                        .record_model_usage(
-                            model,
-                            final_input_tokens as u64,
-                            final_output_tokens as u64,
-                        )
-                        .await;
-                }
+                    .record_model_usage(
+                        model,
+                        final_input_tokens as u64,
+                        final_output_tokens as u64,
+                    )
+                    .await;
             }
         }
     });
