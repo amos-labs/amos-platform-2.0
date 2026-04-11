@@ -1,11 +1,7 @@
 //! Bounty marketplace routes.
 
+use crate::{protocol_fees::calculate_fee, solana::SettlementParams, state::RelayState};
 use amos_core::types::BountyStatus;
-use crate::{
-    protocol_fees::calculate_fee,
-    solana::SettlementParams,
-    state::RelayState,
-};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -166,17 +162,15 @@ async fn create_bounty(
     let now = Utc::now();
 
     let caps_json = serde_json::to_value(&req.required_capabilities).unwrap_or_default();
-    let row = sqlx::query(
-        &format!(
-            "INSERT INTO relay_bounties (
+    let row = sqlx::query(&format!(
+        "INSERT INTO relay_bounties (
                 id, title, description, reward_tokens, deadline_at,
                 required_capabilities, poster_wallet, status,
                 created_at, updated_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING {BOUNTY_SELECT}"
-        ),
-    )
+    ))
     .bind(bounty_id)
     .bind(&req.title)
     .bind(&req.description)
@@ -238,7 +232,10 @@ async fn list_bounties(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let bounties: Vec<BountyResponse> = rows.into_iter().filter_map(|r| bounty_from_row(r).ok()).collect();
+    let bounties: Vec<BountyResponse> = rows
+        .into_iter()
+        .filter_map(|r| bounty_from_row(r).ok())
+        .collect();
     Ok(Json(bounties))
 }
 
@@ -247,9 +244,9 @@ async fn get_bounty(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<BountyResponse>, StatusCode> {
-    let row = sqlx::query(
-        &format!("SELECT {BOUNTY_SELECT} FROM relay_bounties WHERE id = $1"),
-    )
+    let row = sqlx::query(&format!(
+        "SELECT {BOUNTY_SELECT} FROM relay_bounties WHERE id = $1"
+    ))
     .bind(id)
     .fetch_optional(&state.db)
     .await

@@ -135,9 +135,7 @@ impl AutomationEngine {
                 self.action_send_notification(automation, &trigger_data)
                     .await
             }
-            ActionType::CreateBounty => {
-                self.action_create_bounty(automation, &trigger_data).await
-            }
+            ActionType::CreateBounty => self.action_create_bounty(automation, &trigger_data).await,
         };
 
         let duration_ms = start.elapsed().as_millis() as i32;
@@ -421,7 +419,10 @@ impl AutomationEngine {
 
         if let Some(obj) = context.as_object_mut() {
             obj.insert("trigger_data".to_string(), trigger_data.clone());
-            obj.insert("automation_id".to_string(), json!(automation.id.to_string()));
+            obj.insert(
+                "automation_id".to_string(),
+                json!(automation.id.to_string()),
+            );
             obj.insert("automation_name".to_string(), json!(automation.name));
         }
 

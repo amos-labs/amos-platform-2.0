@@ -15,12 +15,7 @@
 //!   - Self-hosted harnesses don't have `SHARED_BEDROCK_ENABLED` — BYOK only.
 
 use crate::state::AppState;
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -173,18 +168,16 @@ async fn update_settings(
 
 /// Read a setting from the harness_settings table.
 pub(crate) async fn get_setting(state: &AppState, key: &str) -> Option<String> {
-    sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT value FROM harness_settings WHERE key = $1",
-    )
-    .bind(key)
-    .fetch_optional(&state.db_pool)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|v| {
-        // Values are stored as JSON strings (e.g. "\"shared_bedrock\"")
-        v.as_str().map(|s| s.to_string())
-    })
+    sqlx::query_scalar::<_, serde_json::Value>("SELECT value FROM harness_settings WHERE key = $1")
+        .bind(key)
+        .fetch_optional(&state.db_pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| {
+            // Values are stored as JSON strings (e.g. "\"shared_bedrock\"")
+            v.as_str().map(|s| s.to_string())
+        })
 }
 
 /// Write a setting to the harness_settings table.

@@ -107,16 +107,10 @@ pub async fn authenticate(
 
 /// Token exchange: validates a JWT from query param and sets a session cookie.
 /// Used when platform redirects to harness with ?token=<jwt>.
-pub async fn token_exchange(
-    State(state): State<Arc<AppState>>,
-    uri: Uri,
-) -> Response {
+pub async fn token_exchange(State(state): State<Arc<AppState>>, uri: Uri) -> Response {
     let token = uri
         .query()
-        .and_then(|q| {
-            q.split('&')
-                .find_map(|pair| pair.strip_prefix("token="))
-        });
+        .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("token=")));
 
     let Some(token) = token else {
         return (StatusCode::BAD_REQUEST, "Missing token parameter").into_response();
@@ -133,11 +127,7 @@ pub async fn token_exchange(
         SESSION_COOKIE, token, max_age
     );
 
-    (
-        [(header::SET_COOKIE, cookie)],
-        Redirect::to("/"),
-    )
-        .into_response()
+    ([(header::SET_COOKIE, cookie)], Redirect::to("/")).into_response()
 }
 
 fn validate_jwt(token: &str, state: &AppState) -> Result<Claims, ()> {
@@ -180,7 +170,6 @@ fn extract_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .split(';')
         .find_map(|s| {
             let s = s.trim();
-            s.strip_prefix(&format!("{}=", name))
-                .map(|v| v.to_string())
+            s.strip_prefix(&format!("{}=", name)).map(|v| v.to_string())
         })
 }

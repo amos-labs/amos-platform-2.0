@@ -238,7 +238,10 @@ async fn proxy_chat(
     let enriched_body = match inject_llm_provider(&state, &body).await {
         Ok(b) => b,
         Err(e) => {
-            warn!("LLM provider injection skipped ({}), forwarding original body", e);
+            warn!(
+                "LLM provider injection skipped ({}), forwarding original body",
+                e
+            );
             body
         }
     };
@@ -295,14 +298,13 @@ async fn proxy_chat(
     );
 
     let data_stream = agent_response.bytes_stream();
-    let stream =
-        sse_with_keepalive_and_persist(
-            data_stream,
-            chat_meta,
-            state.db_pool.clone(),
-            session_id,
-            state.activity_counters.clone(),
-        );
+    let stream = sse_with_keepalive_and_persist(
+        data_stream,
+        chat_meta,
+        state.db_pool.clone(),
+        session_id,
+        state.activity_counters.clone(),
+    );
 
     let body = Body::from_stream(stream);
 
@@ -346,9 +348,7 @@ async fn inject_llm_provider(state: &AppState, body: &str) -> Result<String, Str
             // The agent picks up AWS creds from its environment (ECS task role).
             let model = super::settings::get_setting(state, "llm_model")
                 .await
-                .unwrap_or_else(|| {
-                    "us.anthropic.claude-sonnet-4-6-20250514-v1:0".to_string()
-                });
+                .unwrap_or_else(|| "us.anthropic.claude-sonnet-4-6-20250514-v1:0".to_string());
 
             obj.insert(
                 "provider_type".to_string(),
@@ -367,14 +367,13 @@ async fn inject_llm_provider(state: &AppState, body: &str) -> Result<String, Str
         }
         "byok" | _ => {
             // BYOK: look up the active LLM provider and inject full credentials.
-            let provider =
-                sqlx::query_as::<_, crate::routes::llm_providers::LlmProviderRow>(
-                    "SELECT * FROM llm_providers WHERE is_active = true LIMIT 1",
-                )
-                .fetch_optional(&state.db_pool)
-                .await
-                .map_err(|e| format!("DB error: {e}"))?
-                .ok_or_else(|| "no active BYOK provider configured".to_string())?;
+            let provider = sqlx::query_as::<_, crate::routes::llm_providers::LlmProviderRow>(
+                "SELECT * FROM llm_providers WHERE is_active = true LIMIT 1",
+            )
+            .fetch_optional(&state.db_pool)
+            .await
+            .map_err(|e| format!("DB error: {e}"))?
+            .ok_or_else(|| "no active BYOK provider configured".to_string())?;
 
             let credential_id = provider
                 .credential_id

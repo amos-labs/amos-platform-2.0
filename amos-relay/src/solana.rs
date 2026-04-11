@@ -106,9 +106,8 @@ impl SolanaClient {
             ))
         })?;
 
-        let bytes: Vec<u8> = serde_json::from_str(&keypair_bytes).map_err(|e| {
-            AmosError::Internal(format!("Invalid keypair JSON format: {}", e))
-        })?;
+        let bytes: Vec<u8> = serde_json::from_str(&keypair_bytes)
+            .map_err(|e| AmosError::Internal(format!("Invalid keypair JSON format: {}", e)))?;
 
         self.oracle_keypair = Some(
             Keypair::try_from(bytes.as_slice())
@@ -174,19 +173,17 @@ impl SolanaClient {
         let oracle = self.oracle_keypair.as_ref().ok_or_else(|| {
             AmosError::Internal("Oracle keypair not configured — cannot settle bounties".into())
         })?;
-        let mint = self.mint.ok_or_else(|| {
-            AmosError::Internal("Mint address not configured".into())
-        })?;
-        let treasury = self.treasury_token_account.ok_or_else(|| {
-            AmosError::Internal("Treasury token account not configured".into())
-        })?;
+        let mint = self
+            .mint
+            .ok_or_else(|| AmosError::Internal("Mint address not configured".into()))?;
+        let treasury = self
+            .treasury_token_account
+            .ok_or_else(|| AmosError::Internal("Treasury token account not configured".into()))?;
 
-        let operator = Pubkey::from_str(&params.agent_wallet).map_err(|e| {
-            AmosError::Validation(format!("Invalid agent wallet: {}", e))
-        })?;
-        let reviewer = Pubkey::from_str(&params.reviewer_wallet).map_err(|e| {
-            AmosError::Validation(format!("Invalid reviewer wallet: {}", e))
-        })?;
+        let operator = Pubkey::from_str(&params.agent_wallet)
+            .map_err(|e| AmosError::Validation(format!("Invalid agent wallet: {}", e)))?;
+        let reviewer = Pubkey::from_str(&params.reviewer_wallet)
+            .map_err(|e| AmosError::Validation(format!("Invalid reviewer wallet: {}", e)))?;
 
         let program_id = self.bounty_program_id;
 
@@ -194,16 +191,13 @@ impl SolanaClient {
         let bounty_id_bytes = hash_to_32_bytes(&params.bounty_id);
 
         // Derive all PDAs
-        let (config_pda, _) =
-            Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        let (config_pda, _) = Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
 
         // Day index from config start_time — we fetch it from the config account
         // For now, use current unix timestamp / 86400 as approximate day index
         let day_index = (chrono::Utc::now().timestamp() / 86400) as u32;
-        let (daily_pool_pda, _) = Pubkey::find_program_address(
-            &[DAILY_POOL_SEED, &day_index.to_le_bytes()],
-            &program_id,
-        );
+        let (daily_pool_pda, _) =
+            Pubkey::find_program_address(&[DAILY_POOL_SEED, &day_index.to_le_bytes()], &program_id);
 
         let (bounty_proof_pda, _) =
             Pubkey::find_program_address(&[BOUNTY_PROOF_SEED, &bounty_id_bytes], &program_id);
@@ -328,6 +322,7 @@ fn anchor_discriminator(name: &str) -> [u8; 8] {
 
 /// Build the instruction data for `submit_bounty_proof`.
 /// Layout: 8-byte discriminator + borsh-serialized fixed-size args.
+#[allow(clippy::too_many_arguments)]
 fn build_submit_bounty_proof_data(
     bounty_id: &[u8; 32],
     base_points: u16,
@@ -444,7 +439,9 @@ mod tests {
         )
         .unwrap();
 
-        assert!(client.set_treasury("11111111111111111111111111111111").is_ok());
+        assert!(client
+            .set_treasury("11111111111111111111111111111111")
+            .is_ok());
         assert!(client.treasury_token_account.is_some());
     }
 
@@ -510,7 +507,14 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 100, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            100,
+            80,
+            1,
+            true,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         // 8 (disc) + 32 (bounty_id) + 2 (points) + 1 (quality) + 1 (type)
@@ -527,7 +531,14 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 0, 0, 0, false, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            0,
+            0,
+            0,
+            false,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         let expected_disc = anchor_discriminator("submit_bounty_proof");
@@ -542,7 +553,14 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 500, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            500,
+            80,
+            1,
+            true,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         // base_points at offset 8 + 32 = 40, 2 bytes LE
@@ -558,13 +576,20 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 100, 95, 7, true, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            100,
+            95,
+            7,
+            true,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         // quality_score at offset 42, contribution_type at 43, is_agent at 44
         assert_eq!(data[42], 95); // quality
-        assert_eq!(data[43], 7);  // infrastructure contribution type
-        assert_eq!(data[44], 1);  // is_agent = true
+        assert_eq!(data[43], 7); // infrastructure contribution type
+        assert_eq!(data[44], 1); // is_agent = true
     }
 
     #[test]
@@ -575,7 +600,14 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 100, 80, 1, false, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            100,
+            80,
+            1,
+            false,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         assert_eq!(data[44], 0); // is_agent = false
@@ -589,7 +621,14 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 100, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            100,
+            80,
+            1,
+            true,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         // bounty_id at offset 8..40
@@ -604,7 +643,14 @@ mod tests {
         let reviewer = Pubkey::new_unique();
 
         let data = build_submit_bounty_proof_data(
-            &bounty_id, 100, 80, 1, true, &agent_id, &reviewer, &evidence_hash,
+            &bounty_id,
+            100,
+            80,
+            1,
+            true,
+            &agent_id,
+            &reviewer,
+            &evidence_hash,
         );
 
         // Last 64 bytes should be zeroed (external_reference)
@@ -681,11 +727,9 @@ mod tests {
     #[test]
     fn test_pda_derivation_config() {
         let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
-        let (config_pda, bump) =
-            Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        let (config_pda, bump) = Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
         // PDA should be deterministic
-        let (config_pda2, bump2) =
-            Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        let (config_pda2, bump2) = Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
         assert_eq!(config_pda, config_pda2);
         assert_eq!(bump, bump2);
         assert_ne!(config_pda, program_id);
@@ -696,14 +740,10 @@ mod tests {
         let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let day1: u32 = 100;
         let day2: u32 = 101;
-        let (pool1, _) = Pubkey::find_program_address(
-            &[DAILY_POOL_SEED, &day1.to_le_bytes()],
-            &program_id,
-        );
-        let (pool2, _) = Pubkey::find_program_address(
-            &[DAILY_POOL_SEED, &day2.to_le_bytes()],
-            &program_id,
-        );
+        let (pool1, _) =
+            Pubkey::find_program_address(&[DAILY_POOL_SEED, &day1.to_le_bytes()], &program_id);
+        let (pool2, _) =
+            Pubkey::find_program_address(&[DAILY_POOL_SEED, &day2.to_le_bytes()], &program_id);
         assert_ne!(pool1, pool2); // Different days = different PDAs
     }
 
@@ -712,14 +752,10 @@ mod tests {
         let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let bounty_id_1 = hash_to_32_bytes("bounty-1");
         let bounty_id_2 = hash_to_32_bytes("bounty-2");
-        let (proof1, _) = Pubkey::find_program_address(
-            &[BOUNTY_PROOF_SEED, &bounty_id_1],
-            &program_id,
-        );
-        let (proof2, _) = Pubkey::find_program_address(
-            &[BOUNTY_PROOF_SEED, &bounty_id_2],
-            &program_id,
-        );
+        let (proof1, _) =
+            Pubkey::find_program_address(&[BOUNTY_PROOF_SEED, &bounty_id_1], &program_id);
+        let (proof2, _) =
+            Pubkey::find_program_address(&[BOUNTY_PROOF_SEED, &bounty_id_2], &program_id);
         assert_ne!(proof1, proof2); // Different bounties = different PDAs
     }
 
@@ -728,14 +764,10 @@ mod tests {
         let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let op1 = Pubkey::new_unique();
         let op2 = Pubkey::new_unique();
-        let (stats1, _) = Pubkey::find_program_address(
-            &[OPERATOR_STATS_SEED, op1.as_ref()],
-            &program_id,
-        );
-        let (stats2, _) = Pubkey::find_program_address(
-            &[OPERATOR_STATS_SEED, op2.as_ref()],
-            &program_id,
-        );
+        let (stats1, _) =
+            Pubkey::find_program_address(&[OPERATOR_STATS_SEED, op1.as_ref()], &program_id);
+        let (stats2, _) =
+            Pubkey::find_program_address(&[OPERATOR_STATS_SEED, op2.as_ref()], &program_id);
         assert_ne!(stats1, stats2);
     }
 
@@ -744,14 +776,10 @@ mod tests {
         let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
         let agent_id_1 = [1u8; 32];
         let agent_id_2 = [2u8; 32];
-        let (trust1, _) = Pubkey::find_program_address(
-            &[AGENT_TRUST_SEED, &agent_id_1],
-            &program_id,
-        );
-        let (trust2, _) = Pubkey::find_program_address(
-            &[AGENT_TRUST_SEED, &agent_id_2],
-            &program_id,
-        );
+        let (trust1, _) =
+            Pubkey::find_program_address(&[AGENT_TRUST_SEED, &agent_id_1], &program_id);
+        let (trust2, _) =
+            Pubkey::find_program_address(&[AGENT_TRUST_SEED, &agent_id_2], &program_id);
         assert_ne!(trust1, trust2);
     }
 
@@ -875,12 +903,11 @@ mod tests {
         )
         .unwrap();
 
-        assert!(client.load_oracle_keypair(tmpfile.to_str().unwrap()).is_ok());
+        assert!(client
+            .load_oracle_keypair(tmpfile.to_str().unwrap())
+            .is_ok());
         assert!(client.oracle_keypair.is_some());
-        assert_eq!(
-            client.oracle_keypair.unwrap().pubkey(),
-            keypair.pubkey()
-        );
+        assert_eq!(client.oracle_keypair.unwrap().pubkey(), keypair.pubkey());
 
         let _ = std::fs::remove_file(tmpfile);
     }
@@ -896,7 +923,9 @@ mod tests {
         )
         .unwrap();
 
-        assert!(client.load_oracle_keypair(tmpfile.to_str().unwrap()).is_err());
+        assert!(client
+            .load_oracle_keypair(tmpfile.to_str().unwrap())
+            .is_err());
 
         let _ = std::fs::remove_file(tmpfile);
     }

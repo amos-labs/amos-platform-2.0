@@ -403,24 +403,22 @@ async fn resolve_twitter_credentials(
     db_pool: &PgPool,
     connection_id: &str,
 ) -> amos_core::Result<TwitterCredentials> {
-    let conn_id: uuid::Uuid = connection_id.parse().map_err(|_| {
-        amos_core::AmosError::Internal("Invalid connection_id UUID".into())
-    })?;
+    let conn_id: uuid::Uuid = connection_id
+        .parse()
+        .map_err(|_| amos_core::AmosError::Internal("Invalid connection_id UUID".into()))?;
 
     // Look up the connection's credentials
-    let row = sqlx::query(
-        "SELECT credentials_data FROM integration_connections WHERE id = $1",
-    )
-    .bind(conn_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
-    .ok_or_else(|| {
-        amos_core::AmosError::Internal(format!(
-            "Twitter connection {} not found. Set up credentials first.",
-            connection_id
-        ))
-    })?;
+    let row = sqlx::query("SELECT credentials_data FROM integration_connections WHERE id = $1")
+        .bind(conn_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
+        .ok_or_else(|| {
+            amos_core::AmosError::Internal(format!(
+                "Twitter connection {} not found. Set up credentials first.",
+                connection_id
+            ))
+        })?;
 
     let creds: JsonValue = sqlx::Row::try_get(&row, "credentials_data")
         .map_err(|e| amos_core::AmosError::Internal(format!("Credential read error: {}", e)))?;
@@ -456,13 +454,12 @@ pub(crate) async fn record_post(
     url: &str,
 ) -> Result<(), ()> {
     // Look up the social_posts collection ID
-    let collection_id: Option<uuid::Uuid> = sqlx::query_scalar(
-        "SELECT id FROM collections WHERE name = 'social_posts'",
-    )
-    .fetch_optional(db_pool)
-    .await
-    .ok()
-    .flatten();
+    let collection_id: Option<uuid::Uuid> =
+        sqlx::query_scalar("SELECT id FROM collections WHERE name = 'social_posts'")
+            .fetch_optional(db_pool)
+            .await
+            .ok()
+            .flatten();
 
     if let Some(cid) = collection_id {
         let _ = sqlx::query(
@@ -491,14 +488,18 @@ pub(crate) async fn insert_collection_record(
     collection_name: &str,
     data: &serde_json::Value,
 ) -> Result<uuid::Uuid, String> {
-    let collection_id: uuid::Uuid = sqlx::query_scalar(
-        "SELECT id FROM collections WHERE name = $1",
-    )
-    .bind(collection_name)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| format!("DB error: {}", e))?
-    .ok_or_else(|| format!("Collection '{}' not found. Is the social package activated?", collection_name))?;
+    let collection_id: uuid::Uuid =
+        sqlx::query_scalar("SELECT id FROM collections WHERE name = $1")
+            .bind(collection_name)
+            .fetch_optional(db_pool)
+            .await
+            .map_err(|e| format!("DB error: {}", e))?
+            .ok_or_else(|| {
+                format!(
+                    "Collection '{}' not found. Is the social package activated?",
+                    collection_name
+                )
+            })?;
 
     let record_id = uuid::Uuid::new_v4();
     sqlx::query(

@@ -176,7 +176,7 @@ mod tests {
     fn test_api_key_generation_hex_chars() {
         let key = generate_api_key("test");
         let hex_part = &key[5..]; // Skip "test_"
-        // Should only contain valid hex characters
+                                  // Should only contain valid hex characters
         assert!(hex_part.chars().all(|c| c.is_ascii_hexdigit()));
     }
 

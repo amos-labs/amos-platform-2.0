@@ -68,15 +68,11 @@ impl Tool for GetPostAnalyticsTool {
         let platform = params
             .get("platform")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                amos_core::AmosError::Internal("Missing 'platform' parameter".into())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'platform' parameter".into()))?;
         let post_id = params
             .get("post_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                amos_core::AmosError::Internal("Missing 'post_id' parameter".into())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'post_id' parameter".into()))?;
 
         let metrics = match platform {
             "twitter" => fetch_twitter_analytics(&self.db_pool, connection_id, post_id).await?,
@@ -96,12 +92,9 @@ impl Tool for GetPostAnalyticsTool {
         };
 
         // Store analytics snapshot
-        let _ = super::twitter::insert_collection_record(
-            &self.db_pool,
-            "social_analytics",
-            &metrics,
-        )
-        .await;
+        let _ =
+            super::twitter::insert_collection_record(&self.db_pool, "social_analytics", &metrics)
+                .await;
 
         info!(
             platform = platform,
@@ -171,12 +164,12 @@ impl Tool for GetCampaignReportTool {
         // Fetch all posted content from social_posts collection
         let posts = super::twitter::query_collection_records(&self.db_pool, "social_posts")
             .await
-            .map_err(|e| amos_core::AmosError::Internal(e))?;
+            .map_err(amos_core::AmosError::Internal)?;
 
         // Fetch all analytics snapshots
         let analytics = super::twitter::query_collection_records(&self.db_pool, "social_analytics")
             .await
-            .map_err(|e| amos_core::AmosError::Internal(e))?;
+            .map_err(amos_core::AmosError::Internal)?;
 
         // Aggregate by platform
         let mut by_platform: std::collections::HashMap<String, Vec<&JsonValue>> =
@@ -301,10 +294,7 @@ async fn fetch_reddit_analytics(
     let client = reqwest::Client::new();
 
     let resp = client
-        .get(format!(
-            "https://oauth.reddit.com/api/info?id={}",
-            post_id
-        ))
+        .get(format!("https://oauth.reddit.com/api/info?id={}", post_id))
         .bearer_auth(&creds)
         .header("User-Agent", "AMOS-Social/0.1.0 (by /u/amos-labs)")
         .send()
@@ -332,9 +322,9 @@ async fn fetch_reddit_analytics(
 
 /// Simple credential resolver (access_token from integration_connections).
 async fn resolve_credentials(db_pool: &PgPool, connection_id: &str) -> amos_core::Result<String> {
-    let conn_id: uuid::Uuid = connection_id.parse().map_err(|_| {
-        amos_core::AmosError::Internal("Invalid connection_id UUID".into())
-    })?;
+    let conn_id: uuid::Uuid = connection_id
+        .parse()
+        .map_err(|_| amos_core::AmosError::Internal("Invalid connection_id UUID".into()))?;
 
     let row = sqlx::query("SELECT credentials_data FROM integration_connections WHERE id = $1")
         .bind(conn_id)
@@ -352,7 +342,5 @@ async fn resolve_credentials(db_pool: &PgPool, connection_id: &str) -> amos_core
         .get("access_token")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| {
-            amos_core::AmosError::Internal("No access_token in credentials".into())
-        })
+        .ok_or_else(|| amos_core::AmosError::Internal("No access_token in credentials".into()))
 }

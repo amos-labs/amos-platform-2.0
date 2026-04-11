@@ -174,20 +174,11 @@ impl Tool for PostLinkedInTool {
             .or_else(|| resp_body.get("id").and_then(|v| v.as_str()))
             .unwrap_or("unknown");
 
-        let post_url = format!(
-            "https://www.linkedin.com/feed/update/{}",
-            post_urn
-        );
+        let post_url = format!("https://www.linkedin.com/feed/update/{}", post_urn);
 
         // Record the post
-        let _ = super::twitter::record_post(
-            &self.db_pool,
-            "linkedin",
-            post_urn,
-            text,
-            &post_url,
-        )
-        .await;
+        let _ =
+            super::twitter::record_post(&self.db_pool, "linkedin", post_urn, text, &post_url).await;
 
         info!(post_urn = post_urn, "LinkedIn post published");
 
@@ -215,23 +206,21 @@ async fn resolve_linkedin_credentials(
     db_pool: &PgPool,
     connection_id: &str,
 ) -> amos_core::Result<LinkedInCredentials> {
-    let conn_id: uuid::Uuid = connection_id.parse().map_err(|_| {
-        amos_core::AmosError::Internal("Invalid connection_id UUID".into())
-    })?;
+    let conn_id: uuid::Uuid = connection_id
+        .parse()
+        .map_err(|_| amos_core::AmosError::Internal("Invalid connection_id UUID".into()))?;
 
-    let row = sqlx::query(
-        "SELECT credentials_data FROM integration_connections WHERE id = $1",
-    )
-    .bind(conn_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
-    .ok_or_else(|| {
-        amos_core::AmosError::Internal(format!(
-            "LinkedIn connection {} not found. Set up credentials first.",
-            connection_id
-        ))
-    })?;
+    let row = sqlx::query("SELECT credentials_data FROM integration_connections WHERE id = $1")
+        .bind(conn_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
+        .ok_or_else(|| {
+            amos_core::AmosError::Internal(format!(
+                "LinkedIn connection {} not found. Set up credentials first.",
+                connection_id
+            ))
+        })?;
 
     let creds: JsonValue = sqlx::Row::try_get(&row, "credentials_data")
         .map_err(|e| amos_core::AmosError::Internal(format!("Credential read error: {}", e)))?;
@@ -264,14 +253,11 @@ async fn fetch_linkedin_person_urn(access_token: &str) -> amos_core::Result<Stri
         amos_core::AmosError::Internal(format!("Failed to parse LinkedIn profile: {}", e))
     })?;
 
-    let sub = body
-        .get("sub")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            amos_core::AmosError::Internal(
-                "Could not determine LinkedIn user ID from /v2/userinfo".into(),
-            )
-        })?;
+    let sub = body.get("sub").and_then(|v| v.as_str()).ok_or_else(|| {
+        amos_core::AmosError::Internal(
+            "Could not determine LinkedIn user ID from /v2/userinfo".into(),
+        )
+    })?;
 
     Ok(format!("urn:li:person:{}", sub))
 }

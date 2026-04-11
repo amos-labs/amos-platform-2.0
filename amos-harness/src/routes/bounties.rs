@@ -32,15 +32,10 @@ async fn list_bounties(
     let url = format!("{}/api/v1/bounties", relay_url);
 
     let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .query(&params)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::warn!("Relay bounty list failed: {}", e);
-            StatusCode::BAD_GATEWAY
-        })?;
+    let resp = client.get(&url).query(&params).send().await.map_err(|e| {
+        tracing::warn!("Relay bounty list failed: {}", e);
+        StatusCode::BAD_GATEWAY
+    })?;
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
@@ -61,15 +56,10 @@ async fn create_bounty(
     let url = format!("{}/api/v1/bounties", relay_url);
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::warn!("Relay bounty create failed: {}", e);
-            StatusCode::BAD_GATEWAY
-        })?;
+    let resp = client.post(&url).json(&payload).send().await.map_err(|e| {
+        tracing::warn!("Relay bounty create failed: {}", e);
+        StatusCode::BAD_GATEWAY
+    })?;
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
@@ -146,10 +136,7 @@ async fn reject_submission(
 }
 
 /// Helper: proxy a GET request to the relay.
-async fn proxy_get(
-    relay_url: &str,
-    path: &str,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+async fn proxy_get(relay_url: &str, path: &str) -> Result<Json<serde_json::Value>, StatusCode> {
     let url = format!("{}{}", relay_url, path);
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await.map_err(|e| {

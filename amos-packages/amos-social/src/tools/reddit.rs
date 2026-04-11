@@ -82,15 +82,16 @@ impl Tool for PostRedditTool {
         let title = params
             .get("title")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                amos_core::AmosError::Internal("Missing 'title' parameter".into())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'title' parameter".into()))?;
 
         if title.len() > 300 {
             return Ok(ToolResult {
                 success: false,
                 data: None,
-                error: Some(format!("Title exceeds 300 characters ({} chars)", title.len())),
+                error: Some(format!(
+                    "Title exceeds 300 characters ({} chars)",
+                    title.len()
+                )),
                 metadata: None,
             });
         }
@@ -123,10 +124,7 @@ impl Tool for PostRedditTool {
         let resp = client
             .post("https://oauth.reddit.com/api/submit")
             .bearer_auth(&creds.access_token)
-            .header(
-                "User-Agent",
-                "AMOS-Social/0.1.0 (by /u/amos-labs)",
-            )
+            .header("User-Agent", "AMOS-Social/0.1.0 (by /u/amos-labs)")
             .form(&form)
             .send()
             .await
@@ -165,7 +163,11 @@ impl Tool for PostRedditTool {
                     .unwrap_or("PLATFORM_ERROR")
                     .to_string();
 
-                let code = if error_code == "RATELIMIT" { "RATE_LIMITED" } else { "PLATFORM_ERROR" };
+                let code = if error_code == "RATELIMIT" {
+                    "RATE_LIMITED"
+                } else {
+                    "PLATFORM_ERROR"
+                };
                 return Ok(ToolResult {
                     success: false,
                     data: Some(resp_body),
@@ -225,23 +227,21 @@ async fn resolve_reddit_credentials(
     db_pool: &PgPool,
     connection_id: &str,
 ) -> amos_core::Result<RedditCredentials> {
-    let conn_id: uuid::Uuid = connection_id.parse().map_err(|_| {
-        amos_core::AmosError::Internal("Invalid connection_id UUID".into())
-    })?;
+    let conn_id: uuid::Uuid = connection_id
+        .parse()
+        .map_err(|_| amos_core::AmosError::Internal("Invalid connection_id UUID".into()))?;
 
-    let row = sqlx::query(
-        "SELECT credentials_data FROM integration_connections WHERE id = $1",
-    )
-    .bind(conn_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
-    .ok_or_else(|| {
-        amos_core::AmosError::Internal(format!(
-            "Reddit connection {} not found. Set up credentials first.",
-            connection_id
-        ))
-    })?;
+    let row = sqlx::query("SELECT credentials_data FROM integration_connections WHERE id = $1")
+        .bind(conn_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
+        .ok_or_else(|| {
+            amos_core::AmosError::Internal(format!(
+                "Reddit connection {} not found. Set up credentials first.",
+                connection_id
+            ))
+        })?;
 
     let creds: JsonValue = sqlx::Row::try_get(&row, "credentials_data")
         .map_err(|e| amos_core::AmosError::Internal(format!("Credential read error: {}", e)))?;

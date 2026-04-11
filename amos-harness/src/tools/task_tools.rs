@@ -615,7 +615,9 @@ mod tests {
         let tq = test_task_queue();
         let names = [
             CreateTaskTool::new(tq.clone()).name().to_string(),
-            CreateBountyTool::new("http://localhost:4100".to_string()).name().to_string(),
+            CreateBountyTool::new("http://localhost:4100".to_string())
+                .name()
+                .to_string(),
             ListTasksTool::new(tq.clone()).name().to_string(),
             GetTaskResultTool::new(tq.clone()).name().to_string(),
             CancelTaskTool::new(tq.clone()).name().to_string(),

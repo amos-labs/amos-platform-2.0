@@ -78,19 +78,46 @@ impl AmosPackage for SocialPackage {
         let pkg = self.name();
 
         // Posting tools (5)
-        registry.register_package_tool(Arc::new(tools::twitter::PostTweetTool::new(db.clone())), pkg);
-        registry.register_package_tool(Arc::new(tools::twitter::PostThreadTool::new(db.clone())), pkg);
-        registry.register_package_tool(Arc::new(tools::linkedin::PostLinkedInTool::new(db.clone())), pkg);
-        registry.register_package_tool(Arc::new(tools::reddit::PostRedditTool::new(db.clone())), pkg);
-        registry.register_package_tool(Arc::new(tools::hackernews::PostHackerNewsTool::new(db.clone())), pkg);
+        registry.register_package_tool(
+            Arc::new(tools::twitter::PostTweetTool::new(db.clone())),
+            pkg,
+        );
+        registry.register_package_tool(
+            Arc::new(tools::twitter::PostThreadTool::new(db.clone())),
+            pkg,
+        );
+        registry.register_package_tool(
+            Arc::new(tools::linkedin::PostLinkedInTool::new(db.clone())),
+            pkg,
+        );
+        registry.register_package_tool(
+            Arc::new(tools::reddit::PostRedditTool::new(db.clone())),
+            pkg,
+        );
+        registry.register_package_tool(
+            Arc::new(tools::hackernews::PostHackerNewsTool::new(db.clone())),
+            pkg,
+        );
 
         // Calendar & scheduling tools (2)
-        registry.register_package_tool(Arc::new(tools::calendar::LoadContentCalendarTool::new(db.clone())), pkg);
-        registry.register_package_tool(Arc::new(tools::calendar::ScheduleContentTool::new(db.clone())), pkg);
+        registry.register_package_tool(
+            Arc::new(tools::calendar::LoadContentCalendarTool::new(db.clone())),
+            pkg,
+        );
+        registry.register_package_tool(
+            Arc::new(tools::calendar::ScheduleContentTool::new(db.clone())),
+            pkg,
+        );
 
         // Analytics tools (2)
-        registry.register_package_tool(Arc::new(tools::analytics::GetPostAnalyticsTool::new(db.clone())), pkg);
-        registry.register_package_tool(Arc::new(tools::analytics::GetCampaignReportTool::new(db.clone())), pkg);
+        registry.register_package_tool(
+            Arc::new(tools::analytics::GetPostAnalyticsTool::new(db.clone())),
+            pkg,
+        );
+        registry.register_package_tool(
+            Arc::new(tools::analytics::GetCampaignReportTool::new(db.clone())),
+            pkg,
+        );
 
         tracing::info!("Registered 9 social media tools");
     }
@@ -105,12 +132,32 @@ impl AmosPackage for SocialPackage {
 /// Bootstrap social media schemas (idempotent).
 async fn bootstrap_schemas(db_pool: &sqlx::PgPool) -> Result<()> {
     let collections = [
-        ("social_campaigns", "Campaigns", "Campaign definitions and settings"),
+        (
+            "social_campaigns",
+            "Campaigns",
+            "Campaign definitions and settings",
+        ),
         ("social_content", "Content", "Content items and drafts"),
-        ("social_posts", "Posts", "Published posts with platform IDs and URLs"),
-        ("social_analytics", "Analytics", "Engagement metrics snapshots"),
-        ("content_calendar", "Content Calendar", "Content calendar entries"),
-        ("content_schedule", "Content Schedule", "Scheduled content items for posting"),
+        (
+            "social_posts",
+            "Posts",
+            "Published posts with platform IDs and URLs",
+        ),
+        (
+            "social_analytics",
+            "Analytics",
+            "Engagement metrics snapshots",
+        ),
+        (
+            "content_calendar",
+            "Content Calendar",
+            "Content calendar entries",
+        ),
+        (
+            "content_schedule",
+            "Content Schedule",
+            "Scheduled content items for posting",
+        ),
     ];
 
     for (name, display_name, description) in collections {

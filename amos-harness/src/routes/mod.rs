@@ -37,10 +37,7 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .route("/register", get(canvas::serve_register))
         .route("/forgot-password", get(canvas::serve_forgot_password))
         // Token exchange: platform redirects here with ?token=<jwt>
-        .route(
-            "/auth/callback",
-            get(middleware::token_exchange),
-        )
+        .route("/auth/callback", get(middleware::token_exchange))
         // OpenClaw agent management (agent sidecar uses these internally)
         .nest("/api/v1/agents", bots::routes(state.clone()))
         // Public canvas route
@@ -100,15 +97,11 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .with_state(state.clone());
 
     // Merge: public routes first, then protected
-    Router::new()
-        .merge(public_routes)
-        .merge(protected_routes)
+    Router::new().merge(public_routes).merge(protected_routes)
 }
 
 /// `GET /.well-known/agent.json` — EAP Agent Card discovery endpoint.
-async fn well_known_agent_json(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+async fn well_known_agent_json(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let harness_role = std::env::var("AMOS_HARNESS_ROLE").unwrap_or_else(|_| "primary".into());
     let tool_count = state.tool_registry.list_tools().len();
 
@@ -138,9 +131,7 @@ async fn well_known_agent_json(
 ///
 /// Returns all available tools with their names, descriptions, categories,
 /// and parameter schemas.
-async fn list_tools(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+async fn list_tools(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let tools: Vec<serde_json::Value> = state
         .tool_registry
         .list_tools()
@@ -167,7 +158,10 @@ async fn list_tools(
 pub(crate) fn trust_level_for_category(category: amos_core::tools::ToolCategory) -> u8 {
     use amos_core::tools::ToolCategory;
     match category {
-        ToolCategory::System | ToolCategory::Web | ToolCategory::Memory | ToolCategory::Knowledge => 1,
+        ToolCategory::System
+        | ToolCategory::Web
+        | ToolCategory::Memory
+        | ToolCategory::Knowledge => 1,
         ToolCategory::Schema | ToolCategory::Canvas | ToolCategory::Apps => 2,
         ToolCategory::Integration | ToolCategory::Automation | ToolCategory::TaskQueue => 3,
         ToolCategory::OpenClaw | ToolCategory::Document | ToolCategory::ImageGen => 3,
@@ -222,27 +216,50 @@ mod tests {
     #[test]
     fn test_trust_levels_are_in_range() {
         let categories = [
-            ToolCategory::System, ToolCategory::Web, ToolCategory::Memory,
-            ToolCategory::Knowledge, ToolCategory::Schema, ToolCategory::Canvas,
-            ToolCategory::Apps, ToolCategory::Integration, ToolCategory::Automation,
-            ToolCategory::TaskQueue, ToolCategory::OpenClaw, ToolCategory::Document,
-            ToolCategory::ImageGen, ToolCategory::Platform, ToolCategory::Other,
-            ToolCategory::Education, ToolCategory::Autoresearch, ToolCategory::Orchestrator,
+            ToolCategory::System,
+            ToolCategory::Web,
+            ToolCategory::Memory,
+            ToolCategory::Knowledge,
+            ToolCategory::Schema,
+            ToolCategory::Canvas,
+            ToolCategory::Apps,
+            ToolCategory::Integration,
+            ToolCategory::Automation,
+            ToolCategory::TaskQueue,
+            ToolCategory::OpenClaw,
+            ToolCategory::Document,
+            ToolCategory::ImageGen,
+            ToolCategory::Platform,
+            ToolCategory::Other,
+            ToolCategory::Education,
+            ToolCategory::Autoresearch,
+            ToolCategory::Orchestrator,
         ];
         for cat in categories {
             let level = trust_level_for_category(cat);
-            assert!(level >= 1 && level <= 5, "Trust level {} for {:?} out of range", level, cat);
+            assert!(
+                (1..=5).contains(&level),
+                "Trust level {} for {:?} out of range",
+                level,
+                cat
+            );
         }
     }
 
     #[test]
     fn test_trust_levels_are_monotonically_ordered() {
         // ReadOnly (1) < WorkspaceWrite (2) < Integration (3) < FullAccess (4)
-        assert!(trust_level_for_category(ToolCategory::System) <
-                trust_level_for_category(ToolCategory::Schema));
-        assert!(trust_level_for_category(ToolCategory::Schema) <
-                trust_level_for_category(ToolCategory::Integration));
-        assert!(trust_level_for_category(ToolCategory::Integration) <
-                trust_level_for_category(ToolCategory::Platform));
+        assert!(
+            trust_level_for_category(ToolCategory::System)
+                < trust_level_for_category(ToolCategory::Schema)
+        );
+        assert!(
+            trust_level_for_category(ToolCategory::Schema)
+                < trust_level_for_category(ToolCategory::Integration)
+        );
+        assert!(
+            trust_level_for_category(ToolCategory::Integration)
+                < trust_level_for_category(ToolCategory::Platform)
+        );
     }
 }

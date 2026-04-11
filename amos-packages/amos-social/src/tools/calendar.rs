@@ -62,9 +62,7 @@ impl Tool for LoadContentCalendarTool {
         let source = params
             .get("source")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                amos_core::AmosError::Internal("Missing 'source' parameter".into())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'source' parameter".into()))?;
 
         match source {
             "file" => {
@@ -124,7 +122,7 @@ impl Tool for LoadContentCalendarTool {
 
                 let calendar = super::twitter::query_collection_records(&self.db_pool, collection)
                     .await
-                    .map_err(|e| amos_core::AmosError::Internal(e))?;
+                    .map_err(amos_core::AmosError::Internal)?;
 
                 let platforms: Vec<String> = calendar
                     .iter()
@@ -156,7 +154,10 @@ impl Tool for LoadContentCalendarTool {
             _ => Ok(ToolResult {
                 success: false,
                 data: None,
-                error: Some(format!("Unknown source '{}'. Use 'file' or 'schema'.", source)),
+                error: Some(format!(
+                    "Unknown source '{}'. Use 'file' or 'schema'.",
+                    source
+                )),
                 metadata: None,
             }),
         }
@@ -236,28 +237,23 @@ impl Tool for ScheduleContentTool {
         let platform = params
             .get("platform")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                amos_core::AmosError::Internal("Missing 'platform' parameter".into())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'platform' parameter".into()))?;
         let connection_id = params
             .get("connection_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
                 amos_core::AmosError::Internal("Missing 'connection_id' parameter".into())
             })?;
-        let content = params.get("content").ok_or_else(|| {
-            amos_core::AmosError::Internal("Missing 'content' parameter".into())
-        })?;
+        let content = params
+            .get("content")
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'content' parameter".into()))?;
         let scheduled_at = params
             .get("scheduled_at")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
                 amos_core::AmosError::Internal("Missing 'scheduled_at' parameter".into())
             })?;
-        let label = params
-            .get("label")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let label = params.get("label").and_then(|v| v.as_str()).unwrap_or("");
         let create_bounty = params
             .get("create_bounty")
             .and_then(|v| v.as_bool())
@@ -298,7 +294,7 @@ impl Tool for ScheduleContentTool {
             &schedule_record,
         )
         .await
-        .map_err(|e| amos_core::AmosError::Internal(e))?;
+        .map_err(amos_core::AmosError::Internal)?;
 
         info!(
             schedule_id = %schedule_id,
@@ -353,14 +349,20 @@ fn parse_markdown_calendar(content: &str) -> Vec<JsonValue> {
             }
 
             // Skip separator rows (---|---|---)
-            if cells.iter().all(|c| c.chars().all(|ch| ch == '-' || ch == ':')) {
+            if cells
+                .iter()
+                .all(|c| c.chars().all(|ch| ch == '-' || ch == ':'))
+            {
                 in_table = true;
                 continue;
             }
 
             if !in_table && headers.is_empty() {
                 // This is the header row
-                headers = cells.iter().map(|c| c.to_lowercase().replace(' ', "_")).collect();
+                headers = cells
+                    .iter()
+                    .map(|c| c.to_lowercase().replace(' ', "_"))
+                    .collect();
                 continue;
             }
 

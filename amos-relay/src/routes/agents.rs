@@ -112,9 +112,8 @@ async fn register_agent(
     let now = Utc::now();
     let caps_json = serde_json::to_value(&req.capabilities).unwrap_or_default();
 
-    let row = sqlx::query(
-        &format!(
-            "INSERT INTO relay_agents (
+    let row = sqlx::query(&format!(
+        "INSERT INTO relay_agents (
                 id, name, display_name, endpoint_url, capabilities,
                 description, wallet_address, harness_id, trust_level,
                 status, total_bounties_completed, avg_quality_score,
@@ -122,8 +121,7 @@ async fn register_agent(
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING {AGENT_SELECT}"
-        ),
-    )
+    ))
     .bind(agent_id)
     .bind(&req.name)
     .bind(&req.display_name)
@@ -166,9 +164,9 @@ async fn list_agents(
     let per_page = query.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    let rows = sqlx::query(
-        &format!("SELECT {AGENT_SELECT} FROM relay_agents ORDER BY registered_at DESC LIMIT $1 OFFSET $2"),
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {AGENT_SELECT} FROM relay_agents ORDER BY registered_at DESC LIMIT $1 OFFSET $2"
+    ))
     .bind(per_page as i64)
     .bind(offset as i64)
     .fetch_all(&state.db)
@@ -178,7 +176,10 @@ async fn list_agents(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let agents: Vec<AgentResponse> = rows.into_iter().filter_map(|r| agent_from_row(r).ok()).collect();
+    let agents: Vec<AgentResponse> = rows
+        .into_iter()
+        .filter_map(|r| agent_from_row(r).ok())
+        .collect();
     Ok(Json(agents))
 }
 
@@ -187,9 +188,9 @@ async fn get_agent(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<AgentResponse>, StatusCode> {
-    let row = sqlx::query(
-        &format!("SELECT {AGENT_SELECT} FROM relay_agents WHERE id = $1"),
-    )
+    let row = sqlx::query(&format!(
+        "SELECT {AGENT_SELECT} FROM relay_agents WHERE id = $1"
+    ))
     .bind(id)
     .fetch_optional(&state.db)
     .await

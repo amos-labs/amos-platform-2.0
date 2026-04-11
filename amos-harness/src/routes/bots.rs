@@ -375,17 +375,20 @@ async fn eap_poll_tasks(
     Path(_agent_id): Path<String>,
 ) -> Result<Json<Vec<EapTaskResponse>>, StatusCode> {
     // Query for pending work items (assigned to this agent or unassigned)
-    let tasks = sqlx::query_as::<_, (
-        uuid::Uuid,
-        String,
-        String,
-        Option<serde_json::Value>,
-        String,
-        i32,
-        Option<i64>,
-        Option<chrono::DateTime<chrono::Utc>>,
-        chrono::DateTime<chrono::Utc>,
-    )>(
+    let tasks = sqlx::query_as::<
+        _,
+        (
+            uuid::Uuid,
+            String,
+            String,
+            Option<serde_json::Value>,
+            String,
+            i32,
+            Option<i64>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    >(
         r#"
         SELECT
             id, title, description, input_data, task_type, priority,
@@ -409,19 +412,31 @@ async fn eap_poll_tasks(
 
     let responses: Vec<EapTaskResponse> = tasks
         .into_iter()
-        .map(|(id, title, description, input_data, task_type, priority, reward_tokens, deadline_at, created_at)| {
-            EapTaskResponse {
-                task_id: id.to_string(),
+        .map(
+            |(
+                id,
                 title,
                 description,
-                context: input_data.unwrap_or(serde_json::json!({})),
-                category: task_type,
+                input_data,
+                task_type,
                 priority,
-                reward_tokens: reward_tokens.unwrap_or(0),
-                deadline_at: deadline_at.map(|d| d.to_rfc3339()),
-                created_at: created_at.to_rfc3339(),
-            }
-        })
+                reward_tokens,
+                deadline_at,
+                created_at,
+            )| {
+                EapTaskResponse {
+                    task_id: id.to_string(),
+                    title,
+                    description,
+                    context: input_data.unwrap_or(serde_json::json!({})),
+                    category: task_type,
+                    priority,
+                    reward_tokens: reward_tokens.unwrap_or(0),
+                    deadline_at: deadline_at.map(|d| d.to_rfc3339()),
+                    created_at: created_at.to_rfc3339(),
+                }
+            },
+        )
         .collect();
 
     Ok(Json(responses))

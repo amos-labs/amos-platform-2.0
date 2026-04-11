@@ -112,11 +112,13 @@ impl ActivityCounters {
         let mut map = self.model_usage.write().await;
         let entries: Vec<ModelUsageEntry> = map
             .drain()
-            .map(|(model_id, (tokens_input, tokens_output))| ModelUsageEntry {
-                model_id,
-                tokens_input,
-                tokens_output,
-            })
+            .map(
+                |(model_id, (tokens_input, tokens_output))| ModelUsageEntry {
+                    model_id,
+                    tokens_input,
+                    tokens_output,
+                },
+            )
             .collect();
         entries
     }

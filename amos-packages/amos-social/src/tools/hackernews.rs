@@ -72,9 +72,7 @@ impl Tool for PostHackerNewsTool {
         let title = params
             .get("title")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                amos_core::AmosError::Internal("Missing 'title' parameter".into())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Internal("Missing 'title' parameter".into()))?;
         let url = params.get("url").and_then(|v| v.as_str());
         let text = params.get("text").and_then(|v| v.as_str());
 
@@ -197,14 +195,9 @@ impl Tool for PostHackerNewsTool {
         };
 
         // Record the post
-        let _ = super::twitter::record_post(
-            &self.db_pool,
-            "hackernews",
-            &post_id,
-            title,
-            &post_url,
-        )
-        .await;
+        let _ =
+            super::twitter::record_post(&self.db_pool, "hackernews", &post_id, title, &post_url)
+                .await;
 
         info!(
             post_id = %post_id,
@@ -236,23 +229,21 @@ async fn resolve_hn_credentials(
     db_pool: &PgPool,
     connection_id: &str,
 ) -> amos_core::Result<HnCredentials> {
-    let conn_id: uuid::Uuid = connection_id.parse().map_err(|_| {
-        amos_core::AmosError::Internal("Invalid connection_id UUID".into())
-    })?;
+    let conn_id: uuid::Uuid = connection_id
+        .parse()
+        .map_err(|_| amos_core::AmosError::Internal("Invalid connection_id UUID".into()))?;
 
-    let row = sqlx::query(
-        "SELECT credentials_data FROM integration_connections WHERE id = $1",
-    )
-    .bind(conn_id)
-    .fetch_optional(db_pool)
-    .await
-    .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
-    .ok_or_else(|| {
-        amos_core::AmosError::Internal(format!(
-            "HN connection {} not found. Set up credentials first.",
-            connection_id
-        ))
-    })?;
+    let row = sqlx::query("SELECT credentials_data FROM integration_connections WHERE id = $1")
+        .bind(conn_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("DB error: {}", e)))?
+        .ok_or_else(|| {
+            amos_core::AmosError::Internal(format!(
+                "HN connection {} not found. Set up credentials first.",
+                connection_id
+            ))
+        })?;
 
     let creds: JsonValue = sqlx::Row::try_get(&row, "credentials_data")
         .map_err(|e| amos_core::AmosError::Internal(format!("Credential read error: {}", e)))?;
@@ -260,17 +251,13 @@ async fn resolve_hn_credentials(
     let username = creds
         .get("username")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            amos_core::AmosError::Internal("No username in HN credentials".into())
-        })?
+        .ok_or_else(|| amos_core::AmosError::Internal("No username in HN credentials".into()))?
         .to_string();
 
     let password = creds
         .get("password")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            amos_core::AmosError::Internal("No password in HN credentials".into())
-        })?
+        .ok_or_else(|| amos_core::AmosError::Internal("No password in HN credentials".into()))?
         .to_string();
 
     Ok(HnCredentials { username, password })
