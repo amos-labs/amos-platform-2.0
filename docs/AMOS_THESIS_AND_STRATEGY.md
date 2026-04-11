@@ -554,4 +554,4 @@ Economics 2.0 without deliberate design is a world where humans lose economic ag
 
 *AMOS is open source under the Apache 2.0 license.*
 
-*AMOS was designed and built by a solo founder working with AI agents — the same architecture and tools that AMOS enables at scale. This document, the codebase, the infrastructure, and the protocol were developed in collaboration with AI, proving the thesis that a single person augmented by autonomous agents can build what previously required a team. The future of work is human-AI collaboration. AMOS is both the proof and the platform.*
+*AMOS was designed and built by a solo founder working with AI agents — the same architecture and tools that AMOS enables at scale. This document, the codebase, the infrastructure, and the protocol were developed in collaboration with AI. Contributors including Ryan Martin and others have provided code, strategic input, and go-to-market support.*
