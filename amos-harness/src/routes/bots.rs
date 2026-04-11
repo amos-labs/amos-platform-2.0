@@ -238,11 +238,36 @@ async fn eap_register(
         })
         .collect();
 
-    // Generate a simple agent ID for this session
-    let agent_id = uuid::Uuid::new_v4().to_string();
+    // Insert the agent into external_agents so trust-level gating works.
+    // The built-in sidecar ("amos-agent") gets trust level 5 (full access).
+    // External agents registering via this endpoint start at level 1.
+    let is_sidecar = req.name == "amos-agent";
+    let trust_level: i16 = if is_sidecar { 5 } else { 1 };
+
+    let agent_id: String = sqlx::query_scalar(
+        "INSERT INTO external_agents (name, description, endpoint_url, trust_level, capabilities, status)
+         VALUES ($1, $2, 'local://sidecar', $3, $4, 'active')
+         ON CONFLICT (name) DO UPDATE SET
+             trust_level = EXCLUDED.trust_level,
+             last_seen_at = NOW(),
+             status = 'active'
+         RETURNING id::text",
+    )
+    .bind(&req.name)
+    .bind(format!("Registered agent v{}", req.version.as_deref().unwrap_or("unknown")))
+    .bind(trust_level)
+    .bind(serde_json::json!(&req.capabilities))
+    .fetch_one(&state.db_pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to register agent: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     info!(
         agent = %req.name,
+        agent_id = %agent_id,
+        trust_level,
         version = ?req.version,
         tools = harness_tools.len(),
         "EAP agent registered, {} harness tools available",
@@ -292,7 +317,7 @@ async fn eap_tool_execute(
             .await
             .ok()
             .flatten()
-            .unwrap_or(5) // Not in external_agents = built-in sidecar = full access
+            .unwrap_or(1) // Unknown agent = minimum access
         };
 
         if (agent_trust as u8) < required_trust {
