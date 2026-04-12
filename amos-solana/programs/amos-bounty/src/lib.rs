@@ -109,6 +109,25 @@ pub mod amos_bounty {
     }
 
     // ========================================================================
+    // Preparation Instructions
+    // ========================================================================
+
+    /// Prepare accounts for bounty submission.
+    ///
+    /// Creates daily_pool and operator_stats accounts if they don't exist.
+    /// Must be called before submit_bounty_proof or release_commercial_bounty
+    /// in the same transaction. Idempotent.
+    ///
+    /// # Arguments
+    /// * `operator_key` - The operator's public key (for operator_stats PDA)
+    pub fn prepare_bounty_submission(
+        ctx: Context<PrepareBountySubmission>,
+        operator_key: Pubkey,
+    ) -> Result<()> {
+        instructions::prepare::handler_prepare(ctx, operator_key)
+    }
+
+    // ========================================================================
     // Distribution Instructions
     // ========================================================================
 
@@ -116,6 +135,8 @@ pub mod amos_bounty {
     ///
     /// This is the CORE distribution function. Only the oracle can call this,
     /// but the distribution is pure math based on contribution value.
+    ///
+    /// Prerequisites: `prepare_bounty_submission` must be called first.
     ///
     /// Token allocation formula:
     /// `tokens = (adjusted_points / total_points_today) × remaining_emission`
@@ -184,9 +205,12 @@ pub mod amos_bounty {
 
     /// Release escrowed funds to the worker after oracle validates completion.
     /// 3% protocol fee is deducted and distributed per the 50/40/10 split.
+    ///
+    /// Prerequisites: `prepare_bounty_submission` must be called first.
+    /// remaining_accounts: [reviewer_token, holder_pool, labs_wallet]
     #[allow(clippy::too_many_arguments)]
-    pub fn release_commercial_bounty(
-        ctx: Context<ReleaseEscrow>,
+    pub fn release_commercial_bounty<'info>(
+        ctx: Context<'_, '_, '_, 'info, ReleaseEscrow<'info>>,
         bounty_id: [u8; 32],
         base_points: u16,
         quality_score: u8,

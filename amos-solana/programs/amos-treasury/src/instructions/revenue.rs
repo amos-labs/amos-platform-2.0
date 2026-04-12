@@ -210,7 +210,7 @@ pub struct DistributeProtocolFee<'info> {
         seeds = [seeds::TREASURY_CONFIG],
         bump = treasury_config.bump,
     )]
-    pub treasury_config: Account<'info, TreasuryConfig>,
+    pub treasury_config: Box<Account<'info, TreasuryConfig>>,
 
     /// Holder pool state
     #[account(
@@ -218,7 +218,7 @@ pub struct DistributeProtocolFee<'info> {
         seeds = [seeds::HOLDER_POOL],
         bump = holder_pool.bump,
     )]
-    pub holder_pool: Account<'info, HolderPool>,
+    pub holder_pool: Box<Account<'info, HolderPool>>,
 
     /// Distribution record (created for this transaction)
     #[account(
@@ -231,14 +231,14 @@ pub struct DistributeProtocolFee<'info> {
         ],
         bump
     )]
-    pub distribution: Account<'info, Distribution>,
+    pub distribution: Box<Account<'info, Distribution>>,
 
     /// AMOS token mint (for burning)
     #[account(
         mut,
         address = treasury_config.amos_mint,
     )]
-    pub amos_mint: Account<'info, Mint>,
+    pub amos_mint: Box<Account<'info, Mint>>,
 
     /// Treasury AMOS vault
     #[account(
@@ -248,21 +248,21 @@ pub struct DistributeProtocolFee<'info> {
         token::mint = treasury_config.amos_mint,
         token::authority = treasury_config,
     )]
-    pub treasury_amos_vault: Account<'info, TokenAccount>,
+    pub treasury_amos_vault: Box<Account<'info, TokenAccount>>,
 
     /// Holder pool AMOS account
     #[account(
         mut,
         token::mint = treasury_config.amos_mint,
     )]
-    pub holder_pool_amos: Account<'info, TokenAccount>,
+    pub holder_pool_amos: Box<Account<'info, TokenAccount>>,
 
     /// Labs wallet AMOS account
     #[account(
         mut,
         token::mint = treasury_config.amos_mint,
     )]
-    pub labs_wallet_amos: Account<'info, TokenAccount>,
+    pub labs_wallet_amos: Box<Account<'info, TokenAccount>>,
 
     /// SPL Token program
     pub token_program: Program<'info, Token>,

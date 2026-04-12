@@ -3,6 +3,10 @@
 /// Handles treasury initialization and configuration.
 /// AMOS-only model: no USDC infrastructure.
 /// Fee distribution: 50% holders, 40% burned, 10% Labs.
+///
+/// Initialization is split into two instructions to avoid SBF stack overflow:
+/// 1. `initialize` — creates treasury_config and holder_pool
+/// 2. `initialize_vaults` — creates treasury_amos_vault and reserve_vault
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
@@ -12,17 +16,14 @@ use crate::errors::TreasuryError;
 use crate::state::{HolderPool, TreasuryConfig};
 
 // ============================================================================
-// Initialize Treasury
+// Initialize Treasury (Step 1: Config + Holder Pool)
 // ============================================================================
 
-/// Initialize the AMOS Treasury
-///
-/// Sets up the treasury configuration with Labs wallet, AMOS mint,
-/// and creates necessary PDAs. All fee splits are hardcoded in constants.rs.
+/// Initialize the AMOS Treasury configuration and holder pool.
+/// Must be followed by `initialize_vaults` to complete setup.
 ///
 /// # Arguments
 /// * `labs_wallet` - AMOS Labs operating wallet (receives 10% of protocol fees)
-///
 pub fn initialize(
     ctx: Context<Initialize>,
     labs_wallet: Pubkey,
@@ -40,8 +41,9 @@ pub fn initialize(
     treasury_config.authority = ctx.accounts.authority.key();
     treasury_config.labs_wallet = labs_wallet;
     treasury_config.amos_mint = ctx.accounts.amos_mint.key();
-    treasury_config.treasury_amos_vault = ctx.accounts.treasury_amos_vault.key();
-    treasury_config.reserve_vault = ctx.accounts.reserve_vault.key();
+    // Vault fields set to default; updated by initialize_vaults
+    treasury_config.treasury_amos_vault = Pubkey::default();
+    treasury_config.reserve_vault = Pubkey::default();
 
     // Initialize running totals
     treasury_config.total_fees_collected = 0;
@@ -70,10 +72,11 @@ pub fn initialize(
     holder_pool.last_claim_at = 0;
     holder_pool.bump = ctx.bumps.holder_pool;
 
-    msg!("Treasury initialized successfully");
+    msg!("Treasury config initialized");
     msg!("Authority: {}", treasury_config.authority);
     msg!("Labs Wallet: {}", labs_wallet);
     msg!("AMOS Mint: {}", treasury_config.amos_mint);
+    msg!("Call initialize_vaults next to create token vaults");
 
     Ok(())
 }
@@ -92,7 +95,7 @@ pub struct Initialize<'info> {
         seeds = [seeds::TREASURY_CONFIG],
         bump
     )]
-    pub treasury_config: Account<'info, TreasuryConfig>,
+    pub treasury_config: Box<Account<'info, TreasuryConfig>>,
 
     /// Holder pool PDA
     #[account(
@@ -102,10 +105,51 @@ pub struct Initialize<'info> {
         seeds = [seeds::HOLDER_POOL],
         bump
     )]
-    pub holder_pool: Account<'info, HolderPool>,
+    pub holder_pool: Box<Account<'info, HolderPool>>,
 
-    /// AMOS token mint account
-    pub amos_mint: Account<'info, Mint>,
+    /// AMOS token mint account (for reference, not initialized here)
+    pub amos_mint: Box<Account<'info, Mint>>,
+
+    /// System program
+    pub system_program: Program<'info, System>,
+}
+
+// ============================================================================
+// Initialize Vaults (Step 2: Token Vaults)
+// ============================================================================
+
+/// Create the treasury token vaults. Must be called after `initialize`.
+pub fn initialize_vaults(
+    ctx: Context<InitializeVaults>,
+) -> Result<()> {
+    let treasury_config = &mut ctx.accounts.treasury_config;
+
+    treasury_config.treasury_amos_vault = ctx.accounts.treasury_amos_vault.key();
+
+    msg!("Treasury AMOS vault initialized: {}", treasury_config.treasury_amos_vault);
+    msg!("Call initialize_reserve next to create reserve vault");
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct InitializeVaults<'info> {
+    /// Treasury authority
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// Treasury configuration (already initialized)
+    #[account(
+        mut,
+        seeds = [seeds::TREASURY_CONFIG],
+        bump = treasury_config.bump,
+        has_one = authority @ TreasuryError::Unauthorized,
+        has_one = amos_mint,
+    )]
+    pub treasury_config: Box<Account<'info, TreasuryConfig>>,
+
+    /// AMOS token mint
+    pub amos_mint: Box<Account<'info, Mint>>,
 
     /// Treasury AMOS vault (PDA) — holds bounty emission pool
     #[account(
@@ -116,7 +160,52 @@ pub struct Initialize<'info> {
         token::mint = amos_mint,
         token::authority = treasury_config,
     )]
-    pub treasury_amos_vault: Account<'info, TokenAccount>,
+    pub treasury_amos_vault: Box<Account<'info, TokenAccount>>,
+
+    /// SPL Token program
+    pub token_program: Program<'info, Token>,
+
+    /// System program
+    pub system_program: Program<'info, System>,
+
+    /// Rent sysvar
+    pub rent: Sysvar<'info, Rent>,
+}
+
+// ============================================================================
+// Initialize Reserve Vault (Step 3: Reserve Vault)
+// ============================================================================
+
+/// Create the reserve vault. Must be called after `initialize_vaults`.
+pub fn initialize_reserve(
+    ctx: Context<InitializeReserve>,
+) -> Result<()> {
+    let treasury_config = &mut ctx.accounts.treasury_config;
+    treasury_config.reserve_vault = ctx.accounts.reserve_vault.key();
+
+    msg!("Reserve vault initialized: {}", treasury_config.reserve_vault);
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct InitializeReserve<'info> {
+    /// Treasury authority
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// Treasury configuration (already initialized)
+    #[account(
+        mut,
+        seeds = [seeds::TREASURY_CONFIG],
+        bump = treasury_config.bump,
+        has_one = authority @ TreasuryError::Unauthorized,
+        has_one = amos_mint,
+    )]
+    pub treasury_config: Box<Account<'info, TreasuryConfig>>,
+
+    /// AMOS token mint
+    pub amos_mint: Box<Account<'info, Mint>>,
 
     /// Reserve vault (DAO-locked emergency reserve)
     #[account(
@@ -127,7 +216,7 @@ pub struct Initialize<'info> {
         token::mint = amos_mint,
         token::authority = treasury_config,
     )]
-    pub reserve_vault: Account<'info, TokenAccount>,
+    pub reserve_vault: Box<Account<'info, TokenAccount>>,
 
     /// SPL Token program
     pub token_program: Program<'info, Token>,

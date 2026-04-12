@@ -41,14 +41,28 @@ pub mod amos_treasury {
     // Admin Instructions
     // ========================================================================
 
-    /// Initialize the AMOS Treasury.
-    /// Sets up Labs wallet, AMOS mint, and necessary vaults.
-    /// Can only be called once. Fee splits are hardcoded constants.
+    /// Initialize the AMOS Treasury config and holder pool.
+    /// Must be followed by `initialize_vaults` to complete setup.
+    /// Fee splits are hardcoded constants.
     pub fn initialize(
         ctx: Context<Initialize>,
         labs_wallet: Pubkey,
     ) -> Result<()> {
         instructions::admin::initialize(ctx, labs_wallet)
+    }
+
+    /// Create treasury AMOS vault. Must be called after `initialize`.
+    pub fn initialize_vaults(
+        ctx: Context<InitializeVaults>,
+    ) -> Result<()> {
+        instructions::admin::initialize_vaults(ctx)
+    }
+
+    /// Create reserve vault. Must be called after `initialize_vaults`.
+    pub fn initialize_reserve(
+        ctx: Context<InitializeReserve>,
+    ) -> Result<()> {
+        instructions::admin::initialize_reserve(ctx)
     }
 
     /// Update the Labs wallet address. Authority-only.

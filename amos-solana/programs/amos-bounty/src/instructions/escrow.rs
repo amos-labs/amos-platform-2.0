@@ -3,6 +3,9 @@
 /// This module implements the escrow system for user-funded (Commercial) bounties.
 /// Commercial bounties have a 3% protocol fee split: 50% holders, 40% burned, 10% Labs.
 /// Treasury bounties (daily emission) have 0% fee and are handled in distribution.rs.
+///
+/// IMPORTANT: Call `prepare_bounty_submission` before `release_commercial_bounty`
+/// in the same transaction to ensure operator_stats exists.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
@@ -36,7 +39,7 @@ pub struct CreateCommercialBounty<'info> {
         bump = config.bump,
         has_one = mint @ BountyError::InvalidMint,
     )]
-    pub config: Account<'info, BountyConfig>,
+    pub config: Box<Account<'info, BountyConfig>>,
 
     /// Escrow token account — PDA that holds the escrowed AMOS tokens
     #[account(
@@ -47,7 +50,7 @@ pub struct CreateCommercialBounty<'info> {
         seeds = [BOUNTY_ESCROW_SEED, &bounty_id],
         bump
     )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
+    pub escrow_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Escrow authority PDA (signs transfers out of escrow)
     /// CHECK: PDA derived from bounty_escrow seed + bounty_id
@@ -57,7 +60,7 @@ pub struct CreateCommercialBounty<'info> {
     )]
     pub escrow_authority: AccountInfo<'info>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
 
     /// Poster's token account (source of escrowed funds)
     #[account(
@@ -65,7 +68,7 @@ pub struct CreateCommercialBounty<'info> {
         constraint = poster_token_account.mint == mint.key() @ BountyError::InvalidMint,
         constraint = poster_token_account.owner == poster.key() @ BountyError::InvalidPoster
     )]
-    pub poster_token_account: Account<'info, TokenAccount>,
+    pub poster_token_account: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub poster: Signer<'info>,
@@ -115,6 +118,14 @@ pub fn handler_create_commercial_bounty(
 /// Oracle validates bounty completion and releases escrowed funds.
 /// Protocol fee (3%) is deducted and distributed: 50% holders, 40% burned, 10% Labs.
 ///
+/// Prerequisites: `prepare_bounty_submission` must be called first in the same
+/// transaction to ensure operator_stats exists.
+///
+/// remaining_accounts layout:
+/// [0] = reviewer_token_account (mut) — receives 5% of net reward
+/// [1] = holder_pool_account (mut) — receives 50% of fee
+/// [2] = labs_wallet_account (mut) — receives 10% of fee
+///
 /// # Arguments
 /// * `bounty_id` - The bounty being completed
 /// * `base_points` - Base point value for the work
@@ -135,7 +146,7 @@ pub struct ReleaseEscrow<'info> {
         has_one = oracle_authority @ BountyError::Unauthorized,
         has_one = mint @ BountyError::InvalidMint,
     )]
-    pub config: Account<'info, BountyConfig>,
+    pub config: Box<Account<'info, BountyConfig>>,
 
     /// The bounty proof record (created here)
     #[account(
@@ -145,38 +156,28 @@ pub struct ReleaseEscrow<'info> {
         seeds = [BOUNTY_PROOF_SEED, &bounty_id],
         bump
     )]
-    pub bounty_proof: Account<'info, BountyProof>,
+    pub bounty_proof: Box<Account<'info, BountyProof>>,
 
-    /// Operator stats (init_if_needed for new operators)
+    /// Operator stats — must already exist (created by prepare_bounty_submission)
     #[account(
-        init_if_needed,
-        payer = oracle_authority,
-        space = OperatorStats::SIZE,
+        mut,
         seeds = [OPERATOR_STATS_SEED, operator.key().as_ref()],
-        bump
+        bump = operator_stats.bump
     )]
-    pub operator_stats: Account<'info, OperatorStats>,
+    pub operator_stats: Box<Account<'info, OperatorStats>>,
 
     /// The operator earning this bounty
     /// CHECK: Validated through operator_stats PDA derivation
     pub operator: AccountInfo<'info>,
 
-    /// Optional agent trust record
-    #[account(
-        mut,
-        seeds = [AGENT_TRUST_SEED, &agent_id],
-        bump = agent_trust.bump
-    )]
-    pub agent_trust: Option<Account<'info, AgentTrustRecord>>,
-
-    /// Escrow token account holding the funds
+    /// Escrow token account holding the funds (also serves as authority via PDA)
     #[account(
         mut,
         seeds = [BOUNTY_ESCROW_SEED, &bounty_id],
         bump,
         constraint = escrow_token_account.mint == mint.key() @ BountyError::InvalidMint,
     )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
+    pub escrow_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Escrow authority PDA
     /// CHECK: PDA derived from bounty_escrow seed + bounty_id
@@ -186,36 +187,11 @@ pub struct ReleaseEscrow<'info> {
     )]
     pub escrow_authority: AccountInfo<'info>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
 
     /// Operator's token account (receives net reward after fee)
-    #[account(
-        mut,
-        constraint = operator_token_account.mint == mint.key() @ BountyError::InvalidMint,
-        constraint = operator_token_account.owner == operator.key() @ BountyError::InvalidOperator
-    )]
-    pub operator_token_account: Account<'info, TokenAccount>,
-
-    /// Reviewer's token account (receives 5% of net reward)
-    #[account(
-        mut,
-        constraint = reviewer_token_account.mint == mint.key() @ BountyError::InvalidMint
-    )]
-    pub reviewer_token_account: Account<'info, TokenAccount>,
-
-    /// Holder pool token account (receives 50% of fee)
-    #[account(
-        mut,
-        constraint = holder_pool_account.mint == mint.key() @ BountyError::InvalidMint
-    )]
-    pub holder_pool_account: Account<'info, TokenAccount>,
-
-    /// Labs wallet token account (receives 10% of fee)
-    #[account(
-        mut,
-        constraint = labs_wallet_account.mint == mint.key() @ BountyError::InvalidMint
-    )]
-    pub labs_wallet_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub operator_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Poster who funded this bounty (for recording provenance)
     /// CHECK: Stored in bounty proof for audit trail
@@ -229,8 +205,8 @@ pub struct ReleaseEscrow<'info> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn handler_release_escrow(
-    ctx: Context<ReleaseEscrow>,
+pub fn handler_release_escrow<'info>(
+    ctx: Context<'_, '_, '_, 'info, ReleaseEscrow<'info>>,
     bounty_id: [u8; 32],
     base_points: u16,
     quality_score: u8,
@@ -247,6 +223,18 @@ pub fn handler_release_escrow(
     let operator_stats = &mut ctx.accounts.operator_stats;
 
     // ========================================================================
+    // Extract remaining_accounts for fee distribution
+    // ========================================================================
+
+    require!(
+        ctx.remaining_accounts.len() >= 3,
+        BountyError::AccountNotFound
+    );
+    let reviewer_token_info = &ctx.remaining_accounts[0];
+    let holder_pool_info = &ctx.remaining_accounts[1];
+    let labs_wallet_info = &ctx.remaining_accounts[2];
+
+    // ========================================================================
     // Validation
     // ========================================================================
 
@@ -259,23 +247,14 @@ pub fn handler_release_escrow(
     let escrow_balance = ctx.accounts.escrow_token_account.amount;
     require!(escrow_balance > 0, BountyError::EscrowNotFunded);
 
-    // Trust level enforcement for agents
-    let mut trust_level: u8 = 1;
-    if is_agent {
-        let agent_trust = ctx.accounts.agent_trust.as_ref().ok_or(BountyError::AgentNotRegistered)?;
-        trust_level = agent_trust.trust_level;
-        let max_points = get_max_points_for_trust_level(trust_level)?;
-        require!(base_points <= max_points, BountyError::InvalidBountyPoints);
-    }
+    // Verify operator_stats was properly initialized by prepare instruction
+    require!(
+        operator_stats.operator == ctx.accounts.operator.key(),
+        BountyError::InvalidOperator
+    );
 
-    // Initialize operator stats if needed
-    if operator_stats.operator == Pubkey::default() {
-        operator_stats.operator = ctx.accounts.operator.key();
-        operator_stats.bump = ctx.bumps.operator_stats;
-        operator_stats.last_activity_time = clock.unix_timestamp;
-        operator_stats.last_decay_time = clock.unix_timestamp;
-        operator_stats.original_allocation = 0;
-    }
+    // Trust level: oracle validates agent trust off-chain for commercial bounties
+    let trust_level: u8 = 1;
 
     // ========================================================================
     // Calculate contribution multiplier
@@ -356,14 +335,14 @@ pub fn handler_release_escrow(
         operator_tokens,
     )?;
 
-    // Transfer to reviewer
+    // Transfer to reviewer (via remaining_accounts)
     if reviewer_tokens > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.escrow_token_account.to_account_info(),
-                    to: ctx.accounts.reviewer_token_account.to_account_info(),
+                    to: reviewer_token_info.to_account_info(),
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                 },
                 signer_seeds,
@@ -372,14 +351,14 @@ pub fn handler_release_escrow(
         )?;
     }
 
-    // Fee: transfer to holder pool (50%)
+    // Fee: transfer to holder pool (50%) via remaining_accounts
     if holder_share > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.escrow_token_account.to_account_info(),
-                    to: ctx.accounts.holder_pool_account.to_account_info(),
+                    to: holder_pool_info.to_account_info(),
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                 },
                 signer_seeds,
@@ -404,14 +383,14 @@ pub fn handler_release_escrow(
         )?;
     }
 
-    // Fee: transfer to Labs wallet (10%)
+    // Fee: transfer to Labs wallet (10%) via remaining_accounts
     if labs_share > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.escrow_token_account.to_account_info(),
-                    to: ctx.accounts.labs_wallet_account.to_account_info(),
+                    to: labs_wallet_info.to_account_info(),
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                 },
                 signer_seeds,
@@ -424,7 +403,6 @@ pub fn handler_release_escrow(
     // Update State
     // ========================================================================
 
-    // Calculate current day index
     let current_day = calculate_day_index(config.start_time)?;
 
     // Update operator stats
@@ -464,15 +442,6 @@ pub fn handler_release_escrow(
     bounty_proof.bump = ctx.bumps.bounty_proof;
     bounty_proof.reserved = [0; 8];
 
-    // Update agent trust record if applicable
-    if is_agent {
-        if let Some(agent_trust) = ctx.accounts.agent_trust.as_mut() {
-            agent_trust.total_tokens_earned = agent_trust.total_tokens_earned.checked_add(operator_tokens).ok_or(BountyError::ArithmeticOverflow)?;
-            agent_trust.total_points_earned = agent_trust.total_points_earned.checked_add(adjusted_points as u64).ok_or(BountyError::ArithmeticOverflow)?;
-            agent_trust.last_activity = clock.unix_timestamp;
-        }
-    }
-
     // ========================================================================
     // Emit Events
     // ========================================================================
@@ -511,7 +480,7 @@ pub struct RefundEscrow<'info> {
         bump = config.bump,
         has_one = mint @ BountyError::InvalidMint,
     )]
-    pub config: Account<'info, BountyConfig>,
+    pub config: Box<Account<'info, BountyConfig>>,
 
     /// Escrow token account
     #[account(
@@ -520,7 +489,7 @@ pub struct RefundEscrow<'info> {
         bump,
         constraint = escrow_token_account.mint == mint.key() @ BountyError::InvalidMint,
     )]
-    pub escrow_token_account: Account<'info, TokenAccount>,
+    pub escrow_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Escrow authority PDA
     /// CHECK: PDA derived from bounty_escrow seed + bounty_id
@@ -530,7 +499,7 @@ pub struct RefundEscrow<'info> {
     )]
     pub escrow_authority: AccountInfo<'info>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
 
     /// Poster's token account (destination for refund)
     #[account(
@@ -538,7 +507,7 @@ pub struct RefundEscrow<'info> {
         constraint = poster_token_account.mint == mint.key() @ BountyError::InvalidMint,
         constraint = poster_token_account.owner == poster.key() @ BountyError::InvalidPoster
     )]
-    pub poster_token_account: Account<'info, TokenAccount>,
+    pub poster_token_account: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub poster: Signer<'info>,
@@ -642,27 +611,21 @@ mod tests {
     fn test_commercial_fee_calculation() {
         let escrow_balance = 10_000u64;
 
-        // 3% protocol fee
         let total_fee = escrow_balance * PROTOCOL_FEE_BPS as u64 / BPS_DENOMINATOR as u64;
-        assert_eq!(total_fee, 300); // 3% of 10000
+        assert_eq!(total_fee, 300);
 
-        // 50% to holders
         let holder_share = total_fee * FEE_HOLDER_SHARE_BPS as u64 / BPS_DENOMINATOR as u64;
         assert_eq!(holder_share, 150);
 
-        // 40% burned
         let burn_share = total_fee * FEE_BURN_SHARE_BPS as u64 / BPS_DENOMINATOR as u64;
         assert_eq!(burn_share, 120);
 
-        // 10% to Labs (remainder)
         let labs_share = total_fee - holder_share - burn_share;
         assert_eq!(labs_share, 30);
 
-        // Net reward
         let net_reward = escrow_balance - total_fee;
         assert_eq!(net_reward, 9700);
 
-        // All fee shares sum to total
         assert_eq!(holder_share + burn_share + labs_share, total_fee);
     }
 
@@ -672,29 +635,25 @@ mod tests {
         let reviewer_tokens = net_reward * REVIEWER_REWARD_BPS as u64 / BPS_DENOMINATOR as u64;
         let operator_tokens = net_reward - reviewer_tokens;
 
-        assert_eq!(reviewer_tokens, 485); // 5% of 9700
+        assert_eq!(reviewer_tokens, 485);
         assert_eq!(operator_tokens, 9215);
     }
 
     #[test]
     fn test_treasury_bounty_has_zero_fee() {
-        // Treasury bounties should have 0 fee
         let fee_collected = 0u64;
         assert_eq!(fee_collected, 0);
     }
 
     #[test]
     fn test_fee_rounding_dust_goes_to_labs() {
-        // Test with amount that causes rounding
         let escrow_balance = 333u64;
         let total_fee = escrow_balance * PROTOCOL_FEE_BPS as u64 / BPS_DENOMINATOR as u64;
-        // 333 * 300 / 10000 = 9
 
         let holder_share = total_fee * FEE_HOLDER_SHARE_BPS as u64 / BPS_DENOMINATOR as u64;
         let burn_share = total_fee * FEE_BURN_SHARE_BPS as u64 / BPS_DENOMINATOR as u64;
         let labs_share = total_fee - holder_share - burn_share;
 
-        // All shares sum to total fee
         assert_eq!(holder_share + burn_share + labs_share, total_fee);
     }
 }

@@ -11,6 +11,7 @@ pub mod distribution;
 pub mod decay;
 pub mod escrow;
 pub mod metrics;
+pub mod prepare;
 pub mod trust;
 
 pub use admin::*;
@@ -18,4 +19,5 @@ pub use distribution::*;
 pub use decay::*;
 pub use escrow::*;
 pub use metrics::*;
+pub use prepare::*;
 pub use trust::*;

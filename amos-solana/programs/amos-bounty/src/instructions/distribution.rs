@@ -2,6 +2,9 @@
 ///
 /// This module handles the core bounty submission and token distribution logic.
 /// It implements trustless, transparent token allocation based on contribution value.
+///
+/// IMPORTANT: Call `prepare_bounty_submission` in the same transaction BEFORE
+/// this instruction to ensure daily_pool and operator_stats accounts exist.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -19,6 +22,9 @@ use crate::state::*;
 /// This is the CORE distribution mechanism. Token allocation is calculated as:
 /// `tokens = (adjusted_points / total_points_today) × remaining_daily_emission`
 ///
+/// Prerequisites: `prepare_bounty_submission` must be called first in the same
+/// transaction to create daily_pool and operator_stats if they don't exist.
+///
 /// # Arguments
 /// * `bounty_id` - Unique identifier for this bounty (32 bytes)
 /// * `base_points` - Base point value before multipliers (1-2000)
@@ -29,16 +35,6 @@ use crate::state::*;
 /// * `reviewer` - Address of the reviewer who validated this work
 /// * `evidence_hash` - Hash of the work product/evidence
 /// * `external_reference` - External ID (issue number, PR number, etc.)
-///
-/// # Trustless Guarantees
-/// - Oracle-only submission (only validated work is accepted)
-/// - Proportional distribution (fair share based on contribution value)
-/// - Trust level enforcement (agents capped by reputation)
-/// - Daily limits (prevents gaming through volume)
-/// - Contribution multipliers (transparent value weighting)
-/// - Reviewer rewards (5% incentivizes quality validation)
-/// - All calculations use checked arithmetic (no overflow/underflow)
-/// - Immutable records (complete audit trail)
 #[derive(Accounts)]
 #[instruction(bounty_id: [u8; 32], base_points: u16, quality_score: u8, contribution_type: u8, is_agent: bool, agent_id: [u8; 32])]
 pub struct SubmitBountyProof<'info> {
@@ -50,16 +46,15 @@ pub struct SubmitBountyProof<'info> {
         has_one = mint @ BountyError::InvalidMint,
         has_one = treasury @ BountyError::InvalidTreasury
     )]
-    pub config: Account<'info, BountyConfig>,
+    pub config: Box<Account<'info, BountyConfig>>,
 
+    /// Daily pool — must already exist (created by prepare_bounty_submission)
     #[account(
-        init_if_needed,
-        payer = oracle_authority,
-        space = DailyPool::SIZE,
+        mut,
         seeds = [DAILY_POOL_SEED, &calculate_day_index(config.start_time)?.to_le_bytes()],
-        bump
+        bump = daily_pool.bump
     )]
-    pub daily_pool: Account<'info, DailyPool>,
+    pub daily_pool: Box<Account<'info, DailyPool>>,
 
     #[account(
         init,
@@ -68,16 +63,15 @@ pub struct SubmitBountyProof<'info> {
         seeds = [BOUNTY_PROOF_SEED, &bounty_id],
         bump
     )]
-    pub bounty_proof: Account<'info, BountyProof>,
+    pub bounty_proof: Box<Account<'info, BountyProof>>,
 
+    /// Operator stats — must already exist (created by prepare_bounty_submission)
     #[account(
-        init_if_needed,
-        payer = oracle_authority,
-        space = OperatorStats::SIZE,
+        mut,
         seeds = [OPERATOR_STATS_SEED, operator.key().as_ref()],
-        bump
+        bump = operator_stats.bump
     )]
-    pub operator_stats: Account<'info, OperatorStats>,
+    pub operator_stats: Box<Account<'info, OperatorStats>>,
 
     /// The operator earning this bounty
     /// CHECK: This is validated through the operator_stats PDA derivation
@@ -91,10 +85,10 @@ pub struct SubmitBountyProof<'info> {
     )]
     pub agent_trust: Option<Account<'info, AgentTrustRecord>>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
 
     #[account(mut)]
-    pub treasury: Account<'info, TokenAccount>,
+    pub treasury: Box<Account<'info, TokenAccount>>,
 
     /// Operator's token account (receives bounty tokens)
     #[account(
@@ -102,14 +96,14 @@ pub struct SubmitBountyProof<'info> {
         constraint = operator_token_account.mint == mint.key() @ BountyError::InvalidMint,
         constraint = operator_token_account.owner == operator.key() @ BountyError::InvalidOperator
     )]
-    pub operator_token_account: Account<'info, TokenAccount>,
+    pub operator_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Reviewer's token account (receives 5% reward)
     #[account(
         mut,
         constraint = reviewer_token_account.mint == mint.key() @ BountyError::InvalidMint
     )]
-    pub reviewer_token_account: Account<'info, TokenAccount>,
+    pub reviewer_token_account: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
     pub oracle_authority: Signer<'info>,
@@ -140,44 +134,32 @@ pub fn handler_submit_proof(
     // Validation Phase
     // ========================================================================
 
-    // Validate quality score
     require!(
         quality_score >= MIN_QUALITY_SCORE,
         BountyError::QualityScoreTooLow
     );
-
-    // Validate contribution type
     require!(
         contribution_type <= 7,
         BountyError::InvalidContributionType
     );
-
-    // Validate base points
     require!(
         base_points > 0 && base_points <= MAX_BOUNTY_POINTS,
         BountyError::InvalidBountyPoints
     );
-
-    // Validate reviewer is different from operator
     require!(
         reviewer != ctx.accounts.operator.key(),
         BountyError::ReviewerSameAsOperator
     );
-
-    // Validate evidence hash is not empty
     require!(
         evidence_hash != [0u8; 32],
         BountyError::InvalidEvidenceHash
     );
 
-    // Initialize operator stats if needed
-    if operator_stats.operator == Pubkey::default() {
-        operator_stats.operator = ctx.accounts.operator.key();
-        operator_stats.bump = ctx.bumps.operator_stats;
-        operator_stats.last_activity_time = clock.unix_timestamp;
-        operator_stats.last_decay_time = clock.unix_timestamp;
-        operator_stats.original_allocation = 0;
-    }
+    // Verify operator_stats was properly initialized by prepare instruction
+    require!(
+        operator_stats.operator == ctx.accounts.operator.key(),
+        BountyError::InvalidOperator
+    );
 
     // Calculate current day index
     let current_day = calculate_day_index(config.start_time)?;
@@ -186,17 +168,6 @@ pub fn handler_submit_proof(
     if operator_stats.last_submission_day != current_day {
         operator_stats.daily_bounty_count = 0;
         operator_stats.last_submission_day = current_day;
-    }
-
-    // Initialize daily pool if needed
-    if daily_pool.day_index == 0 {
-        daily_pool.day_index = current_day;
-        daily_pool.daily_emission = config.daily_emission;
-        daily_pool.tokens_distributed = 0;
-        daily_pool.total_points = 0;
-        daily_pool.proof_count = 0;
-        daily_pool.finalized = false;
-        daily_pool.bump = ctx.bumps.daily_pool;
     }
 
     // Verify pool is not finalized
@@ -212,7 +183,6 @@ pub fn handler_submit_proof(
     let mut trust_level: u8 = 1; // Default for human operators
 
     if is_agent {
-        // Agent must have trust record
         let agent_trust = ctx
             .accounts
             .agent_trust
@@ -221,21 +191,18 @@ pub fn handler_submit_proof(
 
         trust_level = agent_trust.trust_level;
 
-        // Check trust level point cap
         let max_points = get_max_points_for_trust_level(trust_level)?;
         require!(
             base_points <= max_points,
             BountyError::InvalidBountyPoints
         );
 
-        // Check daily limit for this trust level
         let daily_limit = get_daily_limit_for_trust_level(trust_level)?;
         require!(
             operator_stats.daily_bounty_count < daily_limit,
             BountyError::DailyLimitExceeded
         );
     } else {
-        // Human operators have the max daily limit
         require!(
             operator_stats.daily_bounty_count < MAX_DAILY_BOUNTIES_PER_OPERATOR,
             BountyError::DailyLimitExceeded
@@ -248,33 +215,24 @@ pub fn handler_submit_proof(
 
     let multiplier_bps = get_contribution_multiplier(contribution_type)?;
 
-    // Calculate adjusted points: base_points × (multiplier / 10000)
     let adjusted_points = (base_points as u64)
         .checked_mul(multiplier_bps as u64)
         .ok_or(BountyError::ArithmeticOverflow)?
         .checked_div(BPS_DENOMINATOR as u64)
         .ok_or(BountyError::ArithmeticOverflow)? as u16;
 
-    // Ensure adjusted points don't exceed max after multiplier
     let adjusted_points = adjusted_points.min(MAX_BOUNTY_POINTS);
 
     // ========================================================================
     // Token Distribution Calculation
     // ========================================================================
 
-    // Calculate remaining emission for today
     let remaining_emission = daily_pool
         .daily_emission
         .checked_sub(daily_pool.tokens_distributed)
         .ok_or(BountyError::InsufficientEmission)?;
 
     require!(remaining_emission > 0, BountyError::InsufficientEmission);
-
-    // Proportional calculation:
-    // tokens = (adjusted_points / total_points_including_this_one) × remaining_emission
-    //
-    // To avoid division issues, we calculate this way:
-    // tokens = (adjusted_points × remaining_emission) / (total_points + adjusted_points)
 
     let new_total_points = daily_pool
         .total_points
@@ -287,7 +245,6 @@ pub fn handler_submit_proof(
         .checked_div(new_total_points)
         .ok_or(BountyError::ArithmeticOverflow)?;
 
-    // Ensure at least 1 token if points awarded
     let tokens_before_split = tokens_before_split.max(1);
 
     // Split tokens: 95% to operator, 5% to reviewer
@@ -307,8 +264,6 @@ pub fn handler_submit_proof(
     // Transfer Tokens
     // ========================================================================
 
-    // Transfer to operator
-    let _treasury_key = ctx.accounts.treasury.key();
     let config_seeds = &[BOUNTY_CONFIG_SEED, &[config.bump]];
     let signer_seeds = &[&config_seeds[..]];
 
@@ -325,7 +280,6 @@ pub fn handler_submit_proof(
         operator_tokens,
     )?;
 
-    // Transfer to reviewer
     if reviewer_tokens > 0 {
         token::transfer(
             CpiContext::new_with_signer(
@@ -345,7 +299,6 @@ pub fn handler_submit_proof(
     // Update State
     // ========================================================================
 
-    // Update daily pool
     daily_pool.tokens_distributed = daily_pool
         .tokens_distributed
         .checked_add(tokens_before_split)
@@ -358,7 +311,6 @@ pub fn handler_submit_proof(
         .checked_add(1)
         .ok_or(BountyError::ArithmeticOverflow)?;
 
-    // Update operator stats
     operator_stats.total_bounties = operator_stats
         .total_bounties
         .checked_add(1)
@@ -391,7 +343,6 @@ pub fn handler_submit_proof(
 
     operator_stats.last_activity_time = clock.unix_timestamp;
 
-    // Update global config
     config.total_tokens_distributed = config
         .total_tokens_distributed
         .checked_add(tokens_before_split)
@@ -409,10 +360,10 @@ pub fn handler_submit_proof(
 
     // Record bounty proof (immutable record)
     bounty_proof.bounty_id = bounty_id;
-    bounty_proof.bounty_source = BountySource::Treasury; // Treasury bounties via this instruction
+    bounty_proof.bounty_source = BountySource::Treasury;
     bounty_proof.operator = ctx.accounts.operator.key();
-    bounty_proof.funded_by = ctx.accounts.treasury.key(); // Treasury is the funder
-    bounty_proof.escrow_account = Pubkey::default(); // No escrow for treasury bounties
+    bounty_proof.funded_by = ctx.accounts.treasury.key();
+    bounty_proof.escrow_account = Pubkey::default();
     bounty_proof.base_points = base_points;
     bounty_proof.adjusted_points = adjusted_points;
     bounty_proof.quality_score = quality_score;
@@ -421,7 +372,7 @@ pub fn handler_submit_proof(
     bounty_proof.agent_id = agent_id;
     bounty_proof.trust_level = trust_level;
     bounty_proof.tokens_earned = operator_tokens;
-    bounty_proof.fee_collected = 0; // No fee for treasury bounties
+    bounty_proof.fee_collected = 0;
     bounty_proof.reviewer = reviewer;
     bounty_proof.reviewer_tokens = reviewer_tokens;
     bounty_proof.evidence_hash = evidence_hash;
@@ -485,7 +436,7 @@ fn calculate_day_index(start_time: i64) -> Result<u32> {
         .ok_or(BountyError::InvalidTimestamp)?;
 
     let days = (elapsed as u64)
-        .checked_div(86400) // seconds per day
+        .checked_div(86400)
         .ok_or(BountyError::ArithmeticOverflow)?;
 
     Ok(days as u32)
@@ -515,16 +466,9 @@ mod tests {
 
     #[test]
     fn test_contribution_multipliers() {
-        // Bug fix: 120%
         assert_eq!(get_contribution_multiplier(0).unwrap(), 12000);
-
-        // Feature: 100%
         assert_eq!(get_contribution_multiplier(1).unwrap(), 10000);
-
-        // Documentation: 80%
         assert_eq!(get_contribution_multiplier(2).unwrap(), 8000);
-
-        // Infrastructure: 130%
         assert_eq!(get_contribution_multiplier(7).unwrap(), 13000);
     }
 
@@ -534,22 +478,18 @@ mod tests {
         let reviewer_portion = total_tokens * REVIEWER_REWARD_BPS as u64 / BPS_DENOMINATOR as u64;
         let operator_portion = total_tokens - reviewer_portion;
 
-        // Should be 5% to reviewer, 95% to operator
         assert_eq!(reviewer_portion, 500);
         assert_eq!(operator_portion, 9500);
     }
 
     #[test]
     fn test_proportional_distribution() {
-        // Simulate: 1000 remaining emission, contributing 100 points when 900 already exist
         let remaining_emission = 1000u64;
         let adjusted_points = 100u64;
         let existing_points = 900u64;
-        let new_total = existing_points + adjusted_points; // 1000
+        let new_total = existing_points + adjusted_points;
 
         let tokens = (adjusted_points * remaining_emission) / new_total;
-
-        // Should get 100/1000 = 10% of remaining = 100 tokens
         assert_eq!(tokens, 100);
     }
 }
