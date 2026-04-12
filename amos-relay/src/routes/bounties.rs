@@ -356,8 +356,8 @@ async fn approve_submission(
     let fee = calculate_fee(reward_tokens);
 
     info!(
-        "Approving bounty {}: reward={}, protocol_fee={}, holder_share={}, treasury_share={}, ops_burn_share={}",
-        id, reward_tokens, fee.total_fee, fee.holder_share, fee.treasury_share, fee.ops_burn_share
+        "Approving bounty {}: reward={}, protocol_fee={}, holder_share={}, burn_share={}, labs_share={}",
+        id, reward_tokens, fee.total_fee, fee.holder_share, fee.burn_share, fee.labs_share
     );
 
     // Update the bounty status
@@ -383,7 +383,7 @@ async fn approve_submission(
     let fee_id = Uuid::new_v4();
     if let Err(e) = sqlx::query(
         r#"
-        INSERT INTO protocol_fee_ledger (id, bounty_id, total_fee, holder_share, treasury_share, ops_burn_share)
+        INSERT INTO protocol_fee_ledger (id, bounty_id, total_fee, holder_share, burn_share, labs_share)
         VALUES ($1, $2, $3, $4, $5, $6)
         "#,
     )
@@ -391,8 +391,8 @@ async fn approve_submission(
     .bind(id)
     .bind(fee.total_fee as i64)
     .bind(fee.holder_share as i64)
-    .bind(fee.treasury_share as i64)
-    .bind(fee.ops_burn_share as i64)
+    .bind(fee.burn_share as i64)
+    .bind(fee.labs_share as i64)
     .execute(&state.db)
     .await
     {

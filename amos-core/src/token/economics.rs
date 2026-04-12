@@ -31,30 +31,21 @@ pub const TREASURY_ALLOCATION: u64 = 95_000_000;
 pub const RESERVE_ALLOCATION: u64 = 5_000_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// REVENUE SPLIT — USDC PAYMENTS
+// PROTOCOL FEE — AMOS-ONLY (Applied to commercial bounties)
+// All transactions denominated in AMOS tokens. No USDC track.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// 50% to token holders (claimable proportionally by stakers).
-pub const HOLDER_SHARE_BPS: u64 = 5_000;
+/// Protocol fee rate: 3% of commercial bounty payout.
+pub const PROTOCOL_FEE_BPS: u64 = 300;
 
-/// 40% to R&D multisig (software dev, infrastructure, research).
-pub const RND_SHARE_BPS: u64 = 4_000;
+/// 50% of fee → staked token holders (claimable proportionally).
+pub const FEE_HOLDER_SHARE_BPS: u64 = 5_000;
 
-/// 5% to operations multisig (accounting, legal, hosting).
-pub const OPS_SHARE_BPS: u64 = 500;
+/// 40% of fee → permanently burned (deflationary).
+pub const FEE_BURN_SHARE_BPS: u64 = 4_000;
 
-/// 5% to treasury reserve (DAO-controlled emergency fund).
-pub const RESERVE_SHARE_BPS: u64 = 500;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// REVENUE SPLIT — AMOS TOKEN PAYMENTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// 50% of AMOS payments are permanently burned (deflationary).
-pub const AMOS_BURN_BPS: u64 = 5_000;
-
-/// 50% of AMOS payments go to holder pool (stakers claim).
-pub const AMOS_HOLDER_BPS: u64 = 5_000;
+/// 10% of fee → AMOS Labs operating wallet (in AMOS tokens).
+pub const FEE_LABS_SHARE_BPS: u64 = 1_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DECAY PARAMETERS
@@ -76,11 +67,11 @@ pub const DEFAULT_DECAY_RATE_BPS: u64 = 500;
 /// Profit ratio multiplier for decay formula (5% = 500 bps).
 pub const DECAY_PROFIT_MULTIPLIER_BPS: u64 = 500;
 
-/// Grace period: 12 months (365 days) of no decay for new stakes.
-pub const GRACE_PERIOD_DAYS: u64 = 365;
+/// Inactivity grace: days without bounty completion before decay triggers.
+pub const INACTIVITY_GRACE_PERIOD_DAYS: u64 = 90;
 
-/// On-chain grace period before decay triggers (90 days inactivity).
-pub const ONCHAIN_DECAY_GRACE_PERIOD_DAYS: u64 = 90;
+/// New stake grace: days after earning tokens during which they don't decay.
+pub const NEW_STAKE_GRACE_PERIOD_DAYS: u64 = 365;
 
 /// Decay floor: minimum 10% of original stake always preserved.
 pub const DECAY_FLOOR_BPS: u64 = 1_000;
@@ -185,15 +176,6 @@ pub const MULTIPLIER_DESIGN_BPS: u64 = 10_000;
 pub const MULTIPLIER_INFRA_BPS: u64 = 13_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PAYMENT DISCOUNTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// USDC direct payment discount: 5%.
-pub const USDC_DISCOUNT_BPS: u64 = 500;
-/// AMOS token payment discount: 20% (matches on-chain AMOS_PAYMENT_DISCOUNT_BPS).
-pub const AMOS_DISCOUNT_BPS: u64 = 2_000;
-
-// ═══════════════════════════════════════════════════════════════════════════
 // COMPILE-TIME VERIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -211,20 +193,11 @@ mod tests {
     }
 
     #[test]
-    fn usdc_revenue_splits_sum_to_100_percent() {
+    fn fee_shares_sum_to_100_percent() {
         assert_eq!(
-            HOLDER_SHARE_BPS + RND_SHARE_BPS + OPS_SHARE_BPS + RESERVE_SHARE_BPS,
+            FEE_HOLDER_SHARE_BPS + FEE_BURN_SHARE_BPS + FEE_LABS_SHARE_BPS,
             BPS_DENOMINATOR,
-            "USDC revenue splits must sum to 10000 bps"
-        );
-    }
-
-    #[test]
-    fn amos_payment_splits_sum_to_100_percent() {
-        assert_eq!(
-            AMOS_BURN_BPS + AMOS_HOLDER_BPS,
-            BPS_DENOMINATOR,
-            "AMOS payment splits must sum to 10000 bps"
+            "Fee shares must sum to 10000 bps"
         );
     }
 
@@ -265,5 +238,11 @@ mod tests {
         const {
             assert!(TENURE_REDUCTION_YEAR_2_BPS < TENURE_REDUCTION_YEAR_5_BPS);
         }
+    }
+
+    #[test]
+    fn grace_periods_are_distinct() {
+        assert_eq!(INACTIVITY_GRACE_PERIOD_DAYS, 90);
+        assert_eq!(NEW_STAKE_GRACE_PERIOD_DAYS, 365);
     }
 }

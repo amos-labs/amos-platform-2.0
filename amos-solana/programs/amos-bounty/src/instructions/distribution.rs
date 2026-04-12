@@ -409,7 +409,10 @@ pub fn handler_submit_proof(
 
     // Record bounty proof (immutable record)
     bounty_proof.bounty_id = bounty_id;
+    bounty_proof.bounty_source = BountySource::Treasury; // Treasury bounties via this instruction
     bounty_proof.operator = ctx.accounts.operator.key();
+    bounty_proof.funded_by = ctx.accounts.treasury.key(); // Treasury is the funder
+    bounty_proof.escrow_account = Pubkey::default(); // No escrow for treasury bounties
     bounty_proof.base_points = base_points;
     bounty_proof.adjusted_points = adjusted_points;
     bounty_proof.quality_score = quality_score;
@@ -418,6 +421,7 @@ pub fn handler_submit_proof(
     bounty_proof.agent_id = agent_id;
     bounty_proof.trust_level = trust_level;
     bounty_proof.tokens_earned = operator_tokens;
+    bounty_proof.fee_collected = 0; // No fee for treasury bounties
     bounty_proof.reviewer = reviewer;
     bounty_proof.reviewer_tokens = reviewer_tokens;
     bounty_proof.evidence_hash = evidence_hash;
@@ -450,11 +454,13 @@ pub fn handler_submit_proof(
 
     emit!(BountySubmitted {
         bounty_id,
+        bounty_source: 0, // Treasury
         operator: ctx.accounts.operator.key(),
         base_points,
         adjusted_points,
         operator_tokens,
         reviewer_tokens,
+        fee_collected: 0,
         day_index: current_day,
         timestamp: clock.unix_timestamp,
     });
@@ -492,11 +498,13 @@ fn calculate_day_index(start_time: i64) -> Result<u32> {
 #[event]
 pub struct BountySubmitted {
     pub bounty_id: [u8; 32],
+    pub bounty_source: u8, // 0 = Treasury, 1 = Commercial
     pub operator: Pubkey,
     pub base_points: u16,
     pub adjusted_points: u16,
     pub operator_tokens: u64,
     pub reviewer_tokens: u64,
+    pub fee_collected: u64,
     pub day_index: u32,
     pub timestamp: i64,
 }

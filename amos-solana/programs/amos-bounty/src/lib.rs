@@ -160,6 +160,59 @@ pub mod amos_bounty {
     }
 
     // ========================================================================
+    // Commercial Bounty (Escrow) Instructions
+    // ========================================================================
+
+    /// Create a commercial bounty by escrowing AMOS tokens.
+    ///
+    /// The poster deposits tokens into a PDA escrow. On completion, a 3% fee
+    /// is deducted (50% holders, 40% burned, 10% Labs). On expiry, poster
+    /// can reclaim full amount with zero fee.
+    ///
+    /// # Arguments
+    /// * `bounty_id` - Unique identifier for this bounty
+    /// * `reward_amount` - Total AMOS tokens to escrow
+    /// * `deadline` - Unix timestamp after which poster can reclaim
+    pub fn create_commercial_bounty(
+        ctx: Context<CreateCommercialBounty>,
+        bounty_id: [u8; 32],
+        reward_amount: u64,
+        deadline: i64,
+    ) -> Result<()> {
+        instructions::escrow::handler_create_commercial_bounty(ctx, bounty_id, reward_amount, deadline)
+    }
+
+    /// Release escrowed funds to the worker after oracle validates completion.
+    /// 3% protocol fee is deducted and distributed per the 50/40/10 split.
+    #[allow(clippy::too_many_arguments)]
+    pub fn release_commercial_bounty(
+        ctx: Context<ReleaseEscrow>,
+        bounty_id: [u8; 32],
+        base_points: u16,
+        quality_score: u8,
+        contribution_type: u8,
+        is_agent: bool,
+        agent_id: [u8; 32],
+        reviewer: Pubkey,
+        evidence_hash: [u8; 32],
+        external_reference: [u8; 64],
+    ) -> Result<()> {
+        instructions::escrow::handler_release_escrow(
+            ctx, bounty_id, base_points, quality_score, contribution_type,
+            is_agent, agent_id, reviewer, evidence_hash, external_reference,
+        )
+    }
+
+    /// Refund escrowed funds to the poster if bounty was not completed.
+    /// No fee is charged on refunds.
+    pub fn refund_commercial_bounty(
+        ctx: Context<RefundEscrow>,
+        bounty_id: [u8; 32],
+    ) -> Result<()> {
+        instructions::escrow::handler_refund_escrow(ctx, bounty_id)
+    }
+
+    // ========================================================================
     // Decay Instructions
     // ========================================================================
 
@@ -175,6 +228,41 @@ pub mod amos_bounty {
     /// This is a PERMISSIONLESS operation.
     pub fn apply_decay(ctx: Context<ApplyDecay>) -> Result<()> {
         instructions::decay::handler_apply_decay(ctx)
+    }
+
+    // ========================================================================
+    // Platform Metrics Instructions
+    // ========================================================================
+
+    /// Initialize the PlatformMetrics singleton.
+    /// Oracle-only. Must be called once after program initialization.
+    pub fn initialize_platform_metrics(
+        ctx: Context<InitializePlatformMetrics>,
+    ) -> Result<()> {
+        instructions::metrics::handler_initialize_metrics(ctx)
+    }
+
+    /// Update rolling 30-day platform metrics and recompute decay rate.
+    /// Oracle pushes off-chain computed metrics on-chain for transparency.
+    ///
+    /// Decay formula: base_10% - (profit_ratio × 5%), clamped [2%, 25%]
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_platform_metrics(
+        ctx: Context<UpdatePlatformMetrics>,
+        commercial_volume_30d: u64,
+        fees_collected_30d: u64,
+        fees_to_holders_30d: u64,
+        fees_burned_30d: u64,
+        fees_to_labs_30d: u64,
+        system_volume_30d: u64,
+        commercial_bounty_count: u32,
+        treasury_bounty_count: u32,
+    ) -> Result<()> {
+        instructions::metrics::handler_update_metrics(
+            ctx, commercial_volume_30d, fees_collected_30d,
+            fees_to_holders_30d, fees_burned_30d, fees_to_labs_30d,
+            system_volume_30d, commercial_bounty_count, treasury_bounty_count,
+        )
     }
 
     // ========================================================================
@@ -257,8 +345,8 @@ mod tests {
     fn test_constants_invariants() {
         use crate::constants::*;
 
-        // Treasury allocation should be 60% of total supply
-        assert_eq!(TREASURY_ALLOCATION, TOTAL_SUPPLY * 60 / 100);
+        // Treasury allocation should be 95% of total supply
+        assert_eq!(TREASURY_ALLOCATION, TOTAL_SUPPLY * 95 / 100);
 
         // Decay rate bounds are valid
         assert!(MIN_DECAY_RATE_BPS < MAX_DECAY_RATE_BPS);

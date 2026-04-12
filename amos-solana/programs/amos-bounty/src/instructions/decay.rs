@@ -20,7 +20,7 @@ use crate::state::*;
 /// Decay helps ensure tokens flow through the economy rather than accumulating.
 ///
 /// # Decay Mechanics
-/// - Grace period: 90 days before decay begins (DECAY_GRACE_PERIOD_DAYS)
+/// - Grace period: 90 days before decay begins (INACTIVITY_GRACE_PERIOD_DAYS)
 /// - Annual rate: 2-25% per year, configurable by oracle (decay_rate_bps)
 /// - Daily decay: balance × rate / (10000 × 365), minimum 1 token
 /// - Floor: Preserves at least 10% of original allocation (DECAY_FLOOR_BPS)
@@ -91,7 +91,7 @@ pub fn handler_apply_decay(ctx: Context<ApplyDecay>) -> Result<()> {
         .checked_sub(operator_stats.last_activity_time)
         .ok_or(BountyError::InvalidTimestamp)?;
 
-    let grace_period_seconds = DECAY_GRACE_PERIOD_DAYS
+    let grace_period_seconds = INACTIVITY_GRACE_PERIOD_DAYS
         .checked_mul(86400)
         .ok_or(BountyError::ArithmeticOverflow)?;
 
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_grace_period() {
-        let grace_days = DECAY_GRACE_PERIOD_DAYS;
+        let grace_days = INACTIVITY_GRACE_PERIOD_DAYS;
         let grace_seconds = grace_days * 86400;
 
         // 90 days = 7,776,000 seconds

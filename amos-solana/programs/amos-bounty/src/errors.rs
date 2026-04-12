@@ -126,4 +126,37 @@ pub enum BountyError {
 
     #[msg("Invalid account data: Account data is corrupted or malformed")]
     InvalidAccountData,
+
+    #[msg("Invalid bounty source: Must be Treasury or Commercial")]
+    InvalidBountySource,
+
+    #[msg("Escrow not funded: Commercial bounty escrow has insufficient balance")]
+    EscrowNotFunded,
+
+    #[msg("Escrow already released: Cannot release funds twice")]
+    EscrowAlreadyReleased,
+
+    #[msg("Escrow expired: Bounty deadline has passed without completion")]
+    EscrowExpired,
+
+    #[msg("Escrow not expired: Cannot refund before deadline")]
+    EscrowNotExpired,
+
+    #[msg("Invalid escrow: Escrow account does not match bounty proof")]
+    InvalidEscrow,
+
+    #[msg("Invalid poster: Only the original poster can request a refund")]
+    InvalidPoster,
+
+    #[msg("Invalid labs wallet: Labs wallet does not match configuration")]
+    InvalidLabsWallet,
+
+    #[msg("Vault lockup active: Cannot withdraw until lockup period expires")]
+    VaultLockupActive,
+
+    #[msg("Invalid vault tier: Must be 0-4")]
+    InvalidVaultTier,
+
+    #[msg("Metrics update too frequent: Must wait before updating again")]
+    MetricsUpdateTooFrequent,
 }

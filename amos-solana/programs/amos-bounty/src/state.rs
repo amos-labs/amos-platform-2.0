@@ -7,6 +7,106 @@
 use anchor_lang::prelude::*;
 
 // ============================================================================
+// Enums
+// ============================================================================
+
+/// Source of bounty funding. Determines whether a protocol fee applies.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BountySource {
+    /// System bounty — funded from daily treasury emission, 0% fee
+    Treasury,
+    /// User-funded bounty — poster escrows AMOS tokens, 3% fee applies
+    Commercial,
+}
+
+impl Default for BountySource {
+    fn default() -> Self {
+        BountySource::Treasury
+    }
+}
+
+/// Staking vault tier — optional lockup for additional decay reduction.
+/// Tenure and vault reductions stack multiplicatively:
+///   effective_decay = base_decay × (1 - tenure_reduction) × (1 - vault_reduction)
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VaultTier {
+    /// No lockup, no bonus
+    None,
+    /// 30 days, 20% reduction
+    Bronze,
+    /// 90 days, 50% reduction
+    Silver,
+    /// 365 days, 80% reduction
+    Gold,
+    /// No unlock, 95% reduction
+    Permanent,
+}
+
+impl Default for VaultTier {
+    fn default() -> Self {
+        VaultTier::None
+    }
+}
+
+// ============================================================================
+// PlatformMetrics - On-Chain Oracle for Economic Parameters
+// ============================================================================
+
+/// Rolling economic metrics used to compute dynamic decay rate.
+/// Updated by the oracle authority; immutable once written for each window.
+///
+/// Seeds: ["platform_metrics"]
+#[account]
+pub struct PlatformMetrics {
+    /// Rolling 30-day commercial bounty volume (AMOS tokens)
+    pub commercial_volume_30d: u64, // 8 bytes
+
+    /// Rolling 30-day total fees collected
+    pub fees_collected_30d: u64, // 8 bytes
+
+    /// Fees distributed to holders in current window
+    pub fees_to_holders_30d: u64, // 8 bytes
+
+    /// Fees burned in current window
+    pub fees_burned_30d: u64, // 8 bytes
+
+    /// Fees sent to Labs wallet in current window
+    pub fees_to_labs_30d: u64, // 8 bytes
+
+    /// Rolling 30-day system (treasury) bounty volume
+    pub system_volume_30d: u64, // 8 bytes
+
+    /// Computed profit ratio in basis points (0-10000)
+    /// profit_ratio = fees_collected / system_volume (capped at 10000)
+    pub profit_ratio_bps: u16, // 2 bytes
+
+    /// Current effective decay rate in basis points (derived from profit ratio)
+    /// decay = base_10% - (profit_ratio * 5%), clamped to [2%, 25%]
+    pub computed_decay_rate_bps: u16, // 2 bytes
+
+    /// Total commercial bounties in current 30-day window
+    pub commercial_bounty_count: u32, // 4 bytes
+
+    /// Total treasury bounties in current 30-day window
+    pub treasury_bounty_count: u32, // 4 bytes
+
+    /// Unix timestamp of last oracle update
+    pub last_updated: i64, // 8 bytes
+
+    /// PDA bump seed
+    pub bump: u8, // 1 byte
+
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 16], // 128 bytes
+}
+
+impl PlatformMetrics {
+    /// Size calculation:
+    /// 8 (discriminator) + 8 + 8 + 8 + 8 + 8 + 8 + 2 + 2 + 4 + 4 + 8 + 1 + 128 = 205 bytes
+    pub const SIZE: usize = 8 + 8 + 8 + 8 + 8 + 8 + 8 + 2 + 2 + 4 + 4 + 8 + 1 + 128;
+}
+
+// ============================================================================
 // BountyConfig - Main Program Configuration
 // ============================================================================
 
@@ -119,8 +219,17 @@ pub struct BountyProof {
     /// Unique identifier for this bounty (external system ID)
     pub bounty_id: [u8; 32], // 32 bytes
 
+    /// Source of bounty funding (Treasury or Commercial)
+    pub bounty_source: BountySource, // 1 byte (enum)
+
     /// Operator who earned this bounty (human or AI agent)
     pub operator: Pubkey, // 32 bytes
+
+    /// Who funded this bounty (treasury PDA for Treasury, poster pubkey for Commercial)
+    pub funded_by: Pubkey, // 32 bytes
+
+    /// Escrow account holding Commercial bounty funds (Pubkey::default() if Treasury)
+    pub escrow_account: Pubkey, // 32 bytes
 
     /// Base points awarded (before multipliers)
     pub base_points: u16, // 2 bytes
@@ -145,6 +254,9 @@ pub struct BountyProof {
 
     /// Total tokens awarded (including reviewer portion)
     pub tokens_earned: u64, // 8 bytes
+
+    /// Protocol fee collected (0 for Treasury bounties, 3% for Commercial)
+    pub fee_collected: u64, // 8 bytes
 
     /// Reviewer who validated this bounty
     pub reviewer: Pubkey, // 32 bytes
@@ -173,8 +285,8 @@ pub struct BountyProof {
 
 impl BountyProof {
     /// Size calculation:
-    /// 8 (discriminator) + 32 + 32 + 2 + 2 + 1 + 1 + 1 + 32 + 1 + 8 + 32 + 8 + 32 + 8 + 4 + 64 + 1 + 64 = 333 bytes
-    pub const SIZE: usize = 8 + 32 + 32 + 2 + 2 + 1 + 1 + 1 + 32 + 1 + 8 + 32 + 8 + 32 + 8 + 4 + 64 + 1 + 64;
+    /// 8 (discriminator) + 32 + 1 + 32 + 32 + 32 + 2 + 2 + 1 + 1 + 1 + 32 + 1 + 8 + 8 + 32 + 8 + 32 + 8 + 4 + 64 + 1 + 64 = 406 bytes
+    pub const SIZE: usize = 8 + 32 + 1 + 32 + 32 + 32 + 2 + 2 + 1 + 1 + 1 + 32 + 1 + 8 + 8 + 32 + 8 + 32 + 8 + 4 + 64 + 1 + 64;
 }
 
 // ============================================================================
@@ -229,6 +341,12 @@ pub struct OperatorStats {
     /// Day index of last bounty submission
     pub last_submission_day: u32, // 4 bytes
 
+    /// Current staking vault tier (affects decay reduction)
+    pub vault_tier: VaultTier, // 1 byte (enum)
+
+    /// Unix timestamp when vault lockup expires (0 for None, u64::MAX for Permanent)
+    pub vault_lockup_expires: i64, // 8 bytes
+
     /// PDA bump seed
     pub bump: u8, // 1 byte
 
@@ -238,8 +356,8 @@ pub struct OperatorStats {
 
 impl OperatorStats {
     /// Size calculation:
-    /// 8 (discriminator) + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 2 + 4 + 1 + 128 = 251 bytes
-    pub const SIZE: usize = 8 + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 2 + 4 + 1 + 128;
+    /// 8 (discriminator) + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 2 + 4 + 1 + 8 + 1 + 128 = 260 bytes
+    pub const SIZE: usize = 8 + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 4 + 2 + 4 + 1 + 8 + 1 + 128;
 }
 
 // ============================================================================
@@ -317,6 +435,7 @@ mod tests {
     #[test]
     fn test_account_sizes() {
         // Verify account sizes are within Solana limits (10KB max)
+        assert!(PlatformMetrics::SIZE < 10240);
         assert!(BountyConfig::SIZE < 10240);
         assert!(DailyPool::SIZE < 10240);
         assert!(BountyProof::SIZE < 10240);

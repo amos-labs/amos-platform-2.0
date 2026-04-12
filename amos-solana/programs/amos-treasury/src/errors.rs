@@ -13,8 +13,8 @@ pub enum TreasuryError {
     #[msg("Treasury has already been initialized")]
     AlreadyInitialized,
 
-    #[msg("Invalid multisig address provided")]
-    InvalidMultisig,
+    #[msg("Invalid Labs wallet address provided")]
+    InvalidLabsWallet,
 
     #[msg("Invalid mint address provided")]
     InvalidMint,
