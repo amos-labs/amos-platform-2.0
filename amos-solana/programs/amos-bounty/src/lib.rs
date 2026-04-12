@@ -108,6 +108,11 @@ pub mod amos_bounty {
         instructions::admin::handler_advance_halving(ctx)
     }
 
+    /// Update the treasury token account address. Oracle-only.
+    pub fn update_treasury(ctx: Context<UpdateTreasury>) -> Result<()> {
+        instructions::admin::handler_update_treasury(ctx)
+    }
+
     // ========================================================================
     // Preparation Instructions
     // ========================================================================

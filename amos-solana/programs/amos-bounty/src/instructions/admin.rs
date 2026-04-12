@@ -202,6 +202,40 @@ pub fn handler_advance_halving(ctx: Context<AdvanceHalving>) -> Result<()> {
 }
 
 // ============================================================================
+// Update Treasury
+// ============================================================================
+
+/// Update the treasury token account address. Oracle-only.
+/// The new treasury must be an AMOS token account with sufficient funds.
+#[derive(Accounts)]
+pub struct UpdateTreasury<'info> {
+    #[account(
+        mut,
+        seeds = [BOUNTY_CONFIG_SEED],
+        bump = config.bump,
+        has_one = oracle_authority @ BountyError::Unauthorized,
+    )]
+    pub config: Account<'info, BountyConfig>,
+
+    /// New treasury token account (must match config's mint)
+    #[account(
+        constraint = new_treasury.mint == config.mint @ BountyError::InvalidMint,
+    )]
+    pub new_treasury: Account<'info, TokenAccount>,
+
+    pub oracle_authority: Signer<'info>,
+}
+
+pub fn handler_update_treasury(ctx: Context<UpdateTreasury>) -> Result<()> {
+    let old_treasury = ctx.accounts.config.treasury;
+    ctx.accounts.config.treasury = ctx.accounts.new_treasury.key();
+
+    msg!("Treasury updated from {} to {}", old_treasury, ctx.accounts.new_treasury.key());
+
+    Ok(())
+}
+
+// ============================================================================
 // Events
 // ============================================================================
 

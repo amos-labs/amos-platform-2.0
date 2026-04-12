@@ -15,7 +15,7 @@ import { createHash } from "crypto";
 const RPC_URL = "https://api.devnet.solana.com";
 const BOUNTY_PROGRAM_ID = new PublicKey("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq");
 const MINT = new PublicKey("Cm2RGfE3EpYm6s2cfbMYYikjS2CD9vUd6ECxX4pWi2HQ");
-const TREASURY = new PublicKey("Es4SCAKj6ncLTkrCkF3RnGQjvtGJFBFrfpLTQdhtHjET");
+const TREASURY = new PublicKey("3gVaEePh9kT8yzaKvVJ5MHEJjHrmtiJwEiiZGosaa3tP");
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 // Load oracle keypair (founder wallet)
