@@ -73,6 +73,9 @@ pub fn claim_bounty_reward(
         GovernanceError::InvalidProposalStatus
     );
 
+    // Copy estimated_bounty before the mutable borrow in the match below
+    let estimated_bounty = proposal.estimated_bounty;
+
     // Get the appropriate gate result and reward percentage
     let (gate_result, reward_bps) = match gate_type {
         GateType::Benchmark => {
@@ -121,7 +124,7 @@ pub fn claim_bounty_reward(
     );
 
     // Calculate reward amount
-    let reward_amount = (proposal.estimated_bounty as u128)
+    let reward_amount = (estimated_bounty as u128)
         .checked_mul(reward_bps as u128)
         .ok_or(GovernanceError::RewardCalculationOverflow)?
         .checked_div(BPS_DENOMINATOR as u128)

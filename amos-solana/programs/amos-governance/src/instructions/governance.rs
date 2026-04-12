@@ -70,7 +70,7 @@ pub fn initialize_governance(
     governance.reserved = [0; 128];
 
     // Set parameters (use defaults if not provided)
-    *stored_params = params.unwrap_or_default();
+    **stored_params = params.unwrap_or_default();
 
     // Validate parameter sums
     require!(
@@ -142,7 +142,7 @@ pub fn update_governance_params(
     );
 
     // Update parameters
-    *params = new_params;
+    **params = new_params;
 
     msg!("Governance parameters updated");
 

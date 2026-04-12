@@ -20,7 +20,7 @@ pub mod instructions;
 use instructions::*;
 use state::*;
 
-declare_id!("AmosGov11111111111111111111111111111111111");
+declare_id!("jB8X4jmpKNqUy2H5cm1mVYfqG7jMCXiDXodkZSsJyQW");
 
 #[program]
 pub mod amos_governance {
