@@ -383,7 +383,7 @@ impl TemplateService {
             sqlx::query_as::<_, TemplateRegistryRow>(
                 "SELECT * FROM template_registry
                  WHERE is_published = true AND entity_type = $1
-                 ORDER BY name",
+                 ORDER BY name LIMIT 200",
             )
             .bind(et)
             .fetch_all(&self.db_pool)
@@ -392,7 +392,7 @@ impl TemplateService {
             sqlx::query_as::<_, TemplateRegistryRow>(
                 "SELECT * FROM template_registry
                  WHERE is_published = true
-                 ORDER BY name",
+                 ORDER BY name LIMIT 200",
             )
             .fetch_all(&self.db_pool)
             .await?
@@ -422,7 +422,7 @@ impl TemplateService {
         template_id: Uuid,
     ) -> Result<Vec<TemplateVersionRow>> {
         let versions = sqlx::query_as::<_, TemplateVersionRow>(
-            "SELECT * FROM template_versions WHERE template_id = $1 ORDER BY version DESC",
+            "SELECT * FROM template_versions WHERE template_id = $1 ORDER BY version DESC LIMIT 100",
         )
         .bind(template_id)
         .fetch_all(&self.db_pool)

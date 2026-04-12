@@ -57,7 +57,7 @@ impl RateLimiter {
                 buckets.retain(|_ip, bucket| {
                     let elapsed = now.duration_since(bucket.last_refill).as_secs_f64();
                     let would_be = bucket.tokens + elapsed * cap; // approximate
-                    // If the bucket would be full and hasn't been touched in 10min, evict
+                                                                  // If the bucket would be full and hasn't been touched in 10min, evict
                     !(would_be >= cap && elapsed > 600.0)
                 });
             }
@@ -127,11 +127,7 @@ fn extract_client_ip(req: &Request) -> IpAddr {
 ///     rate_limit_middleware(req, next, limiter.clone())
 /// }))
 /// ```
-pub async fn rate_limit_middleware(
-    request: Request,
-    next: Next,
-    limiter: RateLimiter,
-) -> Response {
+pub async fn rate_limit_middleware(request: Request, next: Next, limiter: RateLimiter) -> Response {
     let ip = extract_client_ip(&request);
 
     if limiter.try_acquire(ip) {

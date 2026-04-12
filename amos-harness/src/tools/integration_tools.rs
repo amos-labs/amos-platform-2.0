@@ -59,6 +59,7 @@ impl Tool for ListIntegrationsTool {
                    available_actions, metadata, created_at, updated_at
             FROM integrations
             ORDER BY name ASC
+            LIMIT 200
             "#,
         )
         .fetch_all(&self.db_pool)
@@ -169,6 +170,7 @@ impl Tool for ListConnectionsTool {
                 JOIN integrations i ON c.integration_id = i.id
                 WHERE c.integration_id = $1
                 ORDER BY c.created_at DESC
+                LIMIT 200
                 "#,
             )
             .bind(int_id)
@@ -184,6 +186,7 @@ impl Tool for ListConnectionsTool {
                 FROM integration_connections c
                 JOIN integrations i ON c.integration_id = i.id
                 ORDER BY c.created_at DESC
+                LIMIT 200
                 "#,
             )
             .fetch_all(&self.db_pool)
@@ -652,6 +655,7 @@ impl Tool for ListOperationsTool {
             FROM integration_operations
             WHERE integration_id = $1
             ORDER BY name ASC
+            LIMIT 500
             "#,
         )
         .bind(integration_id)

@@ -75,7 +75,7 @@ pub struct AppState {
     pub automation_engine: Arc<AutomationEngine>,
 
     /// Channel for schema CRUD events → automation engine (breaks async type cycle)
-    pub automation_event_tx: tokio::sync::mpsc::UnboundedSender<TriggerEvent>,
+    pub automation_event_tx: tokio::sync::mpsc::Sender<TriggerEvent>,
 
     /// Multi-harness orchestrator (primary harness only).
     /// Provides discovery cache and proxy for specialist harness management.

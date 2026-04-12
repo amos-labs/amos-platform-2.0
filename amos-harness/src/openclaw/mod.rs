@@ -95,7 +95,7 @@ struct OpenClawError {
 /// OpenClaw connection manager
 struct OpenClawConnection {
     gateway_url: String,
-    write_tx: mpsc::UnboundedSender<Message>,
+    write_tx: mpsc::Sender<Message>,
     pending_requests: Arc<DashMap<String, oneshot::Sender<JsonValue>>>,
     connected: Arc<RwLock<bool>>,
     protocol_ready: Arc<RwLock<bool>>,
@@ -108,7 +108,7 @@ impl OpenClawConnection {
         let connected = Arc::new(RwLock::new(false));
         let protocol_ready = Arc::new(RwLock::new(false));
 
-        let (write_tx, write_rx) = mpsc::unbounded_channel();
+        let (write_tx, write_rx) = mpsc::channel(256);
 
         let conn = Self {
             gateway_url: gateway_url.clone(),
@@ -136,7 +136,7 @@ impl OpenClawConnection {
     /// so logs don't flood when the gateway is down.
     async fn connection_task(
         gateway_url: String,
-        write_rx: mpsc::UnboundedReceiver<Message>,
+        write_rx: mpsc::Receiver<Message>,
         pending_requests: Arc<DashMap<String, oneshot::Sender<JsonValue>>>,
         connected: Arc<RwLock<bool>>,
         protocol_ready: Arc<RwLock<bool>>,
@@ -352,6 +352,7 @@ impl OpenClawConnection {
 
         self.write_tx
             .send(Message::Text(message.into()))
+            .await
             .map_err(|e| AmosError::Internal(format!("Failed to send message: {}", e)))?;
 
         // Wait for response with timeout

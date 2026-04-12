@@ -21,6 +21,26 @@ async fn main() -> Result<()> {
     let config = Arc::new(AppConfig::load()?);
     info!("Configuration loaded");
 
+    // ── TLS enforcement for production ──────────────────────────────
+    let is_production = std::env::var("AMOS__ENV").unwrap_or_default() == "production";
+
+    {
+        let db_url = config.database.url.expose_secret();
+        if is_production
+            && !db_url.contains("sslmode=require")
+            && !db_url.contains("sslmode=verify")
+        {
+            tracing::warn!(
+                "Production database URL missing sslmode=require — connections may be unencrypted"
+            );
+        }
+        if is_production && !config.redis.url.starts_with("rediss://") {
+            tracing::warn!(
+                "Production Redis URL is not using TLS (rediss://) — connections may be unencrypted"
+            );
+        }
+    }
+
     // Connect to PostgreSQL
     info!("Connecting to PostgreSQL");
     let db_pool = PgPoolOptions::new()

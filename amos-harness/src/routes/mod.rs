@@ -28,9 +28,9 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
     // ── Rate limiters ──────────────────────────────────────────────
     // Chat endpoint: tight limit (LLM calls are expensive)
     let chat_limiter = RateLimiter::new(20, 2.0); // 20 burst, 2 req/s sustained
-    // General API: moderate limit
+                                                  // General API: moderate limit
     let api_limiter = RateLimiter::new(100, 20.0); // 100 burst, 20 req/s sustained
-    // Public endpoints: generous but bounded
+                                                   // Public endpoints: generous but bounded
     let public_limiter = RateLimiter::new(200, 40.0); // 200 burst, 40 req/s sustained
 
     // ── Public routes (no auth required) ────────────────────────────

@@ -31,8 +31,8 @@ impl AutomationEngine {
     /// Create an event channel and spawn a background task that drains it.
     /// Returns the sender that `SchemaEngine` can use to fire events without
     /// creating an async type cycle.
-    pub fn create_event_channel(self: &Arc<Self>) -> mpsc::UnboundedSender<TriggerEvent> {
-        let (tx, mut rx) = mpsc::unbounded_channel::<TriggerEvent>();
+    pub fn create_event_channel(self: &Arc<Self>) -> mpsc::Sender<TriggerEvent> {
+        let (tx, mut rx) = mpsc::channel::<TriggerEvent>(1024);
         let engine = self.clone();
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {

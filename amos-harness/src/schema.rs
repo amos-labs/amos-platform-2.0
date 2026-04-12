@@ -100,7 +100,7 @@ pub struct Record {
 /// Engine for CRUD operations on collections and records.
 pub struct SchemaEngine {
     db_pool: PgPool,
-    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
+    event_tx: Option<mpsc::Sender<TriggerEvent>>,
 }
 
 impl SchemaEngine {
@@ -111,10 +111,7 @@ impl SchemaEngine {
         }
     }
 
-    pub fn with_event_sender(
-        db_pool: PgPool,
-        event_tx: mpsc::UnboundedSender<TriggerEvent>,
-    ) -> Self {
+    pub fn with_event_sender(db_pool: PgPool, event_tx: mpsc::Sender<TriggerEvent>) -> Self {
         Self {
             db_pool,
             event_tx: Some(event_tx),
@@ -243,9 +240,9 @@ impl SchemaEngine {
 
         let record = record_from_row(&row, collection_name)?;
 
-        // Fire automation event (non-blocking channel send)
+        // Fire automation event (non-blocking channel send, drops if channel full)
         if let Some(tx) = &self.event_tx {
-            let _ = tx.send(TriggerEvent {
+            let _ = tx.try_send(TriggerEvent {
                 event_type: TriggerType::RecordCreated,
                 collection: Some(collection_name.to_string()),
                 record_id: Some(record.id),
@@ -382,9 +379,9 @@ impl SchemaEngine {
 
         let record = record_from_row(&row, &collection_name)?;
 
-        // Fire automation event (non-blocking channel send)
+        // Fire automation event (non-blocking channel send, drops if channel full)
         if let Some(tx) = &self.event_tx {
-            let _ = tx.send(TriggerEvent {
+            let _ = tx.try_send(TriggerEvent {
                 event_type: TriggerType::RecordUpdated,
                 collection: Some(collection_name.clone()),
                 record_id: Some(record.id),
@@ -431,9 +428,9 @@ impl SchemaEngine {
             });
         }
 
-        // Fire automation event (non-blocking channel send)
+        // Fire automation event (non-blocking channel send, drops if channel full)
         if let (Some(tx), Some((collection_name, data))) = (&self.event_tx, record_info) {
-            let _ = tx.send(TriggerEvent {
+            let _ = tx.try_send(TriggerEvent {
                 event_type: TriggerType::RecordDeleted,
                 collection: Some(collection_name),
                 record_id: Some(record_id),

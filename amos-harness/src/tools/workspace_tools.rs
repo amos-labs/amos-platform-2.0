@@ -49,6 +49,7 @@ impl Tool for GetWorkspaceSummaryTool {
                 (SELECT COUNT(*) FROM records r WHERE r.collection_id = c.id) AS record_count
             FROM collections c
             ORDER BY c.name
+            LIMIT 200
             "#,
         )
         .fetch_all(&self.db_pool)
@@ -79,6 +80,7 @@ impl Tool for GetWorkspaceSummaryTool {
             FROM canvases
             WHERE is_system = false
             ORDER BY created_at DESC
+            LIMIT 200
             "#,
         )
         .fetch_all(&self.db_pool)
@@ -107,6 +109,7 @@ impl Tool for GetWorkspaceSummaryTool {
             SELECT slug, name, is_published
             FROM sites
             ORDER BY created_at DESC
+            LIMIT 200
             "#,
         )
         .fetch_all(&self.db_pool)

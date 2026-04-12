@@ -216,9 +216,7 @@ async fn proxy_chat(
         Ok(rows) if !rows.is_empty() => {
             let prompts: Vec<String> = rows
                 .into_iter()
-                .map(|(p,)| {
-                    crate::prompt_guard::sanitize("package_prompt", &p, 8000)
-                })
+                .map(|(p,)| crate::prompt_guard::sanitize("package_prompt", &p, 8000))
                 .collect();
             json_body["package_prompts"] = serde_json::json!(prompts);
             info!(count = prompts.len(), "Injected package system prompts");
@@ -527,11 +525,8 @@ async fn process_attachments(state: &AppState, body: &str) -> Result<String, Str
                     }
                     {
                         // Wrap extracted text to prevent prompt injection from document content
-                        let wrapped = crate::prompt_guard::sanitize(
-                            "uploaded_document",
-                            &text,
-                            50_000,
-                        );
+                        let wrapped =
+                            crate::prompt_guard::sanitize("uploaded_document", &text, 50_000);
                         ContentBlock::Text {
                             text: format!("[Document: {}]\n\n{}", filename, wrapped),
                         }
@@ -563,11 +558,8 @@ async fn process_attachments(state: &AppState, body: &str) -> Result<String, Str
                     }
                     {
                         // Wrap extracted text to prevent prompt injection from document content
-                        let wrapped = crate::prompt_guard::sanitize(
-                            "uploaded_document",
-                            &combined,
-                            100_000,
-                        );
+                        let wrapped =
+                            crate::prompt_guard::sanitize("uploaded_document", &combined, 100_000);
                         ContentBlock::Text {
                             text: format!("[Document: {}]\n\n{}", filename, wrapped),
                         }

@@ -471,7 +471,8 @@ impl TaskQueue {
             r#"SELECT * FROM tasks
                WHERE session_id = $1
                  AND status NOT IN ('completed', 'failed', 'cancelled')
-               ORDER BY priority ASC, created_at ASC"#,
+               ORDER BY priority ASC, created_at ASC
+               LIMIT 200"#,
         )
         .bind(session_id)
         .fetch_all(&self.db_pool)
@@ -543,7 +544,8 @@ impl TaskQueue {
                WHERE t.session_id = $1
                  AND tm.acknowledged = false
                  AND tm.direction = 'agent_to_amos'
-               ORDER BY tm.created_at ASC"#,
+               ORDER BY tm.created_at ASC
+               LIMIT 500"#,
         )
         .bind(session_id)
         .fetch_all(&self.db_pool)
@@ -579,7 +581,8 @@ impl TaskQueue {
         let rows = sqlx::query_as::<_, TaskMessageRow>(
             r#"SELECT * FROM task_messages
                WHERE task_id = $1
-               ORDER BY created_at ASC"#,
+               ORDER BY created_at ASC
+               LIMIT 500"#,
         )
         .bind(task_id)
         .fetch_all(&self.db_pool)

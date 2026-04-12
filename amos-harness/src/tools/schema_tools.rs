@@ -267,11 +267,11 @@ impl Tool for GetCollectionTool {
 /// Create a new record in a data collection.
 pub struct CreateRecordTool {
     db_pool: PgPool,
-    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
+    event_tx: Option<mpsc::Sender<TriggerEvent>>,
 }
 
 impl CreateRecordTool {
-    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>) -> Self {
+    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::Sender<TriggerEvent>>) -> Self {
         Self { db_pool, event_tx }
     }
 }
@@ -442,11 +442,11 @@ impl Tool for QueryRecordsTool {
 /// Update an existing record (merge semantics — new fields override, existing fields preserved).
 pub struct UpdateRecordTool {
     db_pool: PgPool,
-    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
+    event_tx: Option<mpsc::Sender<TriggerEvent>>,
 }
 
 impl UpdateRecordTool {
-    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>) -> Self {
+    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::Sender<TriggerEvent>>) -> Self {
         Self { db_pool, event_tx }
     }
 }
@@ -517,11 +517,11 @@ impl Tool for UpdateRecordTool {
 /// Delete a record by ID.
 pub struct DeleteRecordTool {
     db_pool: PgPool,
-    event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>,
+    event_tx: Option<mpsc::Sender<TriggerEvent>>,
 }
 
 impl DeleteRecordTool {
-    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::UnboundedSender<TriggerEvent>>) -> Self {
+    pub fn new(db_pool: PgPool, event_tx: Option<mpsc::Sender<TriggerEvent>>) -> Self {
         Self { db_pool, event_tx }
     }
 }

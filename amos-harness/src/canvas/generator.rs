@@ -269,8 +269,7 @@ fn build_generation_prompt(request: &GenerateCanvasRequest) -> Result<String> {
     };
 
     // Sanitize user description (cap at 4000 chars)
-    let description =
-        prompt_guard::sanitize("canvas_description", &request.description, 4000);
+    let description = prompt_guard::sanitize("canvas_description", &request.description, 4000);
 
     let prompt = format!(
         r#"{boundary_instruction}

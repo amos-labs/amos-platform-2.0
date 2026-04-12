@@ -35,8 +35,12 @@ use sqlx::PgPool;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 use tokio::sync::RwLock;
+
+/// Maximum time a single tool execution may run before being cancelled.
+const TOOL_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
 
 // Re-export core tool types so existing harness code doesn't break
 pub use amos_core::tools::{Tool, ToolCategory, ToolResult};
@@ -149,7 +153,14 @@ impl ToolRegistry {
             });
         }
 
-        entry.tool.execute(params).await
+        match tokio::time::timeout(TOOL_EXECUTION_TIMEOUT, entry.tool.execute(params)).await {
+            Ok(result) => result,
+            Err(_) => Ok(ToolResult::error(format!(
+                "Tool '{}' timed out after {}s",
+                tool_name,
+                TOOL_EXECUTION_TIMEOUT.as_secs()
+            ))),
+        }
     }
 
     /// Execute a tool with trust-level enforcement for external agents.
@@ -186,7 +197,14 @@ impl ToolRegistry {
             )));
         }
 
-        entry.tool.execute(params).await
+        match tokio::time::timeout(TOOL_EXECUTION_TIMEOUT, entry.tool.execute(params)).await {
+            Ok(result) => result,
+            Err(_) => Ok(ToolResult::error(format!(
+                "Tool '{}' timed out after {}s",
+                tool_name,
+                TOOL_EXECUTION_TIMEOUT.as_secs()
+            ))),
+        }
     }
 
     /// Get a tool by name (only if active)
