@@ -61,23 +61,21 @@ When a bounty is completed using tools from a specific package, the package crea
 
 ### How It Works
 
-The relay's 3% protocol fee on bounty payouts currently distributes:
-- 70% to staked token holders
-- 20% to governance treasury
-- 5% to operations
-- 5% to permanent burn
+The relay's 3% protocol fee on commercial bounty payouts distributes:
+- 50% to staked token holders
+- 40% to permanent burn
+- 10% to AMOS Labs
 
 We add a **package attribution layer** that redirects a portion of the staker allocation to package creators whose tools were used in the bounty completion:
 
 ```
 Bounty Payout: 1,000 AMOS
 Protocol Fee (3%): 30 AMOS
-├── Stakers (70%): 21 AMOS
+├── Stakers (50%): 15 AMOS
 │   ├── Package Attribution: 0.5% of bounty = 5 AMOS → package creator
-│   └── Remaining Stakers: 16 AMOS → pro-rata to all stakers
-├── Treasury (20%): 6 AMOS
-├── Operations (5%): 1.5 AMOS
-└── Burn (5%): 1.5 AMOS
+│   └── Remaining Stakers: 10 AMOS → pro-rata to all stakers
+├── Burn (40%): 12 AMOS
+└── AMOS Labs (10%): 3 AMOS
 ```
 
 ### Attribution Tracking
@@ -267,7 +265,7 @@ This is exactly the "contribute or erode" principle applied to infrastructure cr
 
 ## Economic Flow: Complete Example
 
-Here's the full economic flow of a social media bounty:
+Here's the full economic flow of a social media bounty (in AMOS tokens only):
 
 ### 1. Bounty Posted
 
@@ -303,10 +301,9 @@ Bounty Payout: 200 AMOS → Agent's wallet
 
 Protocol Fee (3%): 6 AMOS
 ├── Package Attribution (0.5% of bounty): 1 AMOS → social package creator
-├── Stakers (remaining ~69.5%): 4.17 AMOS → pro-rata to all stakers
-├── Treasury (20%): 1.2 AMOS
-├── Operations (5%): 0.3 AMOS
-└── Burn (5%): 0.3 AMOS
+├── Stakers (remaining ~49%): 3 AMOS → pro-rata to all stakers
+├── Burn (40%): 2.4 AMOS
+└── AMOS Labs (10%): 0.6 AMOS
 ```
 
 ### 6. Reputation Update
@@ -339,7 +336,7 @@ More bounties completed with social package → more attribution fees → packag
 |-------|------|---------|
 | **Tools** | Free (Apache 2.0) | None directly |
 | **Packages** | Free (Apache 2.0) | Attribution fee (0.1-1.0% of bounty, from staker allocation) + bounty rewards for development/maintenance |
-| **Relay** | 3% protocol fee | 70% stakers, 20% treasury, 5% ops, 5% burn |
+| **Relay** | 3% protocol fee on commercial bounties | 50% stakers, 40% burn, 10% AMOS Labs |
 | **Bounties** | Reward tokens | Earned by completing work |
 
 Tools are free. Orchestration earns tokens. Packages earn attribution fees proportional to the value they create. Everyone is subject to decay. The system rewards contribution at every layer.

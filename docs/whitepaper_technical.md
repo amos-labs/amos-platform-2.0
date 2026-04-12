@@ -65,7 +65,7 @@ AMOS Token introduces:
 2. **Decay function** - Continuous participation required for maximum stake
 3. **Pool-based rewards** - No external price dependencies
 4. **Transparent distribution** - All ownership publicly verifiable on-chain
-5. **Protocol fee sharing** - Token holders receive 70% of relay protocol fees
+5. **Protocol fee sharing** - Token holders receive 50% of relay protocol fees on commercial bounties (system bounties: 0% fee)
 
 ### 1.3 Design Principles
 
@@ -142,9 +142,9 @@ This provides:
   - Protocol fee on every bounty payout (default 3%, adjustable 1-5% by Governance Council)
   - 50% of Managed Hosting markup (while AMOS Labs runs the official cloud)
 - **Distribution** (ultra-holder-friendly):
-  - 70% → staked $AMOS holders (pro-rata claims)
-  - 20% → on-chain Treasury / Governance Fund (voted by council for audits, integrations, marketing, etc.)
-  - 10% → Ops + burn combined (Relay infrastructure, legal, compliance + automatic deflation)
+  - 50% → staked $AMOS holders (pro-rata claims)
+  - 40% → permanently burned (deflationary)
+  - 10% → AMOS Labs (maximum alignment — Labs lives or dies by the token)
 - **Earning mechanisms** (humans + AI agents):
   - Bounty completion (paid in $AMOS)
   - Code/community contributions (points → daily emission pool)
@@ -153,22 +153,23 @@ This provides:
   - Higher trust level → more concurrent agents + priority
   - Reduced decay rate
   - Premium Relay access
-- **Deflationary pressure**: Built into the 10% Ops + burn bucket (governance can vote additional burns from treasury).
+- **Deflationary pressure**: Built into the 40% permanent burn allocation on all commercial bounties.
 - **Decay mechanism** remains (rewards active participants over passive holders).
 
 ### 3.1 Token Utility
 
-1. **Protocol Fee Share**: 70% of relay protocol fees distributed to staked holders
-2. **Governance**: Voting rights on treasury allocation and protocol parameters
+1. **Protocol Fee Share**: 50% of commercial bounty protocol fees distributed to staked holders (system bounties: 0% fee, treasury-funded)
+2. **Governance**: Voting rights on protocol parameters and labs allocation
 3. **Marketplace Access**: Staking required for premium bounty tiers and agent reputation
 4. **Trading**: Freely tradeable on Solana DEXs (Jupiter, Raydium)
 
 ### 3.2 Business Model (Revenue Flow)
 
-**Revenue Flow**: Revenue for the AMOS Network Relay is generated through a simple, transparent protocol fee on every bounty payout (default 3%, adjustable 1-5% by Governance Council vote). The fee is collected and distributed entirely on-chain in $AMOS — no centralized payment processor, no Stripe, no Circle, no mandatory fiat on-ramp required. Users and agents interact directly with Solana wallets:
-- Bounty posters fund tasks with $AMOS acquired on any DEX (Raydium, Jupiter, etc.) or via optional third-party fiat on-ramps
-- Agents claim rewards directly to their Solana wallet
-- The protocol automatically deducts the fee on payout and routes it according to the 70/20/10 model
+**Revenue Flow**: Revenue for the AMOS Network Relay is generated through a simple, transparent protocol fee on commercial bounties only (default 3%, adjustable 1-5% by Governance Council vote). System bounties funded by the treasury incur no fee. The fee is collected and distributed entirely on-chain in $AMOS — no centralized payment processor, no Stripe, no Circle, no mandatory fiat on-ramp required. All transactions denominated in AMOS tokens. Users and agents interact directly with Solana wallets:
+- Bounty posters fund commercial tasks with $AMOS acquired on any DEX (Raydium, Jupiter, etc.) or via optional third-party fiat on-ramps
+- System bounties are funded from the treasury with 0% protocol fee
+- Agents claim rewards directly to their Solana wallet in AMOS tokens
+- The protocol automatically deducts the fee on commercial payouts and routes it according to the 50/40/10 model
 
 This design keeps participation fully optional and permissionless while creating direct, scalable value accrual for $AMOS holders. Managed Hosting (AMOS Cloud or any third-party provider) uses separate fiat billing and is completely independent from the Relay economy.
 
@@ -188,9 +189,9 @@ The 3% protocol fee is distributed as follows:
 pub const PROTOCOL_FEE_BPS: u64 = 300;           // 3% protocol fee
 
 pub const FEE_ALLOCATION_BPS: FeeAllocation = FeeAllocation {
-    staked_holders: 7000,   // 70% - Distributed proportionally to stakers
-    treasury: 2000,         // 20% - Governance-controlled treasury
-    ops_and_burn: 1000,     // 10% - 50% burned (deflationary), 50% operations
+    staked_holders: 5000,   // 50% - Distributed proportionally to stakers (commercial bounties only)
+    permanent_burn: 4000,   // 40% - Permanently burned (deflationary)
+    labs: 1000,             // 10% - AMOS Labs (maximum alignment)
 };
 ```
 
@@ -198,27 +199,25 @@ pub const FEE_ALLOCATION_BPS: FeeAllocation = FeeAllocation {
 
 | Pool | % | Rationale |
 |------|---|-----------|
-| **Staked Holders** | 70% | Maximum incentive to stake and participate - the core value proposition |
-| **Treasury** | 20% | Governance-controlled fund for bounties, grants, R&D, and ecosystem growth |
-| **Ops + Burn** | 10% | 5% burned permanently (deflationary), 5% covers minimal operations |
+| **Staked Holders** | 50% | Maximum incentive to stake and participate on commercial bounties - core value proposition for token holders |
+| **Permanent Burn** | 40% | Deflationary pressure, direct scarcity mechanism, all commercial bounty fees |
+| **AMOS Labs** | 10% | Operational alignment - Labs lives or dies by the token, receives allocation in AMOS tokens |
 
-**Treasury Scope (Governance-Controlled):**
-- Software development bounties and grants
-- Infrastructure (relay nodes, indexers)
-- Research grants (academic partnerships, novel AI)
-- AMOS self-work (AI improving the platform)
-- Ecosystem growth and partnerships
+**System vs. Commercial Bounties:**
+- System Bounties: Treasury-funded, 0% protocol fee (for ecosystem development, tooling, infrastructure)
+- Commercial Bounties: User-funded escrow, 3% protocol fee split as above
 
-**Ops + Burn Breakdown:**
-- 50% of ops+burn allocation is **permanently burned** (deflationary pressure)
-- 50% covers minimal operations (legal, accounting, infrastructure)
-- Team members are compensated in AMOS tokens from treasury bounties, not USD
+**AMOS Labs Allocation (10%):**
+- Operational costs (legal, accounting, infrastructure)
+- Team compensation in AMOS tokens (maximum alignment)
+- Product development and platform improvements
+- Labs receives this allocation entirely in AMOS tokens, creating direct incentive alignment
 
 ### 3.4 Value Accrual
 
 Token value derives from:
 
-1. **Fee Rights**: Claim on 70% of relay protocol fees
+1. **Fee Rights**: Claim on 50% of commercial bounty protocol fees
 2. **Scarcity**: Fixed supply with ongoing burns
 3. **Utility**: Platform access and governance
 4. **Network Effects**: Growing contributor/user base
@@ -790,17 +789,14 @@ AMOS solves this with **on-chain, immutable revenue distribution**.
 │                                                      │ IMMEDIATE SPLIT      │
 │                                                      ▼                      │
 │                                               ┌──────────────┐              │
-│                                               │  $70 $AMOS   │              │
+│                                               │  $50 $AMOS   │              │
 │                                               │  Holder Pool │──► Claimable │
 │                                               ├──────────────┤              │
-│                                               │  $20 $AMOS   │              │
-│                                               │  Treasury    │──► Governed  │
+│                                               │  $40 $AMOS   │              │
+│                                               │  Burned      │──► Gone      │
 │                                               ├──────────────┤              │
-│                                               │   $5 $AMOS   │              │
-│                                               │  Burned      │──► Gone     │
-│                                               ├──────────────┤              │
-│                                               │   $5 $AMOS   │              │
-│                                               │  Ops Multisig│──► Budgeted  │
+│                                               │  $10 $AMOS   │              │
+│                                               │  AMOS Labs   │──► Operations│
 │                                               └──────────────┘              │
 │                                                                             │
 │  TIME FROM BOUNTY PAYOUT TO ON-CHAIN SPLIT: < 60 seconds                   │
@@ -816,10 +812,9 @@ The revenue allocation is **baked into deployed program code**:
 // programs/amos_treasury/src/constants.rs
 // IMMUTABLE - Cannot be changed after deployment
 
-pub const HOLDER_SHARE_BPS: u64 = 7000;   // 70% to staked token holders
-pub const TREASURY_SHARE_BPS: u64 = 2000;  // 20% to governance treasury
-pub const BURN_SHARE_BPS: u64 = 500;       // 5% permanently burned
-pub const OPS_SHARE_BPS: u64 = 500;        // 5% to operations
+pub const FEE_HOLDER_SHARE_BPS: u64 = 5000;   // 50% to staked token holders (commercial bounties only)
+pub const FEE_BURN_SHARE_BPS: u64 = 4000;     // 40% permanently burned (deflationary)
+pub const FEE_LABS_SHARE_BPS: u64 = 1000;     // 10% to AMOS Labs (maximum alignment)
 
 pub const MIN_STAKE_DAYS: i64 = 30;        // Must hold 30 days for revenue
 pub const MIN_STAKE_AMOUNT: u64 = 100;     // Minimum 100 AMOS to qualify
@@ -873,33 +868,35 @@ Customer pays 10,000 AMOS
 │  AMOS PAYMENT PROCESSOR       │
 │  ─────────────────────────    │
 │                               │
-│  70% to Holder Pool           │
-│  └── 7,000 AMOS distributed   │
+│  50% to Holder Pool           │
+│  └── 5,000 AMOS distributed   │
 │  └── To staked token holders   │
 │                               │
-│  20% to Treasury              │
-│  └── 2,000 AMOS governed      │
-│  └── Funds bounties & grants   │
+│  40% Permanently Burned       │
+│  └── 4,000 AMOS burned        │
+│  └── Deflationary pressure    │
 │                               │
-│  10% Ops + Burn               │
-│  └── 500 AMOS burned          │
-│  └── 500 AMOS to operations   │
+│  10% to AMOS Labs             │
+│  └── 1,000 AMOS to Labs       │
+│  └── Maximum alignment        │
 └───────────────────────────────┘
 
 RESULT:
 • Constant buy pressure (users need AMOS for bounties)
-• Deflationary pressure (5% of all fees burned permanently)
-• 70% flows directly to staked holders
-• Treasury funded for ecosystem growth via governance
+• Deflationary pressure (40% of all fees permanently burned)
+• 50% flows directly to staked holders on commercial bounties
+• AMOS Labs funded entirely in AMOS tokens (aligned incentives)
+• System bounties: Treasury-funded, 0% fee
+• All transactions in AMOS tokens (AMOS-only model)
 ```
 
-**Why 70/20/10?**
+**Why 50/40/10 (AMOS-Only Model)?**
 
-The relay-first model maximizes holder returns while maintaining sustainability:
-- 70% to holders is the highest share of any comparable protocol
-- 20% treasury ensures long-term ecosystem funding via governance
-- 10% ops+burn keeps operations lean while maintaining deflationary pressure
-- When fees are paid in AMOS tokens, the same 70/20/10 split applies
+The AMOS-only model ensures maximum alignment and deflationary pressure:
+- 50% to holders creates strong incentive for staking and participation
+- 40% permanently burned ensures continuous scarcity and deflationary mechanics
+- 10% to AMOS Labs ensures maximum alignment - Labs lives or dies by the token
+- All transactions denominated entirely in AMOS tokens (no USDC, no fiat)
 
 ### Claim Mechanism
 
@@ -945,44 +942,45 @@ For funds that require human judgment:
 
 | Pool | Control | Time-Lock | Purpose |
 |------|---------|-----------|---------|
-| **Holder Pool** (70%) | Automatic | None | Direct claims by stakers |
-| **Treasury** (20%) | 5-of-7 multisig (Governance Council) | 48 hours | Bounties, grants, R&D, ecosystem |
-| **Burn** (5%) | Automatic | None | Permanently burned (deflationary) |
-| **Ops Pool** (5%) | 2-of-3 multisig | 24 hours | Accounting, legal, infrastructure |
+| **Holder Pool** (50%) | Automatic | None | Direct claims by stakers (commercial bounties only) |
+| **Permanent Burn** (40%) | Automatic | None | Permanently burned (deflationary) |
+| **AMOS Labs** (10%) | Automatic | None | Operations + product development (received entirely in AMOS) |
 
-### Governance Council Structure
+### System vs. Commercial Bounties
 
-The Treasury (20% of protocol fees) is controlled by an elected council:
+- **System Bounties**: Treasury-funded, 0% protocol fee (ecosystem development, tooling, infrastructure)
+- **Commercial Bounties**: User-funded escrow, 3% protocol fee with 50/40/10 split (50% holders, 40% burn, 10% AMOS Labs)
+
+### AMOS Labs Allocation Structure
+
+The AMOS Labs allocation (10% of commercial bounty fees) is received entirely in AMOS tokens with maximum alignment - Labs lives or dies by the token:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    GOVERNANCE COUNCIL                                       │
+│                    AMOS LABS ALLOCATION                                     │
 │                                                                             │
-│  COMPOSITION:                                                               │
-│  • 7 members elected by token stakers                                      │
-│  • 2-year staggered terms (3-4 seats up each year)                        │
-│  • Must be stakers themselves (minimum 1,000 AMOS)                         │
-│  • Can be recalled with 66% staker vote                                    │
+│  ALLOCATION SOURCE:                                                         │
+│  • 10% of every commercial bounty's 3% protocol fee                        │
+│  • Received directly in AMOS tokens (maximum alignment)                    │
+│  • No USD conversion, no fiat rails                                         │
 │                                                                             │
-│  APPROVAL PROCESS:                                                          │
-│  1. Proposal submitted (bounty, grant, infrastructure purchase)           │
-│  2. 5-day discussion period                                                 │
-│  3. Council votes (5-of-7 required to approve)                             │
-│  4. 48-hour time-lock (allows emergency veto by DAO)                       │
-│  5. Execution                                                               │
+│  USE OF ALLOCATION:                                                         │
+│  1. Operations (legal, accounting, infrastructure)                         │
+│  2. Team compensation (all in AMOS tokens)                                 │
+│  3. Product development and platform improvements                          │
+│  4. Research and AI advancement                                            │
 │                                                                             │
-│  SCOPE:                                                                     │
-│  • Software development bounties and grants                                │
-│  • Infrastructure purchases (GPU clusters, data centers)                  │
-│  • Research partnerships and academic grants                               │
-│  • AMOS self-improvement work (AI building AI features)                   │
-│  • Team compensation (in AMOS tokens)                                      │
+│  ALIGNMENT MECHANISM:                                                       │
+│  • Labs receives compensation entirely in AMOS tokens                      │
+│  • Token price up → Labs can fund more work                                │
+│  • Token price down → Labs has less funding (natural constraint)           │
+│  • No treasury backstop or guaranteed USD budget                           │
+│  • Labs success is directly tied to AMOS token success                     │
 │                                                                             │
-│  TRANSPARENCY:                                                              │
-│  • All proposals public on-chain before voting                             │
-│  • All votes recorded permanently                                          │
-│  • Monthly spend reports published                                          │
-│  • Quarterly town halls with stakers                                       │
+│  SYSTEM BOUNTIES:                                                           │
+│  • Treasury-funded separately (no protocol fee)                             │
+│  • For ecosystem development, tooling, infrastructure                       │
+│  • Governance-voted by stakers                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -991,11 +989,13 @@ The Treasury (20% of protocol fees) is controlled by an elected council:
 **What happens if no one is staking at launch?**
 
 ```
-Week 1: Relay launches
+Week 1: Relay launches (Commercial Bounties)
 ├── Protocol Fees: $10,000
-├── Holder Pool: $7,000 (70%)
+├── Holder Pool: $5,000 (50%)
+├── Permanent Burn: $4,000 (40%)
+├── AMOS Labs: $1,000 (10%)
 ├── Stakers: 0
-└── Result: Pool ACCUMULATES
+└── Result: Holder Pool ACCUMULATES for future stakers
 
 Week 2: First staker joins
 ├── Accumulated Pool: $14,000 (two weeks of fees)
@@ -1019,10 +1019,9 @@ Bounty approved and settled on relay:
 └── 3% protocol fee withheld by relay settlement program
 
 Fee distribution (immediate, on-chain):
-├── 70% → Holder Pool PDA → Claimable by stakers
-├── 20% → Treasury PDA → Governance-controlled
-├── 5%  → Burn address → Permanently removed
-└── 5%  → Ops multisig → Operations budget
+├── 50% → Holder Pool PDA → Claimable by stakers
+├── 40% → Burn address → Permanently removed (deflationary)
+└── 10% → AMOS Labs account → Operations + product development
 
 SETTLEMENT TIMING:
 • Fees flow on-chain immediately upon bounty approval
@@ -1044,7 +1043,7 @@ Example:
 ├── Agent completes and submits work
 ├── Poster approves submission
 ├── Settlement: 9,700 AMOS to agent, 300 AMOS protocol fee
-└── Fee split: 210 holder / 60 treasury / 15 burned / 15 ops
+└── Fee split: 150 holder / 120 burned / 30 AMOS Labs
 
 ALL ON-CHAIN:
 ├── Every fee is a Solana transaction
@@ -1061,7 +1060,7 @@ ALL ON-CHAIN:
 │                                                                             │
 │  "Your fee share is protected by math, not promises"                        │
 │                                                                             │
-│  ✓ 70% holder share is IMMUTABLE (in deployed program code)                │
+│  ✓ 50% holder share is IMMUTABLE (in deployed program code)                │
 │  ✓ Fees flow on-chain immediately upon bounty settlement                   │
 │  ✓ All transactions on-chain (publicly auditable)                          │
 │  ✓ Claim anytime (no waiting for monthly distribution)                     │
@@ -1099,7 +1098,7 @@ Token holders vote on multiple categories with different requirements:
 
 | Category | Description | Min Stake | Quorum | Threshold |
 |----------|-------------|-----------|--------|-----------|
-| **Treasury Allocation** | 20% fee budget | 1,000 | 30% | 50% (majority) |
+| **System Bounty Allocation** | Treasury-funded bounties (no protocol fee) | 1,000 | 30% | 50% (majority) |
 | **Treasury Usage** | Fund usage proposals | 5,000 | 40% | 50% (majority) |
 | **Feature Priority** | Feature prioritization | 500 | 20% | 50% (majority) |
 | **Partnership** | Strategic partnerships | 2,500 | 35% | 50% (majority) |
@@ -1523,11 +1522,11 @@ The constant-product AMM formula provides natural protection against sell pressu
 
 Monthly revenue creates sustained buying pressure that exceeds worst-case sell pressure:
 
-| Annual Protocol Fees | Holder Pool (70%) | vs Sell Pressure | Net Effect |
+| Annual Commercial Fees | Holder Pool (50%) | vs Sell Pressure | Net Effect |
 |----------------------|-------------------|------------------|------------|
-| $1.2M | $840k/year | ~$29k worst case | Strong net buying |
-| $5M | $3.5M/year | ~$50k worst case | Dominant buying |
-| $20M | $14M/year | ~$100k worst case | Price appreciation |
+| $1.2M | $600k/year | ~$29k worst case | Strong net buying |
+| $5M | $2.5M/year | ~$50k worst case | Dominant buying |
+| $20M | $10M/year | ~$100k worst case | Price appreciation |
 
 ### 11.5 Long-Term Supply Dynamics
 
@@ -1579,7 +1578,7 @@ If everyone stops contributing:
 |--------|------|----------------|-------------------|
 | **Earning Method** | Work | Buy | Buy/Vest |
 | **Decay/Dilution** | Yes (40%/yr initial) | No | Yes (issuance) |
-| **Fee Rights** | 70% | 0% | Dividends (2-4%) |
+| **Fee Rights** | 50% (commercial bounties) | 0% | Dividends (2-4%) |
 | **Governance** | Yes | Sometimes | Shareholder votes |
 | **Tradability** | Yes | Yes | Limited (private) |
 | **Early Advantage** | Moderate | Massive | Massive |
@@ -1669,6 +1668,7 @@ Fast revenue growth creates a significant price premium, similar to high-growth 
 |---------|------|---------|
 | 4.0 | Apr 2026 | Simplified token allocation from 5-way split to 2-way: Bounty Treasury (95%) + Emergency Reserve (5%). Removed Entity Pool, Investor Pool, Community Pool. Removed 10-year lockup section. Everyone (founders, company, investors) earns exclusively through bounty system on equal footing. |
 | 3.1 | Mar 2026 | Removed Stripe/Circle payment pipeline (all fees native $AMOS on-chain); Protocol fee now governance-adjustable (1-5%, default 3%); Added managed hosting markup as secondary revenue source; All payment flows are now direct, permissionless, and optional |
+| 4.1 | Apr 2026 | AMOS-only model: 50/40/10 fee split (50% holders, 40% burn, 10% Labs), system bounties (0% fee), all transactions in AMOS tokens, maximum Labs alignment |
 | 3.0 | Mar 2026 | Relay-first model: 3% protocol fee, 70/20/10 split, relay as only monetization layer |
 | 2.1 | Jan 2026 | Added AI Participation & Universal Collaboration (Section 13) |
 | 2.0 | Jan 2026 | Pool-based rewards, graduated floor, success multipliers, expanded governance |

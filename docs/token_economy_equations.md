@@ -241,17 +241,16 @@ P_bounty = Bounty Value (in AMOS)
 ### Protocol Fee Allocation
 
 ```
-Staked Holders: 70% of Protocol Fees (immutable on-chain)
-Treasury:       20% of Protocol Fees (DAO-controlled)
-Operations:      5% of Protocol Fees (accounting, legal only)
-Burn:            5% of Protocol Fees (deflationary mechanism)
+Staked Holders: 50% of Protocol Fees (commercial bounties only)
+Permanently Burned: 40% of Protocol Fees (deflationary mechanism)
+AMOS Labs:      10% of Protocol Fees (operations, development)
 ```
 
 ### Your Payout
 
 ```
                   Your Stake
-Your Payout = ──────────────── × (Protocol Fees × 70%)
+Your Payout = ──────────────── × (Protocol Fees × 50%)
               Total Staked
 ```
 
@@ -259,8 +258,8 @@ Your Payout = ──────────────── × (Protocol Fees
 ```
 You: 50,000 AMOS, Total: 10,000,000 AMOS, Protocol Fees: $100,000
 
-Holder Pool = $100,000 × 70% = $70,000
-Your Payout = (50,000 / 10,000,000) × $70,000 = $350/month
+Holder Pool = $100,000 × 50% = $50,000
+Your Payout = (50,000 / 10,000,000) × $50,000 = $250/month
 ```
 
 ---
@@ -310,8 +309,8 @@ After 90 days: Stake is confirmed permanent
 │  Daily Emission:        16,000 AMOS (halving annually)           │
 │  Base Decay:            10% annual                               │
 │  Min/Max Decay:         2% - 25% annual                          │
-│  Protocol Fee:          3% on bounty payouts                     │
-│  Fees to Stakers:       70%                                      │
+│  Protocol Fee:          3% on commercial bounties                │
+│  Fees to Stakers:       50%                                      │
 │  Grace Period:          12 months                                │
 │  Clawback Period:       90 days                                  │
 └──────────────────────────────────────────────────────────────────┘
@@ -412,8 +411,8 @@ STEP 10: Protocol Fee Share
   Your stake: 12,816 AMOS
   Total staked: 10,000,000 AMOS
   Your share: 0.128%
-  Holder pool: $60,000 × 70% = $42,000
-  Your payout: 0.128% × $42,000 = $53.76/month
+  Holder pool: $60,000 × 50% = $30,000
+  Your payout: 0.128% × $30,000 = $38.40/month
 ```
 
 ---

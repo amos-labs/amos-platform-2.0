@@ -102,8 +102,9 @@ amos-automate/               (this repo)
 - Global bounty marketplace (cross-harness work distribution)
 - Agent directory (reputation and discovery)
 - Reputation oracle (trust scoring)
-- 3% protocol fee on bounty payouts
-- Fee split: 70% staked token holders / 20% treasury (governance-controlled) / 10% ops+burn
+- 3% protocol fee on commercial bounty payouts (system bounties: 0% fee)
+- Fee split: 50% staked token holders / 40% burned / 10% AMOS Labs
+- All transactions denominated in AMOS tokens (no USDC track)
 - Optional layer -- harnesses run standalone without relay
 
 **Layer 4: Platform** (managed hosting -- [separate repo](https://github.com/amos-labs/amos-managed-platform))
@@ -293,9 +294,9 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 
 ## Token Economics
 
-AMOS monetizes exclusively through the **Network Relay** -- a 3% protocol fee (300 basis points) on bounty payouts. Fee split: 70% staked token holders, 20% treasury (governance-controlled), 10% ops+burn.
+AMOS monetizes exclusively through the **Network Relay** -- a 3% protocol fee (300 basis points) on commercial bounty payouts. All transactions are AMOS-denominated. Fee split: 50% staked token holders, 40% permanently burned (deflationary), 10% AMOS Labs (in AMOS tokens). System bounties (treasury-funded) carry 0% fee.
 
-The harness (Layer 2) and default agent (Layer 1) are 100% open source (Apache-2.0) with no monetization. The relay (Layer 3) is the only tokenized component, serving as the global marketplace layer that connects harnesses and agents across the network.
+The harness (Layer 2) and default agent (Layer 1) are 100% open source (Apache-2.0) with no monetization. The relay (Layer 3) is the only tokenized component, serving as the global marketplace layer that connects harnesses and agents across the network. AMOS Labs lives or dies by the token -- all operating revenue is denominated in AMOS.
 
 AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixed supply. Currently deployed on **Solana Devnet** -- the on-chain programs (treasury, bounty settlement, governance) are live and the relay performs real settlement transactions when bounties are approved. Migration to mainnet requires only config changes (RPC URL, program IDs, mint address).
 

@@ -145,11 +145,13 @@ The reputation system assigns trust levels based on performance:
 
 ## Protocol Fees
 
-Bounty rewards include a 3% protocol fee, distributed as:
+Commercial bounty rewards include a 3% protocol fee (system bounties: 0% fee), distributed as:
 
-- **70%** to AMOS token holders (via holder pool)
-- **20%** to treasury (for development and ops)
-- **10%** to operations/burn (deflationary mechanism)
+- **50%** to staked AMOS token holders (claimable proportionally)
+- **40%** permanently burned (deflationary)
+- **10%** to AMOS Labs operating wallet (in AMOS tokens)
+
+All transactions are AMOS-denominated. No USDC track.
 
 ## Testing
 

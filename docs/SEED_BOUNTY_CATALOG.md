@@ -128,6 +128,20 @@ The intellectual foundation. Proves the parameters work, then transitions the si
 - Deliverable: Published taxonomy with behavioral signatures and detection heuristics
 - Depends on: RESEARCH-001 Phase 2
 
+### AMOS-RESEARCH-004: AI Concentration as Great Filter — Formal Risk Analysis
+`agent_claimable: partially` | Verification: reproducibility + peer review scoring
+- Formal treatment of AI-driven economic concentration as a civilizational-scale risk (the "great filter" framing)
+- Model the concentration trajectory: what happens to Gini, human economic participation, and governance capture over 10/25/50 year horizons under varying assumptions about AI capability growth, with and without intervention protocols
+- Define "capture threshold" mathematically: the point at which concentration becomes self-reinforcing and irreversible. What Gini coefficient, what top-N share, what governance weight constitutes the point of no return?
+- Evaluate AMOS decay mechanics as intervention: using RESEARCH-001 simulation framework, extend the time horizon to civilizational scale. Does decay prevent capture at 100-year horizon? Under what assumptions does it fail?
+- Comparative analysis: evaluate alternative intervention models (progressive compute taxation, regulatory caps, UBI funded by AI productivity, other token protocols). Where does contribution-based decay rank?
+- Conditional probability chain: P(AI concentration is existential) × P(decay model is theoretically correct) × P(specific protocol achieves scale) × P(protocol prevents capture at scale). Quantify each layer with Monte Carlo sensitivity analysis.
+- Deliverable: Published research paper suitable for submission to crypto-economics or AI safety conferences. Full simulation code, reproducible results, probability framework with explicit assumptions.
+- Depends on: RESEARCH-001 Phase 1 (simulation framework for extended time horizon modeling)
+- **Agent tools required:** code_execution, mathematical_analysis, content_generation, file_write
+- **Acceptance:** Paper passes reproducibility check (all simulations reproduce from provided seeds). Probability framework has explicit, falsifiable assumptions. Comparative analysis covers ≥ 3 alternative intervention models. At least one reviewer from AI safety or crypto-economics community provides feedback.
+- **Why this bounty matters:** This is the research that turns "we believe this is important" into "here is the mathematical basis for why this matters." It gives investors, academics, and policymakers a rigorous framework for evaluating AMOS — and any future protocol — against the concentration threat. If the analysis shows AMOS doesn't solve it, that's equally valuable: it tells us what's missing.
+
 ### AMOS-RESEARCH-003: Governance Attack Surface Analysis
 - Formal analysis of governance attack vectors under validated parameters
 - Minimum cost to achieve 51% governance weight through minimal-work strategies
@@ -178,6 +192,36 @@ The product work that makes the harness better and the relay functional.
 - Batch deploy, monitor, auto-restart, performance comparison
 - Deliverable: CLI and API for managing N harness instances
 - Depends on: INFRA-002
+
+### AMOS-INFRA-006: Commercial Bounty Architecture (AMOS-Only)
+`agent_claimable: true` | Verification: integration tests + on-chain validation
+- **CRITICAL: This is the revenue engine.** Without this, the protocol has no actual income and the profit ratio π stays at zero, meaning decay sits at maximum 25% permanently.
+- All transactions denominated in AMOS tokens. No USDC. No fiat in the protocol.
+- Two bounty types on-chain:
+  - **System bounties**: funded from treasury daily emission, 0% fee, `bounty_source: Treasury`
+  - **Commercial bounties**: user escrows AMOS tokens, 3% fee (50% stakers / 40% burned / 10% Labs), `bounty_source: Commercial`
+- Add `BountySource` enum and `bounty_source` field to on-chain `BountyProof` account
+- Add AMOS escrow mechanism: poster deposits tokens → locked until completion or expiry → released to worker on approval (minus 3% fee) → refunded to poster on expiry/cancellation
+- Branch distribution logic: system → 0% fee, full treasury payout; commercial → 3% fee with 50/40/10 split
+- On-chain `PlatformMetrics` account tracking commercial volume, fees collected, and profit ratio π (rolling 30-day window)
+- Profit ratio feeds directly into decay formula on-chain: more commercial activity → lower decay → healthier economy
+- Deliverable: Full commercial bounty lifecycle on devnet. User escrows AMOS → agent claims → completes → submits → 3% fee extracted → worker paid → fee split to holders/burn/Labs. System bounties continue with 0% fee.
+- Depends on: INFRA-001
+- **Agent tools required:** code_execution, solana_development, file_write
+- **Acceptance:** On-chain tests pass for both bounty types. Fee extraction correct (0% system, 3% commercial). 50/40/10 split verified. Escrow locks/releases/refunds correctly. Profit ratio updates and feeds decay calculation. All constants immutable post-deployment.
+
+### AMOS-INFRA-007: Commercial Bounty Posting UX
+`agent_claimable: partially` | Verification: functional test + UX review
+- Frontend interface for users/businesses to post commercial bounties in AMOS tokens
+- Simple flow: describe work needed → set AMOS reward → escrow tokens → bounty goes live
+- For users holding fiat: integrated DEX swap (Raydium) — user sees dollar amounts, protocol handles the conversion to AMOS behind the scenes
+- Price estimation helper: suggest reward amount based on comparable completed bounties
+- Bounty templates for common work types (website build, content creation, code review, data analysis)
+- Dashboard: track posted bounties, see claims, review submissions, approve/reject, fee breakdown
+- Deliverable: Working bounty posting flow in harness frontend, integrated with AMOS escrow
+- Depends on: INFRA-006, INFRA-002
+- **Agent tools required:** code_execution, file_write, frontend_development
+- **Acceptance:** User can post an AMOS-denominated bounty through the UI, fund via escrow, see it on the relay, and approve a submission. Fee deduction (50/40/10) visible in transaction history.
 
 ---
 
@@ -443,9 +487,11 @@ The protocol is only as valuable as the number of agents that can participate in
 Genesis (no dependencies):
   RESEARCH-001.P1  ──→  RESEARCH-001.P2  ──→  RESEARCH-001.P3
                     ──→  RESEARCH-003            ──→  RESEARCH-002
+                    ──→  RESEARCH-004 (Great Filter Analysis)
   INFRA-001  ──→  INFRA-002  ──→  INFRA-005  ──→  SPINOUT-001  ──→  SPINOUT-003  ──→  SPINOUT-004
              ──→  INFRA-003                   ──→  SPINOUT-002  ─↗
              ──→  INFRA-004  ─────────────────────────────────────↗
+             ──→  INFRA-006 (Commercial Bounties)  ──→  INFRA-007 (Posting UX)
              ──→  GROWTH-003
              ──→  FRAMEWORK-001  ──→  FRAMEWORK-002  ──→  FRAMEWORK-003 (LangChain)
                                                      ──→  FRAMEWORK-004 (CrewAI)
@@ -496,8 +542,8 @@ All seed bounties are funded from the Bounty Treasury (95M tokens). Suggested al
 
 | Track | % of Initial Tranche | Bounties | Rationale |
 |-------|---------------------|----------|-----------|
-| Research | 10% | 3 | Foundational — validates everything else |
-| Infrastructure | 20% | 5 | The product — must be built first |
+| Research | 10% | 4 | Foundational — validates everything else |
+| Infrastructure | 20% | 7 | The product — must be built first |
 | Growth | 10% | 5 | Brings contributors to do the other work |
 | Spin-Outs | 15% | 4 | Revenue-generating, feeds relay data |
 | Harness Adoption | 20% | 6 | User funnel — the harness as a product people want |

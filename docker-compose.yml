@@ -214,6 +214,12 @@ services:
       AMOS__RELAY__ENABLED: "true"
       AMOS__RELAY__API_KEY: ${RELAY_API_KEY:-dev_relay_key_change_in_prod}
 
+      # Local model for autonomous fleet agents (Ollama)
+      AMOS__FLEET__LOCAL_MODEL__ENABLED: ${LOCAL_MODEL_ENABLED:-false}
+      AMOS__FLEET__LOCAL_MODEL__API_BASE: http://ollama:11434/v1
+      AMOS__FLEET__LOCAL_MODEL__MODEL_ID: ${LOCAL_MODEL_ID:-llama3.2:3b}
+      AMOS__FLEET__LOCAL_MODEL__COST_THRESHOLD: ${LOCAL_MODEL_COST_THRESHOLD:-500}
+
       # Agent sidecar connection (container networking, not localhost)
       AGENT_URL: http://agent:3100
 
@@ -396,6 +402,29 @@ services:
       retries: 5
       start_period: 15s
 
+  # Ollama - Local open-source model server for cost-free bounty execution
+  # Provides OpenAI-compatible API at http://ollama:11434/v1
+  # After starting, pull a model: docker exec amos_dev_ollama ollama pull llama3.2:3b
+  # To use: docker compose --profile standalone up
+  ollama:
+    image: ollama/ollama:latest
+    container_name: amos_dev_ollama
+    profiles: ["standalone"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    networks:
+      - amos_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
 volumes:
   postgres_data:
     driver: local
@@ -410,6 +439,8 @@ volumes:
   relay_data:
     driver: local
   harness_autoresearch_data:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:

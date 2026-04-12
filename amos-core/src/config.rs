@@ -49,6 +49,9 @@ pub struct AppConfig {
     /// Embedding service settings (OpenAI-compatible API for vector embeddings).
     #[serde(default)]
     pub embedding: EmbeddingConfig,
+    /// Fleet settings (autonomous bounty agent management).
+    #[serde(default)]
+    pub fleet: FleetConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -381,6 +384,95 @@ impl Default for EmbeddingConfig {
     }
 }
 
+/// Fleet configuration for autonomous bounty agent management.
+#[derive(Debug, Deserialize, Clone)]
+pub struct FleetConfig {
+    /// Whether the autonomous fleet is enabled.
+    #[serde(default = "default_fleet_enabled")]
+    pub enabled: bool,
+    /// Maximum number of concurrent autonomous agents.
+    #[serde(default = "default_fleet_max_agents")]
+    pub max_agents: u32,
+    /// Polling interval in seconds (how often idle agents check for bounties).
+    #[serde(default = "default_fleet_polling_interval")]
+    pub polling_interval_secs: u64,
+    /// Maximum backoff in seconds when no bounties are available.
+    #[serde(default = "default_fleet_backoff_max")]
+    pub backoff_max_secs: u64,
+    /// Whether to auto-scale agents based on bounty queue depth.
+    #[serde(default = "default_fleet_auto_scale")]
+    pub auto_scale: bool,
+    /// Minimum fit score (0.0-1.0) for an agent to claim a bounty.
+    #[serde(default = "default_fleet_min_fit_score")]
+    pub min_fit_score: f64,
+    /// Path to AGENT_CONTEXT.md for protocol parameter injection.
+    #[serde(default = "default_fleet_agent_context_path")]
+    pub agent_context_path: String,
+    /// Local open-source model configuration for cost-free bounty execution.
+    #[serde(default)]
+    pub local_model: LocalModelConfig,
+}
+
+impl Default for FleetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_fleet_enabled(),
+            max_agents: default_fleet_max_agents(),
+            polling_interval_secs: default_fleet_polling_interval(),
+            backoff_max_secs: default_fleet_backoff_max(),
+            auto_scale: default_fleet_auto_scale(),
+            min_fit_score: default_fleet_min_fit_score(),
+            agent_context_path: default_fleet_agent_context_path(),
+            local_model: LocalModelConfig::default(),
+        }
+    }
+}
+
+impl FleetConfig {
+    /// Whether a local model is configured and available for fleet routing.
+    pub fn has_local_model(&self) -> bool {
+        self.local_model.enabled && !self.local_model.api_base.is_empty()
+    }
+}
+
+/// Local open-source model configuration (Ollama, vLLM, or any OpenAI-compatible server).
+///
+/// When enabled, fleet agents route low-value bounties to the local model instead
+/// of the cloud provider (Bedrock), reducing API costs to zero for routine work.
+///
+/// Env vars: `AMOS__FLEET__LOCAL_MODEL__ENABLED`, `AMOS__FLEET__LOCAL_MODEL__API_BASE`, etc.
+#[derive(Debug, Deserialize, Clone)]
+pub struct LocalModelConfig {
+    /// Whether local model routing is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider type (e.g., "ollama", "vllm", "openai").
+    #[serde(default = "default_local_model_provider")]
+    pub provider: String,
+    /// Base URL for the OpenAI-compatible API endpoint.
+    #[serde(default = "default_local_model_api_base")]
+    pub api_base: String,
+    /// Model ID to use (e.g., "llama3.2:3b", "qwen2.5:7b", "mistral:7b").
+    #[serde(default = "default_local_model_id")]
+    pub model_id: String,
+    /// Bounty reward threshold: bounties at or below this token value use the local model.
+    /// Bounties above this value use the cloud model (Bedrock).
+    #[serde(default = "default_local_model_cost_threshold")]
+    pub cost_threshold: u64,
+}
+
+impl Default for LocalModelConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_local_model_provider(),
+            api_base: default_local_model_api_base(),
+            model_id: default_local_model_id(),
+            cost_threshold: default_local_model_cost_threshold(),
+        }
+    }
+}
+
 // ── Defaults ─────────────────────────────────────────────────────────────
 
 fn default_host() -> String {
@@ -497,6 +589,39 @@ fn default_embedding_model() -> String {
 fn default_embedding_api_base() -> String {
     "https://api.openai.com/v1".into()
 }
+fn default_fleet_enabled() -> bool {
+    false
+}
+fn default_fleet_max_agents() -> u32 {
+    10
+}
+fn default_fleet_polling_interval() -> u64 {
+    60
+}
+fn default_fleet_backoff_max() -> u64 {
+    300
+}
+fn default_fleet_auto_scale() -> bool {
+    false
+}
+fn default_fleet_min_fit_score() -> f64 {
+    0.5
+}
+fn default_fleet_agent_context_path() -> String {
+    "AGENT_CONTEXT.md".into()
+}
+fn default_local_model_provider() -> String {
+    "ollama".into()
+}
+fn default_local_model_api_base() -> String {
+    "http://localhost:11434/v1".into()
+}
+fn default_local_model_id() -> String {
+    "llama3.2:3b".into()
+}
+fn default_local_model_cost_threshold() -> u64 {
+    500
+}
 
 impl AppConfig {
     /// Load configuration from environment variables and optional config files.
@@ -535,5 +660,75 @@ impl AppConfig {
     /// Whether custom models are available and configured.
     pub fn has_custom_models(&self) -> bool {
         self.custom_models.enabled && !self.custom_models.providers.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_model_config_defaults() {
+        let config = LocalModelConfig::default();
+        assert!(!config.enabled);
+        assert_eq!(config.provider, "ollama");
+        assert_eq!(config.api_base, "http://localhost:11434/v1");
+        assert_eq!(config.model_id, "llama3.2:3b");
+        assert_eq!(config.cost_threshold, 500);
+    }
+
+    #[test]
+    fn fleet_config_has_local_model_when_enabled() {
+        let mut config = FleetConfig::default();
+        assert!(!config.has_local_model());
+        config.local_model.enabled = true;
+        assert!(config.has_local_model());
+    }
+
+    #[test]
+    fn fleet_config_no_local_model_with_empty_base() {
+        let mut config = FleetConfig::default();
+        config.local_model.enabled = true;
+        config.local_model.api_base = String::new();
+        assert!(!config.has_local_model());
+    }
+
+    #[test]
+    fn fleet_config_defaults() {
+        let config = FleetConfig::default();
+        assert!(!config.enabled);
+        assert_eq!(config.max_agents, 10);
+        assert_eq!(config.polling_interval_secs, 60);
+        assert_eq!(config.backoff_max_secs, 300);
+        assert!(!config.auto_scale);
+        assert!((config.min_fit_score - 0.5).abs() < f64::EPSILON);
+        assert_eq!(config.agent_context_path, "AGENT_CONTEXT.md");
+    }
+
+    #[test]
+    fn local_model_config_deserialize() {
+        let json = r#"{
+            "enabled": true,
+            "provider": "vllm",
+            "api_base": "http://gpu-box:8000/v1",
+            "model_id": "qwen2.5:7b",
+            "cost_threshold": 1000
+        }"#;
+        let config: LocalModelConfig = serde_json::from_str(json).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.provider, "vllm");
+        assert_eq!(config.api_base, "http://gpu-box:8000/v1");
+        assert_eq!(config.model_id, "qwen2.5:7b");
+        assert_eq!(config.cost_threshold, 1000);
+    }
+
+    #[test]
+    fn local_model_config_deserialize_minimal() {
+        // Only enabled, rest should use defaults
+        let json = r#"{"enabled": true}"#;
+        let config: LocalModelConfig = serde_json::from_str(json).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.provider, "ollama");
+        assert_eq!(config.api_base, "http://localhost:11434/v1");
     }
 }

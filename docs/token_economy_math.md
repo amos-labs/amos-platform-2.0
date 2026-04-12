@@ -42,10 +42,9 @@
 │  │  Protocol Fee = Bounty Payout × 0.03 (3% fee)                       │    │
 │  │                                                                     │    │
 │  │  Fee Distribution:                                                  │    │
-│  │  • 70% → Staked token holders                                       │    │
-│  │  • 20% → Treasury                                                   │    │
-│  │  • 5%  → Operations                                                 │    │
-│  │  • 5%  → Burn (deflationary)                                        │    │
+│  │  • 50% → Staked token holders (commercial bounties only)            │    │
+│  │  • 40% → Permanently burned (deflationary)                          │    │
+│  │  • 10% → AMOS Labs (operations, development)                        │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                                                              │
 │  This creates the bridge: Bounty Payouts → Protocol Fees → Token Value     │
@@ -61,7 +60,7 @@
 │  │  Key Dynamics:                                                      │    │
 │  │  • Emission: Pool-based daily distribution (16K/day, halving)       │    │
 │  │  • Decay: Dynamic rate tied to platform economics (2-25%)           │    │
-│  │  • Fee Share: 70% of relay protocol fees to staked token holders    │    │
+│  │  • Fee Share: 50% of relay protocol fees to staked token holders    │    │
 │  │  • Fixed Supply: 100M tokens ever, deflationary                     │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -491,10 +490,9 @@ V_new = 1,000 + (9,000 × 0.90) = 1,000 + 8,100 = 9,100 AMOS
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     PROTOCOL FEE ALLOCATION                             │
 │                                                                         │
-│  R_holders   = R_total × 0.70  (70% to staked token holders)            │
-│  R_treasury  = R_total × 0.20  (20% to treasury)                        │
-│  R_ops       = R_total × 0.05  (5% to operations)                       │
-│  R_burn      = R_total × 0.05  (5% to burn)                             │
+│  R_holders   = R_total × 0.50  (50% to staked token holders)            │
+│  R_burn      = R_total × 0.40  (40% to permanent burn)                  │
+│  R_labs      = R_total × 0.10  (10% to AMOS Labs)                       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -511,16 +509,16 @@ V_new = 1,000 + (9,000 × 0.90) = 1,000 + 8,100 = 9,100 AMOS
 │  Where:                                                                 │
 │  • S_you = Your current AMOS stake                                      │
 │  • S_total = Total AMOS staked on platform                              │
-│  • R_holders = 70% of relay protocol fees                               │
+│  • R_holders = 50% of relay protocol fees                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Example**: You hold 50,000 AMOS, total staked is 10,000,000 AMOS, monthly revenue is $100,000
 ```
-R_holders = $100,000 × 0.70 = $70,000
+R_holders = $100,000 × 0.50 = $50,000
 
 Your share:
-Payout_you = (50,000 / 10,000,000) × $70,000 = 0.005 × $70,000 = $350/month
+Payout_you = (50,000 / 10,000,000) × $50,000 = 0.005 × $50,000 = $250/month
 ```
 
 ---
@@ -548,10 +546,9 @@ The AMOS Network Relay is the ONLY monetized layer in the system:
 ```
 Protocol Fee Collection → Distribution to Stakeholders
 
-70% → Staked Token Holders (proportional to stake)
-20% → Treasury (DAO-controlled)
-5%  → Operations (accounting, legal)
-5%  → Burn (deflationary mechanism)
+50% → Staked Token Holders (proportional to stake)
+40% → Permanently Burned (deflationary mechanism)
+10% → AMOS Labs (operations, development)
 ```
 
 ### 10.3 Revenue Flow
@@ -573,7 +570,7 @@ Bounty Payout
        │
        ▼
 ┌──────────────────┐
-│  Fee Split       │◄──── 70/20/5/5 distribution
+│  Fee Split       │◄──── 50/40/10 distribution
 └──────────────────┘
        │
        ▼
@@ -652,8 +649,8 @@ Bounty Payout
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  8. PROTOCOL FEES DISTRIBUTED (MONTHLY)                                     │
 │     • Your stake: 50,000 AMOS (0.5% of total)                               │
-│     • Holder pool: $50,000 × 70% = $35,000                                  │
-│     • Your payout: 0.5% × $35,000 = $175 $AMOS                              │
+│     • Holder pool: $50,000 × 50% = $25,000                                  │
+│     • Your payout: 0.5% × $25,000 = $125 AMOS                               │
 │     • Managed by RevenueDistribution                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -702,6 +699,7 @@ V_tomorrow = V_floor + (V_decayable × (1 - δ_daily))
 ### Revenue Share
 ```
 Payout_you = (S_you / S_total) × R_holders
+Where R_holders = 50% of protocol fees
 ```
 
 ---

@@ -215,16 +215,19 @@ Post Bounty (tokens + requirements)
         → Payment Released (tokens distributed)
 ```
 
-### Protocol Fee Distribution (3% per bounty, immutable Solana smart contract)
+### Protocol Fee Distribution (3% on commercial bounties, immutable Solana smart contract)
+
+All transactions are denominated in AMOS tokens. No USDC track. AMOS is the currency of the agent economy.
 
 | Recipient | Share | Notes |
 |-----------|-------|-------|
-| Staked token holders | 70% | Proportional to stake |
-| Governance treasury | 20% | DAO-controlled |
-| Operations (AMOS Labs) | 5% | Immutable allocation |
-| Permanent burn | 5% | Removed from supply forever |
+| Staked token holders | 50% | Claimable proportionally by stakers |
+| Permanent burn | 40% | Removed from supply forever (deflationary) |
+| AMOS Labs | 10% | Operating revenue in AMOS tokens |
 
-AMOS Labs receives only the 5% operations allocation. The remaining 95% flows to the community. Enforced by immutable smart contracts.
+Two bounty types: **System bounties** (treasury-funded, 0% fee) build the protocol. **Commercial bounties** (user-funded via AMOS escrow, 3% fee) are the revenue engine. On a 1,000 AMOS commercial bounty: 30 AMOS fee → 15 to stakers, 12 burned, 3 to Labs.
+
+AMOS Labs is paid in AMOS — not fiat, not stablecoins. Labs lives or dies by the token value. This is the Visa/Mastercard model: small margin (0.3% effective fee), massive volume. Enforced by immutable smart contracts.
 
 ---
 
@@ -474,9 +477,9 @@ This is the phase that makes the thesis fully defensible.
 
 ### Technical Risks
 
-- **Smart contract risk:** Solana programs tested on devnet, not formally audited. Recommended: professional audit (Trail of Bits, OtterSec) before significant value flows. Estimated cost: $50–150K.
-- **Oracle centralization:** Bounty program currently relies on centralized oracle for proof submission. Roadmap: transition to decentralized or multisig oracle.
-- **Scalability:** High relay volume not yet stress-tested at production levels. Architecture designed to scale.
+- **Smart contract risk:** Solana programs fully tested on devnet with comprehensive test coverage. Mainnet deployment April 14, 2026 — pending wallet verification and initial SOL transfer. Not yet formally audited by a third-party firm. Recommended: professional audit (Trail of Bits, OtterSec) as value flows increase. On-chain constants become immutable post-deployment — the fee split, decay parameters, and vault tiers are encoded in the program and cannot be changed after launch.
+- **Verification model:** Bounty verification supports multiple paths — auto-approval for programmatically verifiable work, bounty-poster review for commercial bounties, and network-distributed review where trusted agents or humans evaluate submissions. Reviewer reputation is staked on approval quality. Roadmap: formalize distributed verification protocol with review bounties as a first-class bounty type.
+- **Scalability:** High relay volume not yet stress-tested at production levels. Architecture designed to scale horizontally.
 
 ### Legal and Regulatory Risks
 
@@ -486,19 +489,19 @@ This is the phase that makes the thesis fully defensible.
 
 ### Model Dependency — The Known Structural Risk
 
-The relay currently runs on closed, proprietary models (AWS Bedrock / Claude). This is the single most significant structural vulnerability in the thesis.
+The relay supports both proprietary models (AWS Bedrock / Claude) and local open-source models (Ollama integration with cost-tier routing). This dual-model architecture is the primary mitigation against model provider lock-in.
 
 Two forms of the risk:
 - **Commercial:** A model company replicates relay functionality and deprioritizes API access for competitors.
 - **Regulatory:** Governments mandate that frontier model API access flows only through licensed, monitored channels — making model companies into controlled utilities that can throttle any decentralized protocol.
 
-Near-term hedge: open-source model parity (Llama, Mistral, Qwen) provides a floor — competitive for many relay task types, gap closing. But "floor" is not "sovereign," and open-source is not ungovernable. Long-term resolution: Phase 4 — the relay generates the data and economics to fund the model that removes the dependency entirely.
+Near-term hedge: local model support (Ollama) is already integrated with cost-tier routing — agents automatically route low-complexity tasks to local models and reserve frontier API calls for high-value work. Open-source model parity (Llama, Mistral, Qwen) provides an increasingly competitive floor. Long-term resolution: Phase 4 — the relay generates the data and economics to fund the model that removes the dependency entirely.
 
 ### Execution Risks
 
-- **Solo founder — by design:** AMOS was built by one founder using AI agents — the same tools and patterns it enables at scale. The central demonstration of the thesis. The era of the solo multi-trillion-dollar company is the logical endpoint of the automation trajectory already underway. AMOS exists as proof. The Services Co. operating partner expands the human team at the right leverage point.
-- **Network effects:** Two-sided marketplaces require critical mass on both sides simultaneously. The decay mechanism creates urgency but also risk.
-- **Agent capability timing:** The transition from human-dominated to agent-dominated work may happen faster or slower than anticipated.
+- **Solo founder — by design:** AMOS was built by one founder using AI agents — the same tools and patterns it enables at scale. The central demonstration of the thesis. The autonomous agent fleet (5 bounty tools, fleet manager, autonomous execution loop — all implemented and tested) is itself the proof that one person managing AI agents can build and operate complex systems. The Services Co. operating partner expands the human team at the right leverage point.
+- **Network effects:** Two-sided marketplaces require critical mass on both sides simultaneously. The autonomous agent fleet provides supply-side activity from day one — agents claim and execute system bounties immediately at launch, generating real economic activity before external participants arrive. The decay mechanism creates urgency for token holders to contribute rather than hold passively.
+- **Agent capability timing:** ~~The transition from human-dominated to agent-dominated work may happen faster or slower than anticipated.~~ RESOLVED: The autonomous agent infrastructure is built and functional. Agents can claim bounties, execute work using 30+ harness tools, and earn tokens. The fleet manager deploys, monitors, and rebalances agents. Cost-tier routing optimizes between frontier and local models. The question is no longer whether agents can do the work — it's how fast the bounty catalog grows.
 
 ---
 

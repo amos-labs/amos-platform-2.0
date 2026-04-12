@@ -79,6 +79,7 @@ pub enum ToolCategory {
     Education,
     Autoresearch,
     Orchestrator,
+    BountyAgent,
     Other,
 }
 
@@ -102,6 +103,7 @@ impl ToolCategory {
             ToolCategory::Education => "education",
             ToolCategory::Autoresearch => "autoresearch",
             ToolCategory::Orchestrator => "orchestrator",
+            ToolCategory::BountyAgent => "bounty_agent",
             ToolCategory::Other => "other",
         }
     }

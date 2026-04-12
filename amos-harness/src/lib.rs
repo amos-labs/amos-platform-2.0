@@ -39,6 +39,7 @@
 //! - **Integrations**: Connector framework for third-party services
 //! - **Memory**: Working memory with salience-based attention
 
+pub mod agent;
 pub mod automations;
 pub mod bedrock;
 pub mod canvas;
@@ -84,6 +85,7 @@ pub use amos_core::{AmosPackage, PackageContext, PackageToolRegistry};
 
 // Re-export OpenClaw types
 pub use openclaw::{AgentConfig, AgentManager, AgentStatus};
+pub use openclaw::fleet::{AgentProfile, FleetManager};
 
 // Re-export platform sync types
 pub use platform_sync::{ActivityCounters, PlatformSyncClient};

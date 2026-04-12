@@ -33,7 +33,7 @@ Before structure, let's be precise about what entities need to exist regardless 
 | **Managed Agent Services** | SaaS revenue (future) | No — but primary commercial upside | No |
 | **Package Ecosystem** | Attribution fees (to creators) | Enabler | Yes |
 
-Key observation: **AMOS Labs has no direct revenue from the core protocol.** The relay fee distributes to stakers (70%), treasury (20%), ops (5%), and burn (5%). The "ops" 5% presumably funds Labs, but that's a thin and unpredictable revenue stream tied to protocol volume that doesn't exist yet.
+Key observation: **AMOS Labs has no direct revenue from the core protocol.** The relay fee distributes to stakers (50%), burn (40%), and Labs (10%). The "Labs" 10% allocation funds operations and development, but that's a predictable revenue stream tied to protocol volume that doesn't exist yet.
 
 The commercial revenue story is **managed agent services** — the persistent agent hosting, SaaS deployment, enterprise harness instances. That's the Layer 4 Platform work in the CLAUDE.md architecture.
 
@@ -162,7 +162,7 @@ Here's how to think about each entity:
 - Employs the engineering team
 - Builds and maintains the open-source harness (as a contribution to the commons)
 - Operates the managed agent hosting service (Layer 4 Platform) as a commercial product
-- Receives the 5% operations allocation from relay fees
+- Receives the 10% operations allocation from relay fees
 - Can raise equity from investors — but the pitch is the *managed services business*, not the protocol
 - Holds the commercial brand (amos.so, enterprise agreements, API contracts)
 
@@ -207,7 +207,7 @@ The AMOS token has properties that help and hurt its securities analysis:
 
 **Factors that hurt:**
 - The LP launch (founder provides AMOS + USDC for liquidity) could be scrutinized as creating a secondary market. The SEC has brought cases on similar patterns.
-- Staking yields (70% of relay fees to stakers) can read as investment returns if the court applies Reves analysis (the "investment contract" prong).
+- Staking yields (50% of relay fees to stakers) can read as investment returns if the court applies Reves analysis (the "investment contract" prong).
 
 **The structural advantage of the simplified allocation:** The elimination of an explicit Investor Pool removes the most dangerous securities vector. There is no pool of tokens "held for Series Seed" — which would be a textbook Howey test failure if sold to investors expecting profit. Instead, 95% of tokens flow to contributors through work, and 5% sits in a DAO-locked reserve. If you want to raise money, sell equity in Labs (the SaaS business). Token participation is earned through contribution, not purchased as an investment.
 

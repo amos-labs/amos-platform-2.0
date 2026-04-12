@@ -4,6 +4,7 @@
 
 pub mod app_tools;
 pub mod automation_tools;
+pub mod bounty_agent_tools;
 pub mod canvas_tools;
 pub mod credential_tools;
 pub mod document_tools;
@@ -26,6 +27,7 @@ pub mod workspace_tools;
 use crate::automations::engine::AutomationEngine;
 use crate::embeddings::EmbeddingService;
 use crate::integrations::{etl::EtlPipeline, executor::ApiExecutor};
+use crate::relay_sync::RelayBounty;
 use crate::task_queue::TaskQueue;
 use amos_core::{AmosError, AppConfig, PackageToolRegistry, Result};
 use serde_json::Value as JsonValue;
@@ -34,6 +36,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use tokio::sync::RwLock;
 
 // Re-export core tool types so existing harness code doesn't break
 pub use amos_core::tools::{Tool, ToolCategory, ToolResult};
@@ -221,6 +224,7 @@ impl ToolRegistry {
         etl_pipeline: Arc<EtlPipeline>,
         embedding_service: Option<Arc<EmbeddingService>>,
         automation_engine: Arc<AutomationEngine>,
+        bounty_cache: Arc<RwLock<Vec<RelayBounty>>>,
     ) -> Self {
         let mut registry = Self::new(db_pool.clone(), config.clone());
 
@@ -436,6 +440,30 @@ impl ToolRegistry {
             etl_pipeline.clone(),
         )));
 
+        // Register bounty agent tools (autonomous bounty discovery and execution)
+        registry.register(Arc::new(
+            bounty_agent_tools::DiscoverBountiesTool::new(
+                config.relay.url.clone(),
+                bounty_cache.clone(),
+            ),
+        ));
+        registry.register(Arc::new(bounty_agent_tools::AssessBountyFitTool::new(
+            db_pool.clone(),
+            bounty_cache,
+        )));
+        registry.register(Arc::new(bounty_agent_tools::ClaimBountyTool::new(
+            config.relay.url.clone(),
+            db_pool.clone(),
+        )));
+        registry.register(Arc::new(bounty_agent_tools::SubmitBountyProofTool::new(
+            config.relay.url.clone(),
+            db_pool.clone(),
+        )));
+        registry.register(Arc::new(bounty_agent_tools::CheckBountyStatusTool::new(
+            config.relay.url.clone(),
+            db_pool.clone(),
+        )));
+
         registry
     }
 }
@@ -528,6 +556,7 @@ mod tests {
         assert_eq!(ToolCategory::ImageGen.as_str(), "image_gen");
         assert_eq!(ToolCategory::Automation.as_str(), "automation");
         assert_eq!(ToolCategory::Education.as_str(), "education");
+        assert_eq!(ToolCategory::BountyAgent.as_str(), "bounty_agent");
         assert_eq!(ToolCategory::Other.as_str(), "other");
     }
 

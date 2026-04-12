@@ -8,7 +8,7 @@ use crate::{
     geo::GeoLocator,
     image_gen::ImageGenClient,
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
-    openclaw::AgentManager,
+    openclaw::{fleet::FleetManager, AgentManager},
     orchestrator::HarnessOrchestrator,
     storage::StorageClient,
     task_queue::TaskQueue,
@@ -80,6 +80,10 @@ pub struct AppState {
     /// Multi-harness orchestrator (primary harness only).
     /// Provides discovery cache and proxy for specialist harness management.
     pub orchestrator: Option<Arc<HarnessOrchestrator>>,
+
+    /// Fleet manager for autonomous bounty agents.
+    /// `None` if `AMOS__FLEET__ENABLED` is not set to true.
+    pub fleet_manager: Option<Arc<FleetManager>>,
 
     /// Activity counters for platform telemetry (token usage, conversations, etc.)
     pub activity_counters: Arc<crate::platform_sync::ActivityCounters>,

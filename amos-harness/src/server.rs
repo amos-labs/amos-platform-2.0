@@ -11,7 +11,7 @@ use crate::{
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::AgentManager,
     orchestrator::HarnessOrchestrator,
-    packages, routes,
+    packages, relay_sync, routes,
     state::AppState,
     storage::{StorageClient, StorageConfig},
     task_queue::TaskQueue,
@@ -102,6 +102,14 @@ pub async fn create_server(
         automation_http_client,
     ));
 
+    // Create relay sync client to get bounty cache for tools
+    let relay_client = relay_sync::RelaySyncClient::new(
+        &config.relay,
+        &config.deployment,
+    );
+    let bounty_cache = relay_client.bounty_cache();
+    let relay_client = Arc::new(relay_client.with_db_pool(db_pool.clone()));
+
     let mut tool_registry = ToolRegistry::default_registry(
         db_pool.clone(),
         config.clone(),
@@ -111,6 +119,7 @@ pub async fn create_server(
         etl_pipeline.clone(),
         embedding_service.clone(),
         automation_engine.clone(),
+        bounty_cache.clone(),
     );
 
     // Load configured packages and register their tools (AMOS_PACKAGES env var).
@@ -147,6 +156,47 @@ pub async fn create_server(
     };
 
     let agent_manager = Arc::new(AgentManager::new(db_pool.clone(), config.clone()).await?);
+
+    // Initialize fleet manager (autonomous bounty agents) if enabled
+    let fleet_manager = if config.fleet.enabled {
+        let fm = crate::openclaw::fleet::FleetManager::new(
+            db_pool.clone(),
+            config.clone(),
+            bounty_cache.clone(),
+        );
+
+        // Check local model health if configured
+        if config.fleet.has_local_model() {
+            match fm.check_local_model_health().await {
+                Ok(true) => tracing::info!(
+                    model = %config.fleet.local_model.model_id,
+                    api_base = %config.fleet.local_model.api_base,
+                    threshold = config.fleet.local_model.cost_threshold,
+                    "Local model ready — fleet agents will route low-value bounties locally"
+                ),
+                Ok(false) => tracing::warn!(
+                    model = %config.fleet.local_model.model_id,
+                    api_base = %config.fleet.local_model.api_base,
+                    "Local model configured but not available — fleet agents will use cloud model"
+                ),
+                Err(e) => tracing::warn!("Local model health check failed: {e}"),
+            }
+        }
+
+        tracing::info!(
+            max_agents = config.fleet.max_agents,
+            polling_secs = config.fleet.polling_interval_secs,
+            local_model = config.fleet.has_local_model(),
+            "Fleet manager initialized (autonomous bounty agents enabled)"
+        );
+        Some(Arc::new(fm))
+    } else {
+        tracing::info!("Fleet manager disabled (AMOS__FLEET__ENABLED not set)");
+        None
+    };
+
+    // Start relay sync (heartbeat, bounty cache, reputation)
+    relay_client.start();
 
     // Initialize file storage
     let storage_config = StorageConfig::from_env();
@@ -199,6 +249,7 @@ pub async fn create_server(
         automation_engine: automation_engine.clone(),
         automation_event_tx,
         orchestrator,
+        fleet_manager,
         activity_counters,
     });
 

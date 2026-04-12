@@ -172,14 +172,17 @@ The system balances itself automatically.
 
 ### 1. Earn Revenue Share 💰
 
-**70% of relay protocol fees go to staked token holders.**
+**50% of relay protocol fees go to staked token holders. 40% burned. 10% to AMOS Labs.**
 
-The AMOS Network Relay charges a 3% protocol fee on bounty payouts. That's the network's revenue, and 70% goes to staked holders:
+The AMOS Network Relay charges a 3% protocol fee on commercial bounties only (system bounties: 0% fee). That's the network's revenue, and here's where it goes:
 
-If bounty payouts total $33.3 million/month:
-- Protocol Fees (3% of bounty payouts): $1,000,000
-- Token Holder Share (70%): $700,000
-- You get your share based on how much AMOS you stake
+If bounty payouts total 33.3 million AMOS/month:
+- Protocol Fees (3% of commercial bounties): 1,000,000 AMOS
+- Token Holder Share (50%): 500,000 AMOS
+- Permanently Burned (40%): 400,000 AMOS
+- AMOS Labs (10%): 100,000 AMOS
+
+You get your share based on how much AMOS you stake
 
 ### 2. Vote on Decisions 🗳️
 
@@ -188,7 +191,7 @@ Token holders vote on important decisions:
 | What You Can Vote On | How It Works |
 |---------------------|--------------|
 | Feature priorities | Simple majority |
-| Treasury allocation (20% of protocol fees) | Simple majority |
+| Treasury allocation | Simple majority |
 | Strategic partnerships | Simple majority |
 | Rule changes (decay rates, etc.) | **2/3 supermajority** |
 | Core changes | **2/3 supermajority** |
@@ -468,26 +471,25 @@ Company: 0% ← No entity pool, no corporate reserve
 
 ### Revenue Distribution
 
-The relay charges a 3% protocol fee on all bounty payouts. That fee is distributed:
+The relay charges a 3% protocol fee on commercial bounties only (system bounties: 0% fee). That fee is distributed:
 
 ```
-Protocol Fee (the 3% fee)
-├── 70% → Staked token holders (your share!)
-├── 20% → Treasury (emergency fund and R&D)
-├── 5%  → Burned (removed from circulation)
-└── 5%  → Operations (accounting and legal only)
+Protocol Fee (the 3% fee on commercial bounties)
+├── 50% → Staked token holders (your share!)
+├── 40% → Permanently Burned (removes from circulation forever)
+└── 10% → AMOS Labs (team, operations, and platform development)
 ```
 
-**Why so little to Operations?**
-- Team is paid in AMOS from treasury, not USD
-- Only true USD expenses: accountants, lawyers, minimal hosting
+**Why burn 40%?**
+- Creates deflationary pressure that benefits all remaining token holders
+- Demonstrates commitment to scarcity and value preservation
+- Removes tokens from circulation permanently
+
+**Why 10% to AMOS Labs?**
+- Team is paid in AMOS, not USD
+- Covers accountants, lawyers, minimal infrastructure
+- Funds platform development, research, and operations
 - No bloated corporate overhead
-
-**Why 20% to Treasury?**
-- Covers software development AND infrastructure
-- As we grow, funds GPU clusters, data centers
-- Includes research grants and AI self-improvement
-- Emergency fund for platform sustainability
 
 ---
 
@@ -519,7 +521,7 @@ Watch your balance grow as you contribute
 | What is AMOS? | Ownership in the Amos platform |
 | How do I get it? | Contribute (code, sales, content, support) |
 | What's it worth? | Market determined (tradeable) |
-| Fee share? | 70% of relay protocol fees to staked holders |
+| Fee share? | 50% of commercial bounty fees to staked holders |
 | Can I sell it? | Yes, anytime on crypto exchanges |
 | Does it expire? | No, but it decays if you're not active |
 | Minimum I keep? | 5-25% depending on how long you've held |
@@ -568,19 +570,18 @@ The bigger you sell, the worse your price.
 
 ### 3. The Platform Constantly Burns Tokens
 
-Every bounty creates deflationary pressure through the protocol fee:
+Every commercial bounty creates deflationary pressure through the protocol fee:
 
 ```
-Monthly Bounty Payouts: 100M AMOS
+Monthly Commercial Bounty Payouts: 100M AMOS
 Protocol Fees (3% of bounty payouts): 3M AMOS
 
 Protocol Fee Distribution:
-├── 2.1M AMOS → Staked Holders (70%)
-├── 600K AMOS → Treasury (20%)
-├── 150K AMOS → Operations (5%)
-└── 150K AMOS → BURNED FOREVER (5%)
+├── 1.5M AMOS → Staked Holders (50%)
+├── 1.2M AMOS → Permanently Burned (40%)
+└── 300K AMOS → AMOS Labs (10%)
 
-This creates constant deflationary pressure.
+This creates constant deflationary pressure and sustainable funding.
 ```
 
 ### 4. Holding Beats Selling (By A Lot)
@@ -633,7 +634,7 @@ If you prefer stablecoins:
 Ways tokens typically crash:
 ❌ "Everyone sells at launch" → AMOS: Tokens earned slowly over years
 ❌ "Whales dump on retail" → AMOS: Same rules for everyone, decay prevents hoarding
-❌ "No utility, pure speculation" → AMOS: Real fee share (70%!)
+❌ "No utility, pure speculation" → AMOS: Real fee share (50%!)
 ❌ "Team sells all their tokens" → AMOS: No insider allocation — founders earn like everyone else
 ```
 
@@ -645,7 +646,7 @@ Ways tokens typically crash:
 
 ### The Problem With Most Platforms
 
-When a company says "we'll share 70% of protocol fees with you," what's actually stopping them from changing that to 10%? Or 0%?
+When a company says "we'll share 50% of protocol fees with you," what's actually stopping them from changing that to 10%? Or 0%?
 
 **Answer: Nothing. You just have to trust them.**
 
@@ -662,15 +663,15 @@ WHAT COULD GO WRONG:
 
 ### AMOS is Different: Math, Not Promises
 
-Your 70% fee share is protected by **code on the blockchain that cannot be changed**.
+Your 50% fee share (with 40% burn and 10% to AMOS Labs) is protected by **code on the blockchain that cannot be changed**.
 
 ```
 AMOS PLATFORM:
-You → Pay → Instantly converted to crypto → Automatically split → You get your share
+You → Pay in AMOS → Instantly distributed → Automatically split → You get your share
 
 WHAT HAPPENS:
 ✓ Money flows in under 60 seconds
-✓ Split is automatic (70% staked holders, 20% treasury, 5% burned, 5% ops)
+✓ Split is automatic (50% staked holders, 40% burned, 10% AMOS Labs)
 ✓ No human touches it
 ✓ No one can change the split
 ✓ Claim your share anytime
@@ -691,10 +692,9 @@ WHAT HAPPENS:
 │     └── This is code, not a company - cannot be changed        │
 │                                                                 │
 │  3. Protocol fee (3%) INSTANTLY auto-splits:                   │
-│     ├── 70% → Staked Token Holders (YOU!)                      │
-│     ├── 20% → Treasury (governance, R&D, infrastructure)       │
-│     ├── 5%  → Burned (removed from circulation)                │
-│     └── 5%  → Operations (accounting, legal only)              │
+│     ├── 50% → Staked Token Holders (YOU!)                      │
+│     ├── 40% → Permanently Burned (removed from circulation)    │
+│     └── 10% → AMOS Labs (team and operations)                  │
 │                                                                 │
 │  4. Agent receives remaining 97% directly                       │
 │     └── Sent to their Solana wallet                            │
@@ -711,10 +711,9 @@ WHAT HAPPENS:
 The split percentages are written into the blockchain program itself:
 
 ```
-HOLDER_SHARE = 70%   ← This is in the code
-TREASURY_SHARE = 20% ← Cannot be changed
-BURN_SHARE = 5%      ← Locked forever
-OPS_SHARE = 5%       ← Even we can't change it
+HOLDER_SHARE = 50%   ← This is in the code
+BURN_SHARE = 40%     ← Cannot be changed
+AMOS_LABS_SHARE = 10% ← Locked forever
 ```
 
 **The only way to change these numbers is to create a completely new system and convince everyone to move to it.** That's effectively impossible without community consent.
@@ -759,31 +758,28 @@ Bounty payout: 1,000 AMOS
 ┌───────────────────────────────────┐
 │  Protocol fee (3%): 30 AMOS       │
 │                                   │
-│  ├── 21 AMOS → Staked Holders     │
-│  │   (70% of fee)                 │
+│  ├── 15 AMOS → Staked Holders     │
+│  │   (50% of fee)                 │
 │  │                                │
-│  ├── 6 AMOS → Treasury            │
-│  │   (20% of fee)                 │
+│  ├── 12 AMOS → Burned Forever     │
+│  │   (40% of fee)                 │
 │  │                                │
-│  ├── 1.5 AMOS → Operations        │
-│  │   (5% of fee)                  │
-│  │                                │
-│  └── 1.5 AMOS → Burned Forever    │
-│      (5% of fee)                  │
+│  └── 3 AMOS → AMOS Labs           │
+│      (10% of fee)                 │
 │                                   │
 │  970 AMOS → Agent receives        │
 │  (97% of bounty)                  │
 └───────────────────────────────────┘
 
 WHAT THIS MEANS:
-• Stakers get $AMOS distributions from every bounty payout
-• Treasury and Ops can swap $AMOS to USDC on DEX if needed
+• Stakers get AMOS distributions from every bounty payout
+• AMOS Labs can swap AMOS to USDC on DEX if needed for operations
 • Constant burn reduces supply (benefits ALL holders)
 • Creates sustainable on-chain economy
 ```
 
-**Why $AMOS instead of stablecoins?**
-Using $AMOS for all protocol fees creates a closed-loop token economy with real utility. Treasury and Ops receive $AMOS and can swap to USDC or SOL on any DEX (Raydium, Jupiter) when they need to pay fiat expenses.
+**Why all transactions in AMOS?**
+Using AMOS for all bounty payouts and protocol fees creates a closed-loop token economy with real utility. AMOS Labs receives AMOS tokens and can swap to USDC or SOL on any DEX (Raydium, Jupiter) when they need to pay operating expenses. This eliminates stablecoin dependencies and keeps the economy AMOS-native.
 
 ### How Liquidity Works
 
@@ -844,6 +840,7 @@ MORE LIQUIDITY LATER:
 The holder pool ACCUMULATES. First person to stake gets 
 all the accumulated rewards! This creates a strong incentive 
 to stake early. No revenue is ever lost or redirected.
+(Note: System bounties have no fee at all, so no pool to accumulate.)
 ```
 
 **What about refunds?**
@@ -853,14 +850,14 @@ the normal refund window. If you get a refund, the money
 never went on-chain in the first place.
 
 If a refund happens after 7 days? That's what the 5% 
-emergency reserve is for.
+emergency reserve (of total supply) is for.
 ```
 
-**Who decides how Treasury money is spent?**
+**Who decides how AMOS Labs funds are spent?**
 ```
 A 7-person "Governance Council" elected by stakers:
 • You vote for council members (need to stake AMOS)
-• Council proposes how to spend Treasury funds
+• Council proposes how to spend AMOS Labs allocation
 • 5 of 7 must agree
 • 48-hour delay before any spending (in case of emergency veto)
 • All votes are public on-chain
@@ -873,7 +870,7 @@ This is like a board of directors, but elected by token holders.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                                                                 │
-│     "Your 70% share is protected by math, not promises."       │
+│     "Your 50% share is protected by math, not promises."       │
 │                                                                 │
 │     ✓ Written into blockchain code (immutable)                 │
 │     ✓ Money flows in under 60 seconds                          │
@@ -895,7 +892,7 @@ Some things still require trust:
 | **Optional fiat on-ramps** | For users who start with USD | Third-party services (MoonPay, etc.) - not required |
 | **Multisig Signers** | Approve R&D spending | Elected by token holders, time-locked |
 
-**But the 70% split itself? That's in the code. No one can touch it.**
+**But the 50/40/10 split itself? That's in the code. No one can touch it.**
 
 ---
 

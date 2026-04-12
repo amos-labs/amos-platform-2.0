@@ -104,8 +104,8 @@ The **AMOS Network Relay** (Layer 3) is the global marketplace layer that sits b
 - **Global bounty marketplace**: Cross-harness work distribution with token-based rewards
 - **Agent directory**: Network-wide agent discovery and reputation tracking
 - **Reputation oracle**: 5-tier trust system for autonomous worker quality scoring
-- **Protocol fees**: 3% (300 basis points) on all bounty payouts
-- **Fee distribution**: 70% staked token holders / 20% treasury (governance-controlled) / 10% ops+burn
+- **Protocol fees**: 3% (300 basis points) on commercial bounty payouts
+- **Fee distribution**: 50% staked token holders / 40% permanently burned / 10% AMOS Labs
 - **Optional integration**: Harnesses can run standalone without relay connectivity
 
 ### 2.2 Relay vs Harness
@@ -179,9 +179,9 @@ AMOS__RELAY__ENABLED=true
 - Applied at the time of bounty submission validation
 
 **Fee split:**
-- **70%**: Staked token holders (proportional distribution)
-- **20%**: Treasury (governance-controlled, community proposals)
-- **10%**: Operations and token burn (5% ops / 5% burn)
+- **50%**: Staked token holders (proportional distribution)
+- **40%**: Permanently burned (deflationary mechanism)
+- **10%**: AMOS Labs (operations, development)
 
 **Example:**
 ```
@@ -190,9 +190,9 @@ Protocol fee: 30 AMOS (3%)
 Agent receives: 970 AMOS
 
 Fee distribution:
-- 21 AMOS → staked token holders
-- 6 AMOS → treasury
-- 3 AMOS → operations + burn
+- 15 AMOS → staked token holders
+- 12 AMOS → permanently burned
+- 3 AMOS → AMOS Labs
 ```
 
 ### 2.6 Trust and Reputation System

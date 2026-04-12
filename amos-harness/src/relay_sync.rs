@@ -100,6 +100,11 @@ impl RelaySyncClient {
         self
     }
 
+    /// Get a shared reference to the bounty cache (for tools and fleet manager).
+    pub fn bounty_cache(&self) -> Arc<RwLock<Vec<RelayBounty>>> {
+        self.bounties.clone()
+    }
+
     /// Get the cached available bounties.
     pub async fn available_bounties(&self) -> Vec<RelayBounty> {
         self.bounties.read().await.clone()
@@ -151,10 +156,10 @@ impl RelaySyncClient {
         loop {
             interval.tick().await;
 
-            // Query real agent count from database
+            // Query real agent count from database (includes fleet agents)
             let agent_count = if let Some(ref pool) = self.db_pool {
                 sqlx::query_scalar::<_, i64>(
-                    "SELECT COUNT(*) FROM openclaw_agents WHERE status = 'active'",
+                    "SELECT COUNT(*) FROM openclaw_agents WHERE status IN ('active', 'working', 'idle')",
                 )
                 .fetch_one(pool)
                 .await
@@ -250,33 +255,65 @@ impl RelaySyncClient {
         loop {
             interval.tick().await;
 
-            // Query real agent reputation data from external_agents + work_items
-            let agents = if let Some(ref pool) = self.db_pool {
-                sqlx::query_as::<_, (uuid::Uuid, i64, f64)>(
+            // Query agent reputation data from external_agents and fleet bounty_claims
+            let mut agents: Vec<AgentReputation> = Vec::new();
+
+            if let Some(ref pool) = self.db_pool {
+                // Legacy: external_agents table
+                if let Ok(rows) = sqlx::query_as::<_, (uuid::Uuid, i64, f64)>(
                     r#"
-                    SELECT
-                        ea.id,
-                        ea.total_tasks_completed,
-                        ea.average_quality_score
+                    SELECT ea.id, ea.total_tasks_completed, ea.average_quality_score
                     FROM external_agents ea
-                    WHERE ea.status = 'active'
-                      AND ea.total_tasks_completed > 0
+                    WHERE ea.status = 'active' AND ea.total_tasks_completed > 0
                     "#,
                 )
                 .fetch_all(pool)
                 .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(id, completed, quality)| AgentReputation {
-                    agent_id: id,
-                    bounties_completed: completed as u32,
-                    avg_quality_score: quality,
-                    uptime_pct: 99.0, // Computed from heartbeat history in future
-                })
-                .collect()
-            } else {
-                vec![]
-            };
+                {
+                    for (id, completed, quality) in rows {
+                        agents.push(AgentReputation {
+                            agent_id: id,
+                            bounties_completed: completed as u32,
+                            avg_quality_score: quality,
+                            uptime_pct: 99.0,
+                        });
+                    }
+                }
+
+                // Fleet agents: reputation derived from bounty_claims
+                if let Ok(rows) = sqlx::query_as::<_, (i32, i64, i64)>(
+                    r#"
+                    SELECT
+                        bc.agent_id,
+                        COUNT(*) FILTER (WHERE bc.status = 'approved') as completed,
+                        COUNT(*) as total
+                    FROM bounty_claims bc
+                    JOIN openclaw_agents oa ON oa.id = bc.agent_id
+                    WHERE oa.status IN ('active', 'working', 'idle')
+                    GROUP BY bc.agent_id
+                    HAVING COUNT(*) > 0
+                    "#,
+                )
+                .fetch_all(pool)
+                .await
+                {
+                    for (agent_id, completed, total) in rows {
+                        let quality = if total > 0 {
+                            completed as f64 / total as f64 * 100.0
+                        } else {
+                            0.0
+                        };
+                        // Use a deterministic UUID based on agent_id for relay compatibility
+                        let agent_uuid = uuid::Uuid::from_u128(agent_id as u128);
+                        agents.push(AgentReputation {
+                            agent_id: agent_uuid,
+                            bounties_completed: completed as u32,
+                            avg_quality_score: quality,
+                            uptime_pct: 99.0,
+                        });
+                    }
+                }
+            }
 
             let report = ReputationReport {
                 harness_id: self.harness_id.clone(),

@@ -4,6 +4,8 @@
 //! employees. Each agent has its own workspace, memory, tools, and capabilities.
 //! They communicate with AMOS via a real WebSocket connection to the OpenClaw gateway.
 
+pub mod fleet;
+
 use amos_core::{AmosError, AppConfig, Result};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};

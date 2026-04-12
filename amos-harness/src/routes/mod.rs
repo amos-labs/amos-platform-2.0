@@ -6,6 +6,7 @@ pub mod bounties;
 pub mod canvas;
 pub mod credentials;
 pub mod data;
+pub mod fleet;
 pub mod harness_info;
 pub mod health;
 pub mod hooks;
@@ -84,6 +85,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/harness", harness_info::routes(state.clone()))
         // Bounty proxy routes (forwards to AMOS Network Relay)
         .nest("/api/v1/bounties", bounties::routes(state.clone()))
+        // Fleet management routes (autonomous bounty agents)
+        .nest("/api/v1/fleet", fleet::routes(state.clone()))
         // Harness settings routes (model selection, provider mode)
         .nest("/api/v1/settings", settings::routes(state.clone()))
         // Package management routes
@@ -164,7 +167,8 @@ pub(crate) fn trust_level_for_category(category: amos_core::tools::ToolCategory)
         | ToolCategory::Knowledge => 1,
         ToolCategory::Schema | ToolCategory::Canvas | ToolCategory::Apps => 2,
         ToolCategory::Integration | ToolCategory::Automation | ToolCategory::TaskQueue => 3,
-        ToolCategory::OpenClaw | ToolCategory::Document | ToolCategory::ImageGen => 3,
+        ToolCategory::OpenClaw | ToolCategory::Document | ToolCategory::ImageGen
+        | ToolCategory::BountyAgent => 3,
         ToolCategory::Platform => 4,
         _ => 2,
     }
@@ -234,6 +238,7 @@ mod tests {
             ToolCategory::Education,
             ToolCategory::Autoresearch,
             ToolCategory::Orchestrator,
+            ToolCategory::BountyAgent,
         ];
         for cat in categories {
             let level = trust_level_for_category(cat);
