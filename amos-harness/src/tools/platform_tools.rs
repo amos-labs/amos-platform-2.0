@@ -71,30 +71,53 @@ impl Tool for PlatformQueryTool {
         let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(50);
         let offset = params.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
 
-        // SECURITY: Strict allowlist of tables accessible via this tool.
-        // Prevents SQL injection and blocks access to sensitive internal tables
-        // (api_keys, credentials, external_agents, sessions, etc.).
-        const ALLOWED_TABLES: &[&str] = &[
-            "collections",
-            "records",
-            "canvases",
-            "automations",
-            "tasks",
-            "sites",
-            "site_pages",
-            "packages",
-            "integrations",
+        // SECURITY: Denylist of sensitive internal tables that agents must never access.
+        // Each customer gets their own isolated Docker container and database, so all
+        // non-sensitive tables are accessible (including customer-created tables from
+        // packages, migrations, etc.). The table name must also pass sanitization.
+        const DENIED_TABLES: &[&str] = &[
+            "credential_vault",
+            "integration_credentials",
+            "sessions",
+            "memory_entries",
+            "harness_settings",
+            "llm_providers",
+            "_sqlx_migrations",
         ];
 
-        if !ALLOWED_TABLES.contains(&module) {
+        // Sanitize: only allow alphanumeric and underscore (prevents SQL injection)
+        if !module.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || module.is_empty() {
             return Ok(ToolResult::error(format!(
-                "Access denied: '{}' is not an allowed module. Available modules: {}",
-                module,
-                ALLOWED_TABLES.join(", ")
+                "Invalid module name: '{}'. Module names can only contain letters, numbers, and underscores.",
+                module
             )));
         }
 
-        // Safe to interpolate — module is guaranteed to be one of the allowlisted values above
+        if DENIED_TABLES.contains(&module) {
+            return Ok(ToolResult::error(format!(
+                "Access denied: '{}' is a restricted system table.",
+                module
+            )));
+        }
+
+        // Verify the table actually exists in the database before querying
+        let table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)"
+        )
+        .bind(module)
+        .fetch_one(&self.db_pool)
+        .await
+        .map_err(|e| amos_core::AmosError::Internal(format!("Database: Table check failed: {}", e)))?;
+
+        if !table_exists {
+            return Ok(ToolResult::error(format!(
+                "Module '{}' does not exist.",
+                module
+            )));
+        }
+
+        // Safe to interpolate — module passed sanitization (alphanumeric + underscore only),
+        // is not in the denylist, and was confirmed to exist in the database
         let query = format!(
             "SELECT * FROM {} ORDER BY created_at DESC LIMIT $1 OFFSET $2",
             module
