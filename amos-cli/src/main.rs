@@ -453,7 +453,7 @@ async fn handle_token_command(
             // Use amos_core token economics
             use amos_core::token::economics::*;
             println!("Total Supply: {} AMOS", TOTAL_SUPPLY);
-            println!("Grace Period: {} days", GRACE_PERIOD_DAYS);
+            println!("Grace Period: {} days", INACTIVITY_GRACE_PERIOD_DAYS);
             println!("Halving Interval: {} days", HALVING_INTERVAL_DAYS);
             println!(
                 "Initial Daily Emission: {} AMOS/day",

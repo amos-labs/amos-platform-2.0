@@ -71,7 +71,30 @@ impl Tool for PlatformQueryTool {
         let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(50);
         let offset = params.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
 
-        // Build query (simplified - in production would use the module system)
+        // SECURITY: Strict allowlist of tables accessible via this tool.
+        // Prevents SQL injection and blocks access to sensitive internal tables
+        // (api_keys, credentials, external_agents, sessions, etc.).
+        const ALLOWED_TABLES: &[&str] = &[
+            "collections",
+            "records",
+            "canvases",
+            "automations",
+            "tasks",
+            "sites",
+            "site_pages",
+            "packages",
+            "integrations",
+        ];
+
+        if !ALLOWED_TABLES.contains(&module) {
+            return Ok(ToolResult::error(format!(
+                "Access denied: '{}' is not an allowed module. Available modules: {}",
+                module,
+                ALLOWED_TABLES.join(", ")
+            )));
+        }
+
+        // Safe to interpolate — module is guaranteed to be one of the allowlisted values above
         let query = format!(
             "SELECT * FROM {} ORDER BY created_at DESC LIMIT $1 OFFSET $2",
             module

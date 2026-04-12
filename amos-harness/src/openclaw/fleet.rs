@@ -3,7 +3,9 @@
 //! Deploys, monitors, and rebalances a fleet of autonomous agents, each
 //! running its own bounty loop with a distinct capability profile.
 
-use crate::agent::autonomous::{AgentTelemetry, AutonomousAgentLoop, AutonomousLoopConfig, LoopState};
+use crate::agent::autonomous::{
+    AgentTelemetry, AutonomousAgentLoop, AutonomousLoopConfig, LoopState,
+};
 use crate::agent::context::{ContextProvider, FileContextProvider};
 use crate::openclaw::AgentConfig;
 use crate::relay_sync::RelayBounty;
@@ -213,23 +215,17 @@ impl FleetManager {
         let name = format!("fleet-{}-{}", profile, chrono::Utc::now().timestamp());
 
         // Determine model provider: local (Ollama) or cloud (Bedrock)
-        let (model, provider_type, api_base, cost_tier) =
-            if self.config.fleet.has_local_model() {
-                let lm = &self.config.fleet.local_model;
-                (
-                    lm.model_id.clone(),
-                    Some(lm.provider.clone()),
-                    Some(lm.api_base.clone()),
-                    Some("local".to_string()),
-                )
-            } else {
-                (
-                    self.config.bedrock.default_model.clone(),
-                    None,
-                    None,
-                    None,
-                )
-            };
+        let (model, provider_type, api_base, cost_tier) = if self.config.fleet.has_local_model() {
+            let lm = &self.config.fleet.local_model;
+            (
+                lm.model_id.clone(),
+                Some(lm.provider.clone()),
+                Some(lm.api_base.clone()),
+                Some("local".to_string()),
+            )
+        } else {
+            (self.config.bedrock.default_model.clone(), None, None, None)
+        };
 
         // Register agent in database
         let capabilities_json = serde_json::to_value(&capabilities)
@@ -327,10 +323,12 @@ impl FleetManager {
     /// Stop an autonomous agent.
     pub async fn stop_agent(&self, agent_id: i32) -> Result<()> {
         let mut agents = self.agents.write().await;
-        let agent = agents.remove(&agent_id).ok_or_else(|| AmosError::NotFound {
-            entity: "FleetAgent".to_string(),
-            id: agent_id.to_string(),
-        })?;
+        let agent = agents
+            .remove(&agent_id)
+            .ok_or_else(|| AmosError::NotFound {
+                entity: "FleetAgent".to_string(),
+                id: agent_id.to_string(),
+            })?;
 
         // Signal stop
         agent.autonomous_loop.stop();
@@ -401,9 +399,7 @@ impl FleetManager {
 
             match &state {
                 LoopState::Idle => metrics.idle_agents += 1,
-                LoopState::Executing { .. } | LoopState::Assessing => {
-                    metrics.working_agents += 1
-                }
+                LoopState::Executing { .. } | LoopState::Assessing => metrics.working_agents += 1,
                 LoopState::AwaitingVerification { .. } => metrics.working_agents += 1,
                 _ => {}
             }
@@ -733,10 +729,7 @@ mod tests {
     fn all_profiles_have_primary_and_contribution_types() {
         for profile in ALL_PROFILES {
             let specs = profile.task_specializations();
-            assert!(
-                specs.get("primary").is_some(),
-                "{profile} missing primary"
-            );
+            assert!(specs.get("primary").is_some(), "{profile} missing primary");
             assert!(
                 specs.get("contribution_types").is_some(),
                 "{profile} missing contribution_types"
@@ -834,7 +827,12 @@ mod tests {
     // ── Rebalance logic (extracted pattern) ────────────────────────────
 
     /// Simulate the underperformer detection from rebalance().
-    fn is_underperformer(claimed: u64, completed: u64, threshold_claims: u64, min_rate: f64) -> bool {
+    fn is_underperformer(
+        claimed: u64,
+        completed: u64,
+        threshold_claims: u64,
+        min_rate: f64,
+    ) -> bool {
         if claimed >= threshold_claims {
             let rate = if claimed > 0 {
                 completed as f64 / claimed as f64
@@ -881,10 +879,7 @@ mod tests {
     // ── Cost-tier routing logic ───────────────────────────────────────
 
     /// Simulate the provider selection logic from deploy_agent().
-    fn select_provider(
-        local_enabled: bool,
-        local_api_base: &str,
-    ) -> (&'static str, &'static str) {
+    fn select_provider(local_enabled: bool, local_api_base: &str) -> (&'static str, &'static str) {
         if local_enabled && !local_api_base.is_empty() {
             ("local", "ollama")
         } else {

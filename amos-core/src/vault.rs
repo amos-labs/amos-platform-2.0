@@ -42,15 +42,26 @@ impl CredentialVault {
     }
 
     /// Create a vault from the `AMOS__VAULT__MASTER_KEY` environment variable.
-    /// If the variable is not set, generates a random key (dev mode only) and
-    /// logs a warning.
+    ///
+    /// In production mode (`AMOS__ENV=production`), this will return an error
+    /// if the key is not set, preventing startup with unprotected credentials.
+    /// In dev mode, generates a random ephemeral key with a warning.
     pub fn from_env() -> Result<Self> {
         match std::env::var("AMOS__VAULT__MASTER_KEY") {
             Ok(key_b64) => Self::from_base64_key(&key_b64),
             Err(_) => {
+                let env_mode = std::env::var("AMOS__ENV").unwrap_or_default();
+                if env_mode == "production" {
+                    return Err(AmosError::Internal(
+                        "AMOS__VAULT__MASTER_KEY is required in production. \
+                         Generate one with: openssl rand -base64 32"
+                            .into(),
+                    ));
+                }
                 tracing::warn!(
-                    "AMOS__VAULT__MASTER_KEY not set - generating ephemeral key. \
-                     Encrypted credentials will NOT survive restarts!"
+                    "AMOS__VAULT__MASTER_KEY not set — generating ephemeral key. \
+                     Encrypted credentials will NOT survive restarts! \
+                     Set AMOS__ENV=production to enforce key requirement."
                 );
                 let key = Aes256Gcm::generate_key(OsRng);
                 let cipher = Aes256Gcm::new(&key);

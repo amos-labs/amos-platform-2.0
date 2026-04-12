@@ -84,12 +84,11 @@ pub async fn api_key_auth(
     .unwrap_or(false);
 
     if !is_valid {
-        // In early access / devnet mode, log but allow through
-        // This lets us incrementally roll out auth without breaking existing clients
-        tracing::debug!(
+        tracing::warn!(
             path = %path,
-            "API key not found in database — allowing request (early access mode)"
+            "API key authentication failed — rejecting request"
         );
+        return Err(StatusCode::UNAUTHORIZED);
     }
 
     Ok(next.run(req).await)

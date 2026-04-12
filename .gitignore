@@ -5,6 +5,7 @@
 .env
 .env.local
 .env.*.local
+.env.docker
 
 # IDE & Editor
 .vscode/
@@ -35,6 +36,10 @@ amos-harness/data/uploads/
 
 # Solana keypairs (mounted at runtime)
 keys/
+*.json.bak
+
+# Deploy config files (contain production secrets)
+deploy/task-definition*.json
 
 # Solana build artifacts and JS deps
 amos-solana/target/

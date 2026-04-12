@@ -135,8 +135,11 @@ mod tests {
     fn test_calculate_fee_rounding() {
         let fee = calculate_fee(100);
         assert_eq!(fee.total_fee, 3); // 3% of 100
-        // Labs gets remainder to handle rounding dust
-        assert_eq!(fee.holder_share + fee.burn_share + fee.labs_share, fee.total_fee);
+                                      // Labs gets remainder to handle rounding dust
+        assert_eq!(
+            fee.holder_share + fee.burn_share + fee.labs_share,
+            fee.total_fee
+        );
     }
 
     #[test]
@@ -156,6 +159,9 @@ mod tests {
     #[test]
     fn test_no_old_fee_split_references() {
         // Ensure old 70/20/10 split is gone
-        assert_ne!(FEE_HOLDER_SHARE_BPS, 7000, "Old 70% holder share must be removed");
+        assert_ne!(
+            FEE_HOLDER_SHARE_BPS, 7000,
+            "Old 70% holder share must be removed"
+        );
     }
 }

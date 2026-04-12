@@ -53,6 +53,9 @@ pub fn build_http_router(state: RelayState) -> Router {
                     Duration::from_secs(30),
                 ))
                 .layer(
+                    // The relay is an open protocol — any agent or UI from any origin
+                    // may call it. Security is enforced by API key auth (middleware),
+                    // not CORS. Restricting origins would break the open protocol design.
                     CorsLayer::new()
                         .allow_origin(tower_http::cors::Any)
                         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])

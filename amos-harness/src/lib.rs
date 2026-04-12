@@ -84,8 +84,8 @@ pub use tools::ToolRegistry;
 pub use amos_core::{AmosPackage, PackageContext, PackageToolRegistry};
 
 // Re-export OpenClaw types
-pub use openclaw::{AgentConfig, AgentManager, AgentStatus};
 pub use openclaw::fleet::{AgentProfile, FleetManager};
+pub use openclaw::{AgentConfig, AgentManager, AgentStatus};
 
 // Re-export platform sync types
 pub use platform_sync::{ActivityCounters, PlatformSyncClient};

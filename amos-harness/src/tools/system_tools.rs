@@ -106,12 +106,14 @@ impl Tool for ReadFileTool {
             ));
         }
 
-        let content = fs::read_to_string(path)
+        // SECURITY: Read from the canonicalized path, not the original, to prevent
+        // TOCTOU race conditions where a symlink is changed between check and read.
+        let content = fs::read_to_string(&canonical)
             .await
             .map_err(|e| amos_core::AmosError::Internal(format!("Failed to read file: {}", e)))?;
 
         Ok(ToolResult::success(json!({
-            "path": path,
+            "path": canonical_str,
             "content": content,
             "size": content.len()
         })))
@@ -283,14 +285,48 @@ impl Tool for BashTool {
             ));
         }
 
-        // Execute command with timeout
-        let output =
-            tokio::task::spawn_blocking(move || Command::new("sh").arg("-c").arg(command).output())
-                .await
+        // SECURITY: Block any command that reads from sensitive system paths.
+        // This prevents secrets exfiltration via /proc/self/environ, /etc/shadow, etc.
+        const BLOCKED_READ_PATHS: &[&str] = &[
+            "/proc/",
+            "/sys/",
+            "/etc/shadow",
+            "/etc/passwd",
+            "/etc/sudoers",
+            ".env",
+            "keypair",
+            "secret",
+            ".pem",
+            ".key",
+        ];
+        let cmd_lower_for_paths = command.to_lowercase();
+        for blocked_path in BLOCKED_READ_PATHS {
+            if cmd_lower_for_paths.contains(blocked_path) {
+                return Ok(ToolResult::error(format!(
+                    "Blocked: Access to '{}' paths is not allowed",
+                    blocked_path
+                )));
+            }
+        }
+
+        // Execute command with a 30-second timeout to prevent DoS
+        let output = match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            tokio::task::spawn_blocking(move || Command::new("sh").arg("-c").arg(command).output()),
+        )
+        .await
+        {
+            Ok(join_result) => join_result
                 .map_err(|e| amos_core::AmosError::Internal(format!("Task join error: {}", e)))?
                 .map_err(|e| {
                     amos_core::AmosError::Internal(format!("Command execution failed: {}", e))
-                })?;
+                })?,
+            Err(_) => {
+                return Ok(ToolResult::error(
+                    "Command timed out after 30 seconds".to_string(),
+                ));
+            }
+        };
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();

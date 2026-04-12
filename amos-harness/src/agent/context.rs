@@ -212,8 +212,8 @@ impl AgentContext {
 
     fn parse_token_params(content: &str) -> Result<TokenParams, String> {
         // Extract values from the YAML block in section 2
-        let total_supply = Self::extract_yaml_u64(content, "total_supply")
-            .unwrap_or(economics::TOTAL_SUPPLY);
+        let total_supply =
+            Self::extract_yaml_u64(content, "total_supply").unwrap_or(economics::TOTAL_SUPPLY);
 
         // Parse allocations from the allocation block
         let treasury = Self::extract_yaml_u64(content, "bounty_treasury")
@@ -242,8 +242,8 @@ impl AgentContext {
 
         for (level, default_points, default_limit) in level_configs {
             let key = format!("level_{}", level);
-            let max_points =
-                Self::extract_nested_yaml_u64(content, &key, "max_points").unwrap_or(default_points);
+            let max_points = Self::extract_nested_yaml_u64(content, &key, "max_points")
+                .unwrap_or(default_points);
             let daily_limit = Self::extract_nested_yaml_u64(content, &key, "daily_bounty_limit")
                 .unwrap_or(default_limit as u64) as u32;
 
@@ -276,7 +276,10 @@ impl AgentContext {
         multipliers.insert("testing_qa".into(), economics::MULTIPLIER_TESTING_BPS);
         multipliers.insert("feature".into(), economics::MULTIPLIER_FEATURE_BPS);
         multipliers.insert("design".into(), economics::MULTIPLIER_DESIGN_BPS);
-        multipliers.insert("content_marketing".into(), economics::MULTIPLIER_CONTENT_BPS);
+        multipliers.insert(
+            "content_marketing".into(),
+            economics::MULTIPLIER_CONTENT_BPS,
+        );
         multipliers.insert("documentation".into(), economics::MULTIPLIER_DOCS_BPS);
         multipliers.insert("support".into(), economics::MULTIPLIER_SUPPORT_BPS);
 
@@ -427,7 +430,10 @@ impl FileContextProvider {
         multipliers.insert("testing_qa".into(), economics::MULTIPLIER_TESTING_BPS);
         multipliers.insert("feature".into(), economics::MULTIPLIER_FEATURE_BPS);
         multipliers.insert("design".into(), economics::MULTIPLIER_DESIGN_BPS);
-        multipliers.insert("content_marketing".into(), economics::MULTIPLIER_CONTENT_BPS);
+        multipliers.insert(
+            "content_marketing".into(),
+            economics::MULTIPLIER_CONTENT_BPS,
+        );
         multipliers.insert("documentation".into(), economics::MULTIPLIER_DOCS_BPS);
         multipliers.insert("support".into(), economics::MULTIPLIER_SUPPORT_BPS);
 
@@ -539,8 +545,14 @@ mod tests {
     #[test]
     fn parse_yaml_u64_extracts_values() {
         let content = "  total_supply: 100,000,000  # Fixed.\n  bounty_treasury: 95,000,000";
-        assert_eq!(AgentContext::extract_yaml_u64(content, "total_supply"), Some(100_000_000));
-        assert_eq!(AgentContext::extract_yaml_u64(content, "bounty_treasury"), Some(95_000_000));
+        assert_eq!(
+            AgentContext::extract_yaml_u64(content, "total_supply"),
+            Some(100_000_000)
+        );
+        assert_eq!(
+            AgentContext::extract_yaml_u64(content, "bounty_treasury"),
+            Some(95_000_000)
+        );
         assert_eq!(AgentContext::extract_yaml_u64(content, "nonexistent"), None);
     }
 

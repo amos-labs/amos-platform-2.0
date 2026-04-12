@@ -128,7 +128,11 @@ impl ToolRegistry {
         }
     }
 
-    /// Execute a tool by name (only if it's active)
+    /// Execute a tool by name (only if it's active).
+    ///
+    /// This method is used for internal/sidecar calls where the caller is trusted
+    /// (e.g., the agent proxy). For external agent calls, use `execute_with_trust`
+    /// which enforces trust-level gating.
     pub async fn execute(&self, tool_name: &str, params: JsonValue) -> Result<ToolResult> {
         let entry = self
             .tools
@@ -143,6 +147,43 @@ impl ToolRegistry {
                 entity: "Tool".to_string(),
                 id: tool_name.to_string(),
             });
+        }
+
+        entry.tool.execute(params).await
+    }
+
+    /// Execute a tool with trust-level enforcement for external agents.
+    ///
+    /// Returns an error ToolResult if the agent's trust level is insufficient
+    /// for the tool's category.
+    pub async fn execute_with_trust(
+        &self,
+        tool_name: &str,
+        params: JsonValue,
+        agent_trust_level: u8,
+    ) -> Result<ToolResult> {
+        let entry = self
+            .tools
+            .get(tool_name)
+            .ok_or_else(|| AmosError::NotFound {
+                entity: "Tool".to_string(),
+                id: tool_name.to_string(),
+            })?;
+
+        if !self.is_tool_active(entry) {
+            return Err(AmosError::NotFound {
+                entity: "Tool".to_string(),
+                id: tool_name.to_string(),
+            });
+        }
+
+        // Enforce trust-level gating
+        let required_trust = crate::routes::trust_level_for_category(entry.tool.category());
+        if agent_trust_level < required_trust {
+            return Ok(ToolResult::error(format!(
+                "Insufficient trust level: tool '{}' requires level {}, agent has level {}",
+                tool_name, required_trust, agent_trust_level
+            )));
         }
 
         entry.tool.execute(params).await
@@ -441,12 +482,10 @@ impl ToolRegistry {
         )));
 
         // Register bounty agent tools (autonomous bounty discovery and execution)
-        registry.register(Arc::new(
-            bounty_agent_tools::DiscoverBountiesTool::new(
-                config.relay.url.clone(),
-                bounty_cache.clone(),
-            ),
-        ));
+        registry.register(Arc::new(bounty_agent_tools::DiscoverBountiesTool::new(
+            config.relay.url.clone(),
+            bounty_cache.clone(),
+        )));
         registry.register(Arc::new(bounty_agent_tools::AssessBountyFitTool::new(
             db_pool.clone(),
             bounty_cache,

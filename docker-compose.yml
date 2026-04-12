@@ -102,10 +102,10 @@ services:
       AMOS__REDIS__POOL_SIZE: 10
 
       # Vault (stable dev key so encrypted credentials survive container restarts)
-      AMOS__VAULT__MASTER_KEY: ${VAULT_MASTER_KEY:-fddcNAcyrkZ7eC9vgMXfRtTGtVAQZT8sost219njm10=}
+      AMOS__VAULT__MASTER_KEY: ${VAULT_MASTER_KEY:-eFD8uizCTuraShopMP4/wQ16pOHY9XVyW2SEDRSUKe0=}
 
       # Auth
-      AMOS__AUTH__JWT_SECRET: ${AUTH_JWT_SECRET:-dev_jwt_secret_change_in_prod}
+      AMOS__AUTH__JWT_SECRET: ${AUTH_JWT_SECRET:-a71e399aa614ea6d508318e673020b665e799056ff3bedcbdcb1fd52fec1d4fc}
 
       # Docker/Podman socket for Bollard container provisioning
       DOCKER_HOST: unix:///var/run/docker.sock
@@ -177,7 +177,7 @@ services:
       # AMOS_SIBLING_HARNESSES: autoresearch:http://harness-autoresearch:3000
 
       # Vault (stable dev key so encrypted credentials survive container restarts)
-      AMOS__VAULT__MASTER_KEY: ${VAULT_MASTER_KEY:-fddcNAcyrkZ7eC9vgMXfRtTGtVAQZT8sost219njm10=}
+      AMOS__VAULT__MASTER_KEY: ${VAULT_MASTER_KEY:-eFD8uizCTuraShopMP4/wQ16pOHY9XVyW2SEDRSUKe0=}
 
       # Server
       AMOS__ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -212,7 +212,7 @@ services:
       # Relay connection
       AMOS__RELAY__URL: http://relay:4100
       AMOS__RELAY__ENABLED: "true"
-      AMOS__RELAY__API_KEY: ${RELAY_API_KEY:-dev_relay_key_change_in_prod}
+      AMOS__RELAY__API_KEY: ${RELAY_API_KEY:-42bd5b9f5b059da47f1910690c8f23506e199fe0a155425628426b4def6adf05}
 
       # Local model for autonomous fleet agents (Ollama)
       AMOS__FLEET__LOCAL_MODEL__ENABLED: ${LOCAL_MODEL_ENABLED:-false}

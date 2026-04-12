@@ -557,7 +557,15 @@ fn default_custom_tier() -> u8 {
     2
 }
 fn default_jwt_secret() -> SecretString {
-    SecretString::from("CHANGE-ME-in-production-amos-jwt-secret-2025".to_string())
+    // SECURITY: In production, AMOS__AUTH__JWT_SECRET MUST be set to a strong random value.
+    // This default exists only to allow local dev startup. The harness logs a critical
+    // warning at boot if this default is active (see harness startup checks).
+    let default = "INSECURE-LOCAL-DEV-ONLY-set-AMOS__AUTH__JWT_SECRET";
+    tracing::error!(
+        "JWT secret not configured! Set AMOS__AUTH__JWT_SECRET to a strong random value. \
+         Using an insecure default that MUST NOT be used in production."
+    );
+    SecretString::from(default.to_string())
 }
 fn default_access_token_expiry() -> u64 {
     3600

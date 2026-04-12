@@ -42,6 +42,9 @@ pub struct EapRegisterRequest {
     pub capabilities: Vec<String>,
     pub agent_card_url: Option<String>,
     pub version: Option<String>,
+    /// Pre-shared secret proving this is the legitimate sidecar agent.
+    /// Must match AMOS_SIDECAR_SECRET env var for trust level 5 elevation.
+    pub sidecar_secret: Option<String>,
 }
 
 /// EAP registration response — returns an agent ID, token, and available tools.
@@ -239,9 +242,13 @@ async fn eap_register(
         .collect();
 
     // Insert the agent into external_agents so trust-level gating works.
-    // The built-in sidecar ("amos-agent") gets trust level 5 (full access).
+    // The built-in sidecar proves identity via AMOS_SIDECAR_SECRET env var.
     // External agents registering via this endpoint start at level 1.
-    let is_sidecar = req.name == "amos-agent";
+    let sidecar_secret = std::env::var("AMOS_SIDECAR_SECRET").unwrap_or_default();
+    let provided_secret = req.sidecar_secret.as_deref().unwrap_or("");
+    let is_sidecar = !sidecar_secret.is_empty()
+        && !provided_secret.is_empty()
+        && sidecar_secret == provided_secret;
     let trust_level: i16 = if is_sidecar { 5 } else { 1 };
 
     let agent_id: String = sqlx::query_scalar(
@@ -299,45 +306,26 @@ async fn eap_tool_execute(
 
     info!(tool = %req.tool_name, agent = %agent_id, "EAP tool execution request");
 
-    // Check trust level gating
-    if let Some(tool) = state.tool_registry.get(&req.tool_name) {
-        let required_trust = super::trust_level_for_category(tool.category());
-
-        // Look up agent trust level from external_agents table.
-        // The built-in sidecar agent registers via eap_register() which gives
-        // it a random UUID that is NOT in external_agents. If the agent_id is
-        // not found in the table, it's the sidecar and gets full access (level 5).
-        // External agents that ARE in the table use their stored trust_level.
-        let agent_trust: i16 = {
-            sqlx::query_scalar::<_, i16>(
-                "SELECT trust_level FROM external_agents WHERE id::text = $1 OR name = $1",
-            )
+    // Look up agent trust level from external_agents table by ID only.
+    // Name-based lookup is not allowed to prevent impersonation attacks.
+    // Unknown agents default to minimum trust level 1.
+    let agent_trust: u8 = {
+        sqlx::query_scalar::<_, i16>("SELECT trust_level FROM external_agents WHERE id::text = $1")
             .bind(&agent_id)
             .fetch_optional(&state.db_pool)
             .await
             .ok()
             .flatten()
             .unwrap_or(1) // Unknown agent = minimum access
-        };
+    } as u8;
 
-        if (agent_trust as u8) < required_trust {
-            return Ok(Json(EapToolExecuteResponse {
-                content: format!(
-                    "Insufficient trust level: tool '{}' requires level {}, agent has level {}",
-                    req.tool_name, required_trust, agent_trust
-                ),
-                is_error: true,
-                duration_ms: start.elapsed().as_millis() as u64,
-                metadata: Some(serde_json::json!({
-                    "error_code": "INSUFFICIENT_TRUST",
-                    "required_trust_level": required_trust,
-                    "agent_trust_level": agent_trust,
-                })),
-            }));
-        }
-    }
-
-    match state.tool_registry.execute(&req.tool_name, req.input).await {
+    // Execute with trust-level enforcement — the registry checks the agent's
+    // trust level against the tool's category requirement.
+    match state
+        .tool_registry
+        .execute_with_trust(&req.tool_name, req.input, agent_trust)
+        .await
+    {
         Ok(result) => {
             let duration_ms = start.elapsed().as_millis() as u64;
             let content = if result.success {

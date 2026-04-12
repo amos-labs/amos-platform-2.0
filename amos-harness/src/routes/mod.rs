@@ -167,7 +167,9 @@ pub(crate) fn trust_level_for_category(category: amos_core::tools::ToolCategory)
         | ToolCategory::Knowledge => 1,
         ToolCategory::Schema | ToolCategory::Canvas | ToolCategory::Apps => 2,
         ToolCategory::Integration | ToolCategory::Automation | ToolCategory::TaskQueue => 3,
-        ToolCategory::OpenClaw | ToolCategory::Document | ToolCategory::ImageGen
+        ToolCategory::OpenClaw
+        | ToolCategory::Document
+        | ToolCategory::ImageGen
         | ToolCategory::BountyAgent => 3,
         ToolCategory::Platform => 4,
         _ => 2,

@@ -103,10 +103,7 @@ pub async fn create_server(
     ));
 
     // Create relay sync client to get bounty cache for tools
-    let relay_client = relay_sync::RelaySyncClient::new(
-        &config.relay,
-        &config.deployment,
-    );
+    let relay_client = relay_sync::RelaySyncClient::new(&config.relay, &config.deployment);
     let bounty_cache = relay_client.bounty_cache();
     let relay_client = Arc::new(relay_client.with_db_pool(db_pool.clone()));
 

@@ -34,9 +34,7 @@ pub enum LoopState {
         reward_tokens: u64,
     },
     /// Work complete, submitted for verification
-    AwaitingVerification {
-        bounty_id: String,
-    },
+    AwaitingVerification { bounty_id: String },
     /// Shutting down
     Stopping,
 }
@@ -77,7 +75,11 @@ pub fn resolve_execution_provider(
         && reward_tokens <= app_config.fleet.local_model.cost_threshold
     {
         let lm = &app_config.fleet.local_model;
-        (lm.provider.clone(), lm.api_base.clone(), lm.model_id.clone())
+        (
+            lm.provider.clone(),
+            lm.api_base.clone(),
+            lm.model_id.clone(),
+        )
     } else {
         (
             agent_config
@@ -148,8 +150,8 @@ impl AutonomousAgentLoop {
         api_base: &str,
         model_id: &str,
     ) -> Result<String, String> {
-        let agent_url = std::env::var("AGENT_URL")
-            .unwrap_or_else(|_| "http://localhost:3100".to_string());
+        let agent_url =
+            std::env::var("AGENT_URL").unwrap_or_else(|_| "http://localhost:3100".to_string());
 
         // Look up bounty description from cache
         let description = {
@@ -185,10 +187,7 @@ impl AutonomousAgentLoop {
             .map_err(|e| format!("Agent service unavailable at {agent_url}: {e}"))?;
 
         if !response.status().is_success() {
-            return Err(format!(
-                "Agent service returned {}",
-                response.status()
-            ));
+            return Err(format!("Agent service returned {}", response.status()));
         }
 
         // Collect response body as text (SSE stream or JSON)
@@ -202,11 +201,7 @@ impl AutonomousAgentLoop {
     pub async fn run(self: Arc<Self>) {
         let agent_name = &self.config.agent_config.display_name;
         let agent_id = self.config.agent_id;
-        info!(
-            agent_id,
-            agent_name,
-            "Autonomous agent loop starting"
-        );
+        info!(agent_id, agent_name, "Autonomous agent loop starting");
 
         // Build tools
         let relay_url = self.app_config.relay.url.clone();
@@ -246,14 +241,13 @@ impl AutonomousAgentLoop {
             }
 
             // Check agent status in DB
-            let db_status: Option<String> = sqlx::query_scalar(
-                "SELECT status FROM openclaw_agents WHERE id = $1",
-            )
-            .bind(agent_id)
-            .fetch_optional(&self.db_pool)
-            .await
-            .ok()
-            .flatten();
+            let db_status: Option<String> =
+                sqlx::query_scalar("SELECT status FROM openclaw_agents WHERE id = $1")
+                    .bind(agent_id)
+                    .fetch_optional(&self.db_pool)
+                    .await
+                    .ok()
+                    .flatten();
 
             if db_status.as_deref() == Some("stopped") {
                 info!(agent_id, "Agent marked as stopped in DB, exiting loop");
@@ -276,7 +270,10 @@ impl AutonomousAgentLoop {
                 LoopState::Idle => {
                     // Check daily limit
                     if daily_claims >= daily_limit {
-                        debug!(agent_id, daily_claims, daily_limit, "Daily bounty limit reached");
+                        debug!(
+                            agent_id,
+                            daily_claims, daily_limit, "Daily bounty limit reached"
+                        );
                         current_backoff = self.config.backoff_max_secs;
                         continue;
                     }
@@ -311,8 +308,7 @@ impl AutonomousAgentLoop {
 
                     if bounties.is_empty() {
                         debug!(agent_id, "No bounties available, backing off");
-                        current_backoff =
-                            (current_backoff * 2).min(self.config.backoff_max_secs);
+                        current_backoff = (current_backoff * 2).min(self.config.backoff_max_secs);
                         continue;
                     }
 
@@ -355,8 +351,7 @@ impl AutonomousAgentLoop {
                                     .map(|(_, _, best_value)| value > *best_value as f64)
                                     .unwrap_or(true)
                                 {
-                                    best_bounty =
-                                        Some((bounty_id.to_string(), fit_score, reward));
+                                    best_bounty = Some((bounty_id.to_string(), fit_score, reward));
                                 }
                             }
                         }
@@ -412,8 +407,7 @@ impl AutonomousAgentLoop {
                             self.config.min_fit_score
                         );
                         *self.state.write().await = LoopState::Idle;
-                        current_backoff =
-                            (current_backoff * 2).min(self.config.backoff_max_secs);
+                        current_backoff = (current_backoff * 2).min(self.config.backoff_max_secs);
                     }
                 }
 
@@ -440,9 +434,9 @@ impl AutonomousAgentLoop {
                     );
 
                     // Execute bounty via agent service
-                    let execution_output =
-                        self.execute_bounty(&bounty_id, &provider_type, &api_base, &model_id)
-                            .await;
+                    let execution_output = self
+                        .execute_bounty(&bounty_id, &provider_type, &api_base, &model_id)
+                        .await;
 
                     // Submit proof with execution output
                     let (output_status, execution_log) = match &execution_output {
@@ -890,7 +884,10 @@ mod tests {
     // ── Best bounty selection logic ────────────────────────────────────
 
     /// Simulate value-adjusted fitness scoring from the loop.
-    fn select_best_bounty(candidates: &[(String, f64, u64)], min_fit: f64) -> Option<(String, f64, u64)> {
+    fn select_best_bounty(
+        candidates: &[(String, f64, u64)],
+        min_fit: f64,
+    ) -> Option<(String, f64, u64)> {
         let mut best: Option<(String, f64, u64)> = None;
         for (id, fit_score, reward) in candidates {
             if *fit_score >= min_fit {
@@ -911,8 +908,8 @@ mod tests {
     fn best_bounty_selects_highest_value() {
         let candidates = vec![
             ("b1".into(), 0.8, 100u64),
-            ("b2".into(), 0.6, 500u64),  // value: 300
-            ("b3".into(), 0.9, 200u64),  // value: 180
+            ("b2".into(), 0.6, 500u64), // value: 300
+            ("b3".into(), 0.9, 200u64), // value: 180
         ];
         let best = select_best_bounty(&candidates, 0.5).unwrap();
         assert_eq!(best.0, "b2"); // 0.6 * 500 = 300 > 180 > 80
@@ -920,10 +917,7 @@ mod tests {
 
     #[test]
     fn best_bounty_filters_below_min_fit() {
-        let candidates = vec![
-            ("b1".into(), 0.3, 1000u64),
-            ("b2".into(), 0.4, 500u64),
-        ];
+        let candidates = vec![("b1".into(), 0.3, 1000u64), ("b2".into(), 0.4, 500u64)];
         let best = select_best_bounty(&candidates, 0.5);
         assert!(best.is_none());
     }
@@ -951,16 +945,16 @@ mod tests {
         agent_model: &str,
         reward_tokens: u64,
     ) -> (String, String, String) {
-        if fleet.has_local_model()
-            && reward_tokens <= fleet.local_model.cost_threshold
-        {
+        if fleet.has_local_model() && reward_tokens <= fleet.local_model.cost_threshold {
             let lm = &fleet.local_model;
-            (lm.provider.clone(), lm.api_base.clone(), lm.model_id.clone())
+            (
+                lm.provider.clone(),
+                lm.api_base.clone(),
+                lm.model_id.clone(),
+            )
         } else {
             (
-                agent_provider_type
-                    .unwrap_or("bedrock")
-                    .to_string(),
+                agent_provider_type.unwrap_or("bedrock").to_string(),
                 agent_api_base.unwrap_or("").to_string(),
                 agent_model.to_string(),
             )
@@ -999,8 +993,7 @@ mod tests {
     #[test]
     fn provider_routes_to_cloud_above_threshold() {
         let fleet = make_fleet_config(true, 500);
-        let (provider, _, model) =
-            test_resolve_provider(&fleet, None, None, CLOUD_MODEL, 1000);
+        let (provider, _, model) = test_resolve_provider(&fleet, None, None, CLOUD_MODEL, 1000);
         assert_eq!(provider, "bedrock");
         assert!(model.contains("anthropic"));
     }

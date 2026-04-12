@@ -98,10 +98,7 @@ impl Tool for DiscoverBountiesTool {
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(20) as usize;
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
 
         // Try cache first
         let cached = self.bounty_cache.read().await;
@@ -301,9 +298,7 @@ impl Tool for AssessBountyFitTool {
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
         let bounty_id = params["bounty_id"]
             .as_str()
-            .ok_or_else(|| {
-                amos_core::AmosError::Validation("bounty_id is required".to_string())
-            })?
+            .ok_or_else(|| amos_core::AmosError::Validation("bounty_id is required".to_string()))?
             .to_string();
 
         let agent_id = params["agent_id"]
@@ -514,9 +509,7 @@ impl Tool for ClaimBountyTool {
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
         let bounty_id = params["bounty_id"]
             .as_str()
-            .ok_or_else(|| {
-                amos_core::AmosError::Validation("bounty_id is required".to_string())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Validation("bounty_id is required".to_string()))?;
 
         let agent_id = params["agent_id"]
             .as_i64()
@@ -585,13 +578,11 @@ impl Tool for ClaimBountyTool {
                     "message": format!("Bounty {bounty_id} claimed successfully. Begin execution.")
                 })))
             }
-            Ok(resp) if resp.status().as_u16() == 409 => {
-                Ok(ToolResult::success(json!({
-                    "bounty_id": bounty_id,
-                    "status": "conflict",
-                    "message": "Bounty already claimed by another agent. Return to discovery."
-                })))
-            }
+            Ok(resp) if resp.status().as_u16() == 409 => Ok(ToolResult::success(json!({
+                "bounty_id": bounty_id,
+                "status": "conflict",
+                "message": "Bounty already claimed by another agent. Return to discovery."
+            }))),
             Ok(resp) => {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
@@ -673,19 +664,14 @@ impl Tool for SubmitBountyProofTool {
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
         let bounty_id = params["bounty_id"]
             .as_str()
-            .ok_or_else(|| {
-                amos_core::AmosError::Validation("bounty_id is required".to_string())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Validation("bounty_id is required".to_string()))?;
 
         let agent_id = params["agent_id"]
             .as_i64()
             .ok_or_else(|| amos_core::AmosError::Validation("agent_id is required".to_string()))?
             as i32;
 
-        let output = params
-            .get("output")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let output = params.get("output").cloned().unwrap_or_else(|| json!({}));
 
         let test_results = params.get("test_results").cloned();
         let execution_log = params
@@ -828,11 +814,12 @@ impl Tool for CheckBountyStatusTool {
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
         let bounty_id = params["bounty_id"]
             .as_str()
-            .ok_or_else(|| {
-                amos_core::AmosError::Validation("bounty_id is required".to_string())
-            })?;
+            .ok_or_else(|| amos_core::AmosError::Validation("bounty_id is required".to_string()))?;
 
-        let agent_id = params.get("agent_id").and_then(|v| v.as_i64()).map(|v| v as i32);
+        let agent_id = params
+            .get("agent_id")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32);
 
         // Check local claim record first
         let local_status = if let Some(aid) = agent_id {
@@ -904,13 +891,11 @@ impl Tool for CheckBountyStatusTool {
                         .ok();
 
                         // Return agent to idle on resolution
-                        sqlx::query(
-                            "UPDATE openclaw_agents SET status = 'idle' WHERE id = $1",
-                        )
-                        .bind(aid)
-                        .execute(&self.db_pool)
-                        .await
-                        .ok();
+                        sqlx::query("UPDATE openclaw_agents SET status = 'idle' WHERE id = $1")
+                            .bind(aid)
+                            .execute(&self.db_pool)
+                            .await
+                            .ok();
                     }
                 }
 
@@ -1222,12 +1207,16 @@ mod tests {
         let result = compute_fit_score(
             &["code_execution".into()],
             &["code_execution".into()],
-            0,  // no current tasks
-            3,  // max 3
+            0,   // no current tasks
+            3,   // max 3
             1.0, // perfect completion rate
             100, // small reward
         );
-        assert!(result.fit_score >= 0.9, "Expected excellent, got {}", result.fit_score);
+        assert!(
+            result.fit_score >= 0.9,
+            "Expected excellent, got {}",
+            result.fit_score
+        );
         assert_eq!(result.assessment, "excellent");
         assert!(result.missing_tools.is_empty());
         assert!(result.risk_factors.is_empty());
@@ -1274,20 +1263,29 @@ mod tests {
             100,
         );
         assert_eq!(result.fit_score, 0.0);
-        assert!(result.risk_factors.iter().any(|r| r.contains("maximum task capacity")));
+        assert!(result
+            .risk_factors
+            .iter()
+            .any(|r| r.contains("maximum task capacity")));
     }
 
     #[test]
     fn fit_score_reduced_near_capacity() {
         let full = compute_fit_score(&[], &[], 0, 3, 1.0, 100);
         let busy = compute_fit_score(&[], &[], 2, 3, 1.0, 100);
-        assert!(busy.fit_score < full.fit_score, "Busy agent should score lower");
+        assert!(
+            busy.fit_score < full.fit_score,
+            "Busy agent should score lower"
+        );
     }
 
     #[test]
     fn fit_score_low_completion_rate_adds_risk() {
         let result = compute_fit_score(&[], &[], 0, 3, 0.2, 100);
-        assert!(result.risk_factors.iter().any(|r| r.contains("completion rate")));
+        assert!(result
+            .risk_factors
+            .iter()
+            .any(|r| r.contains("completion rate")));
         assert!(result.fit_score < 0.5);
     }
 
@@ -1307,10 +1305,22 @@ mod tests {
 
     #[test]
     fn estimated_hours_scales_with_reward() {
-        assert_eq!(compute_fit_score(&[], &[], 0, 3, 1.0, 50).estimated_hours, 1);
-        assert_eq!(compute_fit_score(&[], &[], 0, 3, 1.0, 200).estimated_hours, 4);
-        assert_eq!(compute_fit_score(&[], &[], 0, 3, 1.0, 750).estimated_hours, 8);
-        assert_eq!(compute_fit_score(&[], &[], 0, 3, 1.0, 5000).estimated_hours, 24);
+        assert_eq!(
+            compute_fit_score(&[], &[], 0, 3, 1.0, 50).estimated_hours,
+            1
+        );
+        assert_eq!(
+            compute_fit_score(&[], &[], 0, 3, 1.0, 200).estimated_hours,
+            4
+        );
+        assert_eq!(
+            compute_fit_score(&[], &[], 0, 3, 1.0, 750).estimated_hours,
+            8
+        );
+        assert_eq!(
+            compute_fit_score(&[], &[], 0, 3, 1.0, 5000).estimated_hours,
+            24
+        );
     }
 
     #[test]
