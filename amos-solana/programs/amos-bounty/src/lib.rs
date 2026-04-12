@@ -113,6 +113,16 @@ pub mod amos_bounty {
         instructions::admin::handler_update_treasury(ctx)
     }
 
+    /// Set fee recipient addresses for commercial bounty fee distribution.
+    /// Oracle-only. Must be called before any commercial bounty can be released.
+    ///
+    /// # Arguments
+    /// * `holder_pool` - Token account receiving 50% of protocol fees
+    /// * `labs_wallet` - Token account receiving 10% of protocol fees
+    pub fn set_fee_recipients(ctx: Context<SetFeeRecipients>) -> Result<()> {
+        instructions::admin::handler_set_fee_recipients(ctx)
+    }
+
     // ========================================================================
     // Preparation Instructions
     // ========================================================================
@@ -212,10 +222,11 @@ pub mod amos_bounty {
     /// 3% protocol fee is deducted and distributed per the 50/40/10 split.
     ///
     /// Prerequisites: `prepare_bounty_submission` must be called first.
-    /// remaining_accounts: [reviewer_token, holder_pool, labs_wallet]
+    /// Fee recipient accounts (holder_pool, labs_wallet) are validated against
+    /// the addresses stored in BountyConfig via `set_fee_recipients`.
     #[allow(clippy::too_many_arguments)]
-    pub fn release_commercial_bounty<'info>(
-        ctx: Context<'_, '_, '_, 'info, ReleaseEscrow<'info>>,
+    pub fn release_commercial_bounty(
+        ctx: Context<ReleaseEscrow>,
         bounty_id: [u8; 32],
         base_points: u16,
         quality_score: u8,

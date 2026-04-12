@@ -426,6 +426,29 @@ pub mod amos_governance {
     }
 
     // ========================================================================
+    // Steward Registry
+    // ========================================================================
+
+    /// Register a new steward in the on-chain registry.
+    /// Only the governance authority can register stewards.
+    ///
+    /// # Access
+    /// * Authority only
+    pub fn register_steward(ctx: Context<RegisterSteward>) -> Result<()> {
+        instructions::register_steward(ctx)
+    }
+
+    /// Remove (deactivate) a steward from the registry.
+    /// Only the governance authority can remove stewards.
+    /// The steward record is kept but marked inactive.
+    ///
+    /// # Access
+    /// * Authority only
+    pub fn remove_steward(ctx: Context<RemoveSteward>) -> Result<()> {
+        instructions::remove_steward(ctx)
+    }
+
+    // ========================================================================
     // Budget Gate Proposals
     // ========================================================================
 

@@ -223,6 +223,9 @@ pub fn handler_submit_proof(
 
     let adjusted_points = adjusted_points.min(MAX_BOUNTY_POINTS);
 
+    // Ensure rounding didn't produce zero points
+    require!(adjusted_points > 0, BountyError::ZeroPointsAwarded);
+
     // ========================================================================
     // Token Distribution Calculation
     // ========================================================================

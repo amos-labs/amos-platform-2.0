@@ -107,6 +107,9 @@ pub const ALLOCATION_PROFILE_SEED: &[u8] = b"allocation_profile";
 /// Seed for steward vote record PDAs
 pub const STEWARD_VOTE_SEED: &[u8] = b"steward_vote";
 
+/// Seed for steward record PDAs (registered steward registry)
+pub const STEWARD_RECORD_SEED: &[u8] = b"steward_record";
+
 // ============================================================================
 // Validation Constants
 // ============================================================================
@@ -172,3 +175,7 @@ pub const ALLOCATION_PROFILE_SIZE: usize = 8 + 8 + 68 + 2 + 2 + 2 + 2 + 1 + 8 + 
 /// Space for StewardVoteRecord account
 /// 8 (discriminator) + 32 (steward) + 8 (proposal_id) + 1 (vote_type) + 1 (approve) + 8 (voted_at) + 1 (bump) + 64 (reserved)
 pub const STEWARD_VOTE_SIZE: usize = 8 + 32 + 8 + 1 + 1 + 8 + 1 + 64;
+
+/// Space for StewardRecord account
+/// 8 (discriminator) + 32 (steward) + 8 (registered_at) + 1 (active) + 1 (bump) + 64 (reserved)
+pub const STEWARD_RECORD_SIZE: usize = 8 + 32 + 8 + 1 + 1 + 64;

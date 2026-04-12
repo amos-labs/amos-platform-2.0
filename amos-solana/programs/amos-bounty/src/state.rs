@@ -153,14 +153,20 @@ pub struct BountyConfig {
     /// PDA bump seed
     pub bump: u8, // 1 byte
 
+    /// Holder pool token account — receives 50% of commercial bounty fees
+    pub holder_pool: Pubkey, // 32 bytes
+
+    /// Labs wallet token account — receives 10% of commercial bounty fees
+    pub labs_wallet: Pubkey, // 32 bytes
+
     /// Reserved space for future upgrades
-    pub reserved: [u64; 16], // 128 bytes
+    pub reserved: [u64; 8], // 64 bytes
 }
 
 impl BountyConfig {
     /// Size calculation:
-    /// 8 (discriminator) + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 128 = 276 bytes
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 128;
+    /// 8 (discriminator) + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 64 = 276 bytes
+    pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 64;
 }
 
 // ============================================================================

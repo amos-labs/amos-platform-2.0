@@ -427,6 +427,27 @@ pub struct AllocationProfile {
     pub reserved: [u8; 64],
 }
 
+/// Record of a registered steward. Only the governance authority can create/deactivate these.
+/// A valid, active StewardRecord PDA is required to cast steward votes.
+/// PDA: ["steward_record", steward.key()]
+#[account]
+pub struct StewardRecord {
+    /// Steward's public key
+    pub steward: Pubkey,
+
+    /// Timestamp when steward was registered
+    pub registered_at: i64,
+
+    /// Whether this steward is currently active
+    pub active: bool,
+
+    /// PDA bump seed
+    pub bump: u8,
+
+    /// Reserved space for future fields
+    pub reserved: [u8; 64],
+}
+
 /// Record of a steward's vote
 /// PDA: ["steward_vote", proposal_id.to_le_bytes(), steward.key(), vote_type]
 #[account]

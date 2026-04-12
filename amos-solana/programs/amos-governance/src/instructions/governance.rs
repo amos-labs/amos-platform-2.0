@@ -211,10 +211,97 @@ pub fn submit_budget_gate_proposal(
 }
 
 // ============================================================================
+// Register Steward (Authority Only)
+// ============================================================================
+
+/// Registers a new steward in the on-chain registry. Authority-only.
+#[derive(Accounts)]
+pub struct RegisterSteward<'info> {
+    #[account(
+        seeds = [GOVERNANCE_SEED],
+        bump = governance_config.bump,
+    )]
+    pub governance_config: Account<'info, GovernanceConfig>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = STEWARD_RECORD_SIZE,
+        seeds = [STEWARD_RECORD_SEED, steward_pubkey.key().as_ref()],
+        bump
+    )]
+    pub steward_record: Account<'info, StewardRecord>,
+
+    /// The pubkey being registered as a steward
+    /// CHECK: This is the steward being registered; validated via PDA seed derivation
+    pub steward_pubkey: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        constraint = authority.key() == governance_config.authority @ GovernanceError::Unauthorized
+    )]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+pub fn register_steward(ctx: Context<RegisterSteward>) -> Result<()> {
+    let record = &mut ctx.accounts.steward_record;
+    let clock = Clock::get()?;
+
+    record.steward = ctx.accounts.steward_pubkey.key();
+    record.registered_at = clock.unix_timestamp;
+    record.active = true;
+    record.bump = ctx.bumps.steward_record;
+    record.reserved = [0; 64];
+
+    msg!("Steward registered: {}", record.steward);
+
+    Ok(())
+}
+
+// ============================================================================
+// Remove Steward (Authority Only)
+// ============================================================================
+
+/// Deactivates a steward. Authority-only. The account is not closed,
+/// just marked inactive so existing vote PDAs remain valid references.
+#[derive(Accounts)]
+pub struct RemoveSteward<'info> {
+    #[account(
+        seeds = [GOVERNANCE_SEED],
+        bump = governance_config.bump,
+    )]
+    pub governance_config: Account<'info, GovernanceConfig>,
+
+    #[account(
+        mut,
+        seeds = [STEWARD_RECORD_SEED, steward_record.steward.as_ref()],
+        bump = steward_record.bump,
+    )]
+    pub steward_record: Account<'info, StewardRecord>,
+
+    #[account(
+        constraint = authority.key() == governance_config.authority @ GovernanceError::Unauthorized
+    )]
+    pub authority: Signer<'info>,
+}
+
+pub fn remove_steward(ctx: Context<RemoveSteward>) -> Result<()> {
+    let record = &mut ctx.accounts.steward_record;
+    record.active = false;
+
+    msg!("Steward removed: {}", record.steward);
+
+    Ok(())
+}
+
+// ============================================================================
 // Cast Steward Vote
 // ============================================================================
 
-/// Allows stewards to vote on budget gate proposals
+/// Allows registered, active stewards to vote on budget gate proposals.
+/// Requires a valid StewardRecord PDA to prove the signer is an approved steward.
 #[derive(Accounts)]
 #[instruction(proposal_id: u64, vote_type: StewardVoteType)]
 pub struct CastStewardVote<'info> {
@@ -230,6 +317,15 @@ pub struct CastStewardVote<'info> {
         bump = budget_proposal.bump
     )]
     pub budget_proposal: Account<'info, BudgetGateProposal>,
+
+    /// Steward record PDA — proves the signer is a registered, active steward
+    #[account(
+        seeds = [STEWARD_RECORD_SEED, steward.key().as_ref()],
+        bump = steward_record.bump,
+        constraint = steward_record.steward == steward.key() @ GovernanceError::NotSteward,
+        constraint = steward_record.active @ GovernanceError::NotSteward,
+    )]
+    pub steward_record: Account<'info, StewardRecord>,
 
     #[account(
         init,

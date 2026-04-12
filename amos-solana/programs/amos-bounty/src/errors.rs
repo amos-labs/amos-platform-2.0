@@ -151,6 +151,12 @@ pub enum BountyError {
     #[msg("Invalid labs wallet: Labs wallet does not match configuration")]
     InvalidLabsWallet,
 
+    #[msg("Invalid holder pool: Holder pool does not match configuration")]
+    InvalidHolderPool,
+
+    #[msg("Fee recipients not set: Must call set_fee_recipients before releasing commercial bounties")]
+    FeeRecipientsNotSet,
+
     #[msg("Vault lockup active: Cannot withdraw until lockup period expires")]
     VaultLockupActive,
 

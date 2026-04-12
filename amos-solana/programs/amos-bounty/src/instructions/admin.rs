@@ -68,7 +68,9 @@ pub fn handler_initialize(ctx: Context<Initialize>, oracle_authority: Pubkey) ->
     config.total_points = 0;
     config.decay_rate_bps = DEFAULT_DECAY_RATE_BPS;
     config.bump = ctx.bumps.config;
-    config.reserved = [0; 16];
+    config.holder_pool = Pubkey::default();
+    config.labs_wallet = Pubkey::default();
+    config.reserved = [0; 8];
 
     msg!("AMOS Bounty Program initialized");
     msg!("Oracle Authority: {}", oracle_authority);
@@ -231,6 +233,64 @@ pub fn handler_update_treasury(ctx: Context<UpdateTreasury>) -> Result<()> {
     ctx.accounts.config.treasury = ctx.accounts.new_treasury.key();
 
     msg!("Treasury updated from {} to {}", old_treasury, ctx.accounts.new_treasury.key());
+
+    Ok(())
+}
+
+// ============================================================================
+// Set Fee Recipients
+// ============================================================================
+
+/// Set the holder pool and labs wallet addresses for commercial bounty fee distribution.
+/// Oracle-only. These must be set before any commercial bounty can be released.
+///
+/// # Arguments
+/// * `holder_pool` - Token account that receives 50% of commercial bounty fees
+/// * `labs_wallet` - Token account that receives 10% of commercial bounty fees
+#[derive(Accounts)]
+pub struct SetFeeRecipients<'info> {
+    #[account(
+        mut,
+        seeds = [BOUNTY_CONFIG_SEED],
+        bump = config.bump,
+        has_one = oracle_authority @ BountyError::Unauthorized,
+        has_one = mint @ BountyError::InvalidMint,
+    )]
+    pub config: Account<'info, BountyConfig>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// Holder pool token account — must be an AMOS token account
+    #[account(
+        constraint = holder_pool.mint == config.mint @ BountyError::InvalidMint,
+    )]
+    pub holder_pool: Account<'info, TokenAccount>,
+
+    /// Labs wallet token account — must be an AMOS token account
+    #[account(
+        constraint = labs_wallet.mint == config.mint @ BountyError::InvalidMint,
+    )]
+    pub labs_wallet: Account<'info, TokenAccount>,
+
+    pub oracle_authority: Signer<'info>,
+}
+
+pub fn handler_set_fee_recipients(ctx: Context<SetFeeRecipients>) -> Result<()> {
+    let config = &mut ctx.accounts.config;
+
+    let old_holder_pool = config.holder_pool;
+    let old_labs_wallet = config.labs_wallet;
+
+    config.holder_pool = ctx.accounts.holder_pool.key();
+    config.labs_wallet = ctx.accounts.labs_wallet.key();
+
+    msg!(
+        "Fee recipients updated: holder_pool {} -> {}, labs_wallet {} -> {}",
+        old_holder_pool,
+        config.holder_pool,
+        old_labs_wallet,
+        config.labs_wallet
+    );
 
     Ok(())
 }

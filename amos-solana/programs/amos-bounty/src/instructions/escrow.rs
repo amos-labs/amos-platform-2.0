@@ -145,6 +145,8 @@ pub struct ReleaseEscrow<'info> {
         bump = config.bump,
         has_one = oracle_authority @ BountyError::Unauthorized,
         has_one = mint @ BountyError::InvalidMint,
+        has_one = holder_pool @ BountyError::InvalidHolderPool,
+        has_one = labs_wallet @ BountyError::InvalidLabsWallet,
     )]
     pub config: Box<Account<'info, BountyConfig>>,
 
@@ -190,8 +192,35 @@ pub struct ReleaseEscrow<'info> {
     pub mint: Box<Account<'info, Mint>>,
 
     /// Operator's token account (receives net reward after fee)
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = operator_token_account.mint == mint.key() @ BountyError::InvalidMint,
+        constraint = operator_token_account.owner == operator.key() @ BountyError::InvalidOperator,
+    )]
     pub operator_token_account: Box<Account<'info, TokenAccount>>,
+
+    /// Reviewer's token account (receives 5% of net reward)
+    #[account(
+        mut,
+        constraint = reviewer_token_account.mint == mint.key() @ BountyError::InvalidMint,
+    )]
+    pub reviewer_token_account: Box<Account<'info, TokenAccount>>,
+
+    /// Holder pool token account — validated against config.holder_pool
+    #[account(
+        mut,
+        constraint = holder_pool.key() == config.holder_pool @ BountyError::InvalidHolderPool,
+        constraint = holder_pool.mint == mint.key() @ BountyError::InvalidMint,
+    )]
+    pub holder_pool: Box<Account<'info, TokenAccount>>,
+
+    /// Labs wallet token account — validated against config.labs_wallet
+    #[account(
+        mut,
+        constraint = labs_wallet.key() == config.labs_wallet @ BountyError::InvalidLabsWallet,
+        constraint = labs_wallet.mint == mint.key() @ BountyError::InvalidMint,
+    )]
+    pub labs_wallet: Box<Account<'info, TokenAccount>>,
 
     /// Poster who funded this bounty (for recording provenance)
     /// CHECK: Stored in bounty proof for audit trail
@@ -205,8 +234,8 @@ pub struct ReleaseEscrow<'info> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn handler_release_escrow<'info>(
-    ctx: Context<'_, '_, '_, 'info, ReleaseEscrow<'info>>,
+pub fn handler_release_escrow(
+    ctx: Context<ReleaseEscrow>,
     bounty_id: [u8; 32],
     base_points: u16,
     quality_score: u8,
@@ -223,16 +252,17 @@ pub fn handler_release_escrow<'info>(
     let operator_stats = &mut ctx.accounts.operator_stats;
 
     // ========================================================================
-    // Extract remaining_accounts for fee distribution
+    // Validate fee recipients are configured
     // ========================================================================
 
     require!(
-        ctx.remaining_accounts.len() >= 3,
-        BountyError::AccountNotFound
+        config.holder_pool != Pubkey::default(),
+        BountyError::FeeRecipientsNotSet
     );
-    let reviewer_token_info = &ctx.remaining_accounts[0];
-    let holder_pool_info = &ctx.remaining_accounts[1];
-    let labs_wallet_info = &ctx.remaining_accounts[2];
+    require!(
+        config.labs_wallet != Pubkey::default(),
+        BountyError::FeeRecipientsNotSet
+    );
 
     // ========================================================================
     // Validation
@@ -267,6 +297,9 @@ pub fn handler_release_escrow<'info>(
         .checked_div(BPS_DENOMINATOR as u64)
         .ok_or(BountyError::ArithmeticOverflow)? as u16)
         .min(MAX_BOUNTY_POINTS);
+
+    // Ensure rounding didn't produce zero points
+    require!(adjusted_points > 0, BountyError::ZeroPointsAwarded);
 
     // ========================================================================
     // Protocol Fee Calculation (3% of escrow balance)
@@ -335,14 +368,14 @@ pub fn handler_release_escrow<'info>(
         operator_tokens,
     )?;
 
-    // Transfer to reviewer (via remaining_accounts)
+    // Transfer to reviewer (named account, validated against mint)
     if reviewer_tokens > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.escrow_token_account.to_account_info(),
-                    to: reviewer_token_info.to_account_info(),
+                    to: ctx.accounts.reviewer_token_account.to_account_info(),
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                 },
                 signer_seeds,
@@ -351,14 +384,14 @@ pub fn handler_release_escrow<'info>(
         )?;
     }
 
-    // Fee: transfer to holder pool (50%) via remaining_accounts
+    // Fee: transfer to holder pool (50%, validated against config.holder_pool)
     if holder_share > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.escrow_token_account.to_account_info(),
-                    to: holder_pool_info.to_account_info(),
+                    to: ctx.accounts.holder_pool.to_account_info(),
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                 },
                 signer_seeds,
@@ -383,14 +416,14 @@ pub fn handler_release_escrow<'info>(
         )?;
     }
 
-    // Fee: transfer to Labs wallet (10%) via remaining_accounts
+    // Fee: transfer to Labs wallet (10%, validated against config.labs_wallet)
     if labs_share > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.escrow_token_account.to_account_info(),
-                    to: labs_wallet_info.to_account_info(),
+                    to: ctx.accounts.labs_wallet.to_account_info(),
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                 },
                 signer_seeds,
