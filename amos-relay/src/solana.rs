@@ -160,12 +160,13 @@ impl SolanaClient {
             && self.treasury_token_account.is_some()
     }
 
-    /// Process bounty payout on-chain via `submit_bounty_proof`.
+    /// Process bounty payout on-chain via `prepare_bounty_submission` + `submit_bounty_proof`.
     ///
     /// Builds and submits a transaction to the AMOS Bounty Program that:
-    /// 1. Records the bounty proof on-chain
-    /// 2. Distributes tokens from treasury to the agent (95%) and reviewer (5%)
-    /// 3. Updates operator stats and agent trust records
+    /// 1. Prepares daily pool and operator stats (idempotent init)
+    /// 2. Records the bounty proof on-chain
+    /// 3. Distributes tokens from treasury to the agent (95%) and reviewer (5%)
+    /// 4. Updates operator stats and agent trust records
     pub async fn process_bounty_payout(
         &self,
         params: &SettlementParams,
@@ -193,9 +194,27 @@ impl SolanaClient {
         // Derive all PDAs
         let (config_pda, _) = Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
 
-        // Day index from config start_time — we fetch it from the config account
-        // For now, use current unix timestamp / 86400 as approximate day index
-        let day_index = (chrono::Utc::now().timestamp() / 86400) as u32;
+        // Fetch config account to read start_time for correct day_index calculation
+        let rpc_for_config = self.rpc.clone();
+        let config_pda_copy = config_pda;
+        let start_time = tokio::task::spawn_blocking(move || {
+            let account = rpc_for_config
+                .get_account(&config_pda_copy)
+                .map_err(|e| AmosError::SolanaRpc(format!("Failed to fetch config: {}", e)))?;
+            // Layout: 8 (discriminator) + 32 (oracle) + 32 (mint) + 32 (treasury) + 8 (start_time)
+            let data = account.data;
+            if data.len() < 8 + 32 + 32 + 32 + 8 {
+                return Err(AmosError::Internal("Config account too small".into()));
+            }
+            let ts = i64::from_le_bytes(data[104..112].try_into().unwrap());
+            Ok::<i64, AmosError>(ts)
+        })
+        .await
+        .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
+
+        let now = chrono::Utc::now().timestamp();
+        let day_index = ((now - start_time) / 86400) as u32;
+
         let (daily_pool_pda, _) =
             Pubkey::find_program_address(&[DAILY_POOL_SEED, &day_index.to_le_bytes()], &program_id);
 
@@ -205,9 +224,14 @@ impl SolanaClient {
         let (operator_stats_pda, _) =
             Pubkey::find_program_address(&[OPERATOR_STATS_SEED, operator.as_ref()], &program_id);
 
-        // Agent trust record (only meaningful if is_agent)
-        let (agent_trust_pda, _) =
-            Pubkey::find_program_address(&[AGENT_TRUST_SEED, &params.agent_id], &program_id);
+        // Agent trust record — pass program_id for non-agent (Anchor Optional None pattern)
+        let agent_trust_account = if params.is_agent {
+            let (pda, _) =
+                Pubkey::find_program_address(&[AGENT_TRUST_SEED, &params.agent_id], &program_id);
+            pda
+        } else {
+            program_id // signals "None" to Anchor optional account
+        };
 
         // Derive associated token accounts for operator and reviewer
         let operator_ata = derive_associated_token_account(&operator, &mint);
@@ -215,8 +239,26 @@ impl SolanaClient {
 
         let token_program = Pubkey::from_str(SPL_TOKEN_PROGRAM_ID).unwrap();
 
-        // Build instruction data: 8-byte Anchor discriminator + borsh-serialized args
-        let instruction_data = build_submit_bounty_proof_data(
+        // ── Instruction 1: prepare_bounty_submission ──────────────────
+        // Creates daily_pool and operator_stats if they don't exist (idempotent)
+        let prepare_data = build_prepare_bounty_submission_data(&operator);
+
+        let prepare_accounts = vec![
+            AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new(daily_pool_pda, false),
+            AccountMeta::new(operator_stats_pda, false),
+            AccountMeta::new(oracle.pubkey(), true), // payer + signer
+            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+        ];
+
+        let prepare_ix = Instruction {
+            program_id,
+            accounts: prepare_accounts,
+            data: prepare_data,
+        };
+
+        // ── Instruction 2: submit_bounty_proof ────────────────────────
+        let submit_data = build_submit_bounty_proof_data(
             &bounty_id_bytes,
             params.base_points,
             params.quality_score,
@@ -227,30 +269,30 @@ impl SolanaClient {
             &params.evidence_hash,
         );
 
-        // Build account metas (order must match the Anchor context struct)
-        let accounts = vec![
+        // Account order matches the SubmitBountyProof Anchor context struct
+        let submit_accounts = vec![
             AccountMeta::new(config_pda, false),
             AccountMeta::new(daily_pool_pda, false),
             AccountMeta::new(bounty_proof_pda, false),
             AccountMeta::new(operator_stats_pda, false),
             AccountMeta::new_readonly(operator, false),
-            AccountMeta::new(agent_trust_pda, false), // UncheckedAccount, always passed
+            AccountMeta::new_readonly(agent_trust_account, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(treasury, false),
             AccountMeta::new(operator_ata, false),
             AccountMeta::new(reviewer_ata, false),
-            AccountMeta::new_readonly(oracle.pubkey(), true), // signer
+            AccountMeta::new(oracle.pubkey(), true), // oracle_authority signer
             AccountMeta::new_readonly(token_program, false),
             AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
         ];
 
-        let instruction = Instruction {
+        let submit_ix = Instruction {
             program_id,
-            accounts,
-            data: instruction_data,
+            accounts: submit_accounts,
+            data: submit_data,
         };
 
-        // Build, sign, and send transaction
+        // Build, sign, and send transaction with both instructions
         let rpc = self.rpc.clone();
         let oracle_keypair_bytes = oracle.to_bytes();
 
@@ -263,7 +305,7 @@ impl SolanaClient {
                 .map_err(|e| AmosError::SolanaRpc(format!("Failed to get blockhash: {}", e)))?;
 
             let tx = Transaction::new_signed_with_payer(
-                &[instruction],
+                &[prepare_ix, submit_ix],
                 Some(&oracle_kp.pubkey()),
                 &[&oracle_kp],
                 recent_blockhash,
@@ -282,6 +324,7 @@ impl SolanaClient {
             bounty_id = %params.bounty_id,
             tx = %tx_signature,
             agent = %params.agent_wallet,
+            day_index,
             "Bounty settlement transaction confirmed on-chain"
         );
 
@@ -318,6 +361,16 @@ fn anchor_discriminator(name: &str) -> [u8; 8] {
     let mut disc = [0u8; 8];
     disc.copy_from_slice(&hash[..8]);
     disc
+}
+
+/// Build the instruction data for `prepare_bounty_submission`.
+/// Layout: 8-byte discriminator + operator_key (Pubkey, 32 bytes).
+fn build_prepare_bounty_submission_data(operator: &Pubkey) -> Vec<u8> {
+    let disc = anchor_discriminator("prepare_bounty_submission");
+    let mut data = Vec::with_capacity(8 + 32);
+    data.extend_from_slice(&disc);
+    data.extend_from_slice(operator.as_ref());
+    data
 }
 
 /// Build the instruction data for `submit_bounty_proof`.

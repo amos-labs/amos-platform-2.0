@@ -195,7 +195,7 @@ pub fn effective_annual_rate_bps(base_rate_bps: u64, context: &StakeContext) -> 
 /// This is the main entry point for the daily decay job.
 pub fn apply_daily_decay(base_annual_rate_bps: u64, context: &StakeContext) -> DecayResult {
     // Grace period check: no decay for first 365 days
-    if context.tenure_days < GRACE_PERIOD_DAYS {
+    if context.tenure_days < NEW_STAKE_GRACE_PERIOD_DAYS {
         return DecayResult {
             tokens_decayed: 0,
             tokens_burned: 0,
@@ -205,7 +205,7 @@ pub fn apply_daily_decay(base_annual_rate_bps: u64, context: &StakeContext) -> D
             skipped: true,
             skip_reason: Some(format!(
                 "Within grace period ({} of {} days)",
-                context.tenure_days, GRACE_PERIOD_DAYS
+                context.tenure_days, NEW_STAKE_GRACE_PERIOD_DAYS
             )),
         };
     }

@@ -1,12 +1,11 @@
 //! # Revenue Distribution Engine
 //!
-//! Implements the immutable revenue split from the treasury program:
+//! Implements the immutable AMOS-only revenue split from the treasury program:
 //!
-//! **USDC payments:**
-//!   50% → token holders, 40% → R&D, 5% → ops, 5% → reserve
-//!
-//! **AMOS payments:**
-//!   50% → burned, 50% → token holders
+//! **Protocol Fee Distribution (from commercial bounties):**
+//!   50% → staked token holders (proportional to stake)
+//!   40% → permanently burned (deflationary)
+//!   10% → AMOS Labs operating wallet
 //!
 //! This module provides the off-chain calculation. The on-chain program
 //! enforces the same math with identical constants.
@@ -14,30 +13,17 @@
 use super::economics::*;
 use crate::error::{AmosError, Result};
 
-/// Breakdown of a USDC revenue distribution.
+/// Breakdown of an AMOS protocol fee distribution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UsdcRevenueDistribution {
-    /// Total amount received.
+pub struct ProtocolFeeDistribution {
+    /// Total fee amount in AMOS tokens.
     pub total_amount: u64,
     /// 50% to holder pool (claimable by stakers).
     pub holder_amount: u64,
-    /// 40% to R&D multisig.
-    pub rnd_amount: u64,
-    /// 5% to operations multisig.
-    pub ops_amount: u64,
-    /// 5% to reserve (remainder absorbs rounding).
-    pub reserve_amount: u64,
-}
-
-/// Breakdown of an AMOS token payment distribution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AmosPaymentDistribution {
-    /// Total AMOS received.
-    pub total_amount: u64,
-    /// 50% permanently burned.
+    /// 40% permanently burned.
     pub burn_amount: u64,
-    /// 50% to holder pool (remainder absorbs rounding).
-    pub holder_amount: u64,
+    /// 10% to Labs wallet (remainder absorbs rounding).
+    pub labs_amount: u64,
 }
 
 /// Individual holder's revenue share claim.
@@ -47,7 +33,7 @@ pub struct HolderClaim {
     pub stake_amount: u64,
     /// Total eligible stake across all holders.
     pub total_eligible_stake: u64,
-    /// Available pool balance (USDC).
+    /// Available pool balance (AMOS).
     pub pool_balance: u64,
     /// Calculated payout.
     pub payout: u64,
@@ -55,56 +41,31 @@ pub struct HolderClaim {
     pub share_bps: u64,
 }
 
-/// Calculate the USDC revenue split.
+/// Calculate the AMOS protocol fee split (50/40/10).
 ///
 /// Uses checked arithmetic to match on-chain behavior exactly.
-/// Reserve gets the remainder to absorb any rounding dust.
-pub fn split_usdc_revenue(amount: u64) -> Result<UsdcRevenueDistribution> {
+/// Labs gets the remainder to absorb any rounding dust.
+pub fn split_protocol_fee(amount: u64) -> Result<ProtocolFeeDistribution> {
     if amount == 0 {
         return Err(AmosError::Validation("Amount must be > 0".into()));
     }
 
-    let holder_amount = checked_bps_mul(amount, HOLDER_SHARE_BPS)?;
-    let rnd_amount = checked_bps_mul(amount, RND_SHARE_BPS)?;
-    let ops_amount = checked_bps_mul(amount, OPS_SHARE_BPS)?;
+    let holder_amount = checked_bps_mul(amount, FEE_HOLDER_SHARE_BPS)?;
+    let burn_amount = checked_bps_mul(amount, FEE_BURN_SHARE_BPS)?;
 
-    // Reserve gets remainder (handles rounding dust).
-    let reserve_amount = amount
+    // Labs gets remainder (handles rounding dust).
+    let labs_amount = amount
         .checked_sub(holder_amount)
-        .and_then(|v| v.checked_sub(rnd_amount))
-        .and_then(|v| v.checked_sub(ops_amount))
+        .and_then(|v| v.checked_sub(burn_amount))
         .ok_or(AmosError::ArithmeticOverflow {
-            context: "USDC revenue split remainder".into(),
+            context: "Protocol fee split remainder".into(),
         })?;
 
-    Ok(UsdcRevenueDistribution {
+    Ok(ProtocolFeeDistribution {
         total_amount: amount,
         holder_amount,
-        rnd_amount,
-        ops_amount,
-        reserve_amount,
-    })
-}
-
-/// Calculate the AMOS token payment split.
-///
-/// Holder gets remainder to absorb rounding dust.
-pub fn split_amos_payment(amount: u64) -> Result<AmosPaymentDistribution> {
-    if amount == 0 {
-        return Err(AmosError::Validation("Amount must be > 0".into()));
-    }
-
-    let burn_amount = checked_bps_mul(amount, AMOS_BURN_BPS)?;
-    let holder_amount = amount
-        .checked_sub(burn_amount)
-        .ok_or(AmosError::ArithmeticOverflow {
-            context: "AMOS payment split remainder".into(),
-        })?;
-
-    Ok(AmosPaymentDistribution {
-        total_amount: amount,
         burn_amount,
-        holder_amount,
+        labs_amount,
     })
 }
 
@@ -173,32 +134,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn usdc_split_adds_up() {
-        let dist = split_usdc_revenue(1_000_000).unwrap();
+    fn protocol_fee_split_adds_up() {
+        let dist = split_protocol_fee(1_000_000).unwrap();
         assert_eq!(
-            dist.holder_amount + dist.rnd_amount + dist.ops_amount + dist.reserve_amount,
+            dist.holder_amount + dist.burn_amount + dist.labs_amount,
             1_000_000
         );
         assert_eq!(dist.holder_amount, 500_000); // 50%
-        assert_eq!(dist.rnd_amount, 400_000); // 40%
-        assert_eq!(dist.ops_amount, 50_000); // 5%
-        assert_eq!(dist.reserve_amount, 50_000); // 5%
+        assert_eq!(dist.burn_amount, 400_000); // 40%
+        assert_eq!(dist.labs_amount, 100_000); // 10%
     }
 
     #[test]
-    fn amos_split_adds_up() {
-        let dist = split_amos_payment(1_000_000).unwrap();
-        assert_eq!(dist.burn_amount + dist.holder_amount, 1_000_000);
-        assert_eq!(dist.burn_amount, 500_000); // 50%
-        assert_eq!(dist.holder_amount, 500_000); // 50%
-    }
-
-    #[test]
-    fn odd_amount_rounding_goes_to_remainder() {
-        // 999 USDC: 499 holder, 399 rnd, 49 ops, 52 reserve (absorbs dust)
-        let dist = split_usdc_revenue(999).unwrap();
+    fn odd_amount_rounding_goes_to_labs() {
+        // 999 AMOS: 499 holder, 399 burn, 101 labs (absorbs dust)
+        let dist = split_protocol_fee(999).unwrap();
         assert_eq!(
-            dist.holder_amount + dist.rnd_amount + dist.ops_amount + dist.reserve_amount,
+            dist.holder_amount + dist.burn_amount + dist.labs_amount,
             999
         );
     }
@@ -212,8 +164,7 @@ mod tests {
 
     #[test]
     fn zero_amount_errors() {
-        assert!(split_usdc_revenue(0).is_err());
-        assert!(split_amos_payment(0).is_err());
+        assert!(split_protocol_fee(0).is_err());
     }
 
     #[test]
