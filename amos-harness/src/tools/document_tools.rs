@@ -4,24 +4,33 @@
 //! The agent provides the text content; the harness handles deterministic rendering.
 
 use crate::documents::export::{ContentSection, DocumentContent, DocumentExporter, ExportFormat};
+use crate::storage::StorageClient;
 use crate::tools::{Tool, ToolCategory, ToolResult};
 use amos_core::{AppConfig, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
+use sqlx::PgPool;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Tool: generate_document
 ///
 /// Generates a PDF or DOCX document from structured text content.
 /// The agent provides title, sections (with optional headings), and format.
-/// Returns a base64-encoded document that can be served to the user.
+/// Persists the document to storage and returns a download URL.
 pub struct GenerateDocumentTool {
     config: Arc<AppConfig>,
+    db_pool: PgPool,
+    storage: Arc<StorageClient>,
 }
 
 impl GenerateDocumentTool {
-    pub fn new(config: Arc<AppConfig>) -> Self {
-        Self { config }
+    pub fn new(config: Arc<AppConfig>, db_pool: PgPool, storage: Arc<StorageClient>) -> Self {
+        Self {
+            config,
+            db_pool,
+            storage,
+        }
     }
 }
 
@@ -158,24 +167,67 @@ impl Tool for GenerateDocumentTool {
 
         match result {
             Ok(Ok((content_type, generated_filename, bytes))) => {
-                let b64 =
-                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+                let size_bytes = bytes.len() as i64;
+                let upload_id = Uuid::new_v4();
+
+                // Derive extension from generated filename
+                let ext = generated_filename
+                    .rsplit('.')
+                    .next()
+                    .filter(|e| e.len() <= 10)
+                    .unwrap_or("bin");
+                let storage_key = format!("{}.{}", upload_id, ext);
+
+                // Persist to storage backend
+                if let Err(e) = self
+                    .storage
+                    .upload(&storage_key, &bytes, &content_type)
+                    .await
+                {
+                    return Ok(ToolResult::error(format!(
+                        "Failed to store generated document: {e}"
+                    )));
+                }
+
+                // Persist metadata to uploads table
+                if let Err(e) = sqlx::query(
+                    r#"
+                    INSERT INTO uploads (id, filename, original_filename, content_type, size_bytes, storage_key, upload_context)
+                    VALUES ($1, $2, $3, $4, $5, $6, 'document')
+                    "#,
+                )
+                .bind(upload_id)
+                .bind(&storage_key)
+                .bind(&generated_filename)
+                .bind(&content_type)
+                .bind(size_bytes)
+                .bind(&storage_key)
+                .execute(&self.db_pool)
+                .await
+                {
+                    tracing::error!("Failed to save document upload record: {e}");
+                    // File is in storage but metadata failed — still return success
+                    // since the document was generated. Log and continue.
+                }
+
+                let download_url = format!("/api/v1/uploads/{}/file", upload_id);
 
                 Ok(ToolResult::success_with_metadata(
                     json!({
                         "filename": generated_filename,
                         "content_type": content_type,
-                        "size_bytes": bytes.len(),
-                        "data_base64": b64,
+                        "size_bytes": size_bytes,
+                        "download_url": download_url,
+                        "upload_id": upload_id.to_string(),
                         "message": format!(
-                            "Generated {} ({} bytes). The file is ready for download.",
-                            generated_filename,
-                            bytes.len()
+                            "Generated {} ({} bytes). Download: {}",
+                            generated_filename, size_bytes, download_url
                         )
                     }),
                     json!({
                         "format": format_str,
-                        "generated": true
+                        "generated": true,
+                        "upload_id": upload_id.to_string(),
                     }),
                 ))
             }

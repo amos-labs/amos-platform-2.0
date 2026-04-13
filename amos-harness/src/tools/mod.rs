@@ -284,6 +284,7 @@ impl ToolRegistry {
         embedding_service: Option<Arc<EmbeddingService>>,
         automation_engine: Arc<AutomationEngine>,
         bounty_cache: Arc<RwLock<Vec<RelayBounty>>>,
+        storage: Arc<crate::storage::StorageClient>,
     ) -> Self {
         let mut registry = Self::new(db_pool.clone(), config.clone());
 
@@ -442,6 +443,8 @@ impl ToolRegistry {
         // Register document tools (export documents)
         registry.register(Arc::new(document_tools::GenerateDocumentTool::new(
             config.clone(),
+            db_pool.clone(),
+            storage,
         )));
 
         // Register image generation tools

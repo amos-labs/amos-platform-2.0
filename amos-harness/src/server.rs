@@ -107,6 +107,10 @@ pub async fn create_server(
     let bounty_cache = relay_client.bounty_cache();
     let relay_client = Arc::new(relay_client.with_db_pool(db_pool.clone()));
 
+    // Initialize file storage (needed by document tools)
+    let storage_config = StorageConfig::from_env();
+    let storage = Arc::new(StorageClient::new(storage_config).await?);
+
     let mut tool_registry = ToolRegistry::default_registry(
         db_pool.clone(),
         config.clone(),
@@ -117,6 +121,7 @@ pub async fn create_server(
         embedding_service.clone(),
         automation_engine.clone(),
         bounty_cache.clone(),
+        storage.clone(),
     );
 
     // Load configured packages and register their tools (AMOS_PACKAGES env var).
@@ -214,10 +219,6 @@ pub async fn create_server(
 
     // Start relay sync (heartbeat, bounty cache, reputation)
     relay_client.start();
-
-    // Initialize file storage
-    let storage_config = StorageConfig::from_env();
-    let storage = Arc::new(StorageClient::new(storage_config).await?);
 
     // Initialize document processor (extract + export pipeline)
     let document_processor = Arc::new(DocumentProcessor::new());
