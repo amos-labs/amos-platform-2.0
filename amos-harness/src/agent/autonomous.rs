@@ -74,9 +74,7 @@ fn parse_structured_proof(output: &str) -> serde_json::Value {
     for section in &sections {
         let header = format!("**{}**", section);
         let alt_header = format!("## {}", section);
-        let start = output
-            .find(&header)
-            .or_else(|| output.find(&alt_header));
+        let start = output.find(&header).or_else(|| output.find(&alt_header));
 
         if let Some(pos) = start {
             // Find the end: next section header or end of string
@@ -399,10 +397,7 @@ impl AutonomousAgentLoop {
         } else {
             let mut combined = text_parts.join("");
             if !tools_used.is_empty() {
-                combined.push_str(&format!(
-                    "\n\n**Tools Used:** {}",
-                    tools_used.join(", ")
-                ));
+                combined.push_str(&format!("\n\n**Tools Used:** {}", tools_used.join(", ")));
             }
             combined
         };
@@ -511,8 +506,7 @@ impl AutonomousAgentLoop {
                         Ok(r) => r,
                         Err(e) => {
                             warn!(agent_id, error = %e, "Discovery failed");
-                            current_backoff =
-                                self.jittered_backoff(current_backoff);
+                            current_backoff = self.jittered_backoff(current_backoff);
                             continue;
                         }
                     };
@@ -762,8 +756,8 @@ impl AutonomousAgentLoop {
                     let bounty_id = bounty_id.clone();
 
                     // Track when we started waiting for verification
-                    let started = verification_started_at
-                        .get_or_insert_with(std::time::Instant::now);
+                    let started =
+                        verification_started_at.get_or_insert_with(std::time::Instant::now);
 
                     // Timeout: if we've been waiting too long, give up
                     if started.elapsed().as_secs() >= self.config.verification_timeout_secs {

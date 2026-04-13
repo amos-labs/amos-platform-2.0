@@ -566,11 +566,7 @@ impl FleetManager {
     /// If the inner `run()` panics (JoinError), the supervisor retries up to
     /// [`MAX_RESTART_ATTEMPTS`] times with exponential backoff. A clean exit
     /// (Ok) is not restarted.
-    async fn supervised_run(
-        agent_loop: Arc<AutonomousAgentLoop>,
-        agent_id: i32,
-        db_pool: PgPool,
-    ) {
+    async fn supervised_run(agent_loop: Arc<AutonomousAgentLoop>, agent_id: i32, db_pool: PgPool) {
         let mut restarts: u32 = 0;
 
         loop {
@@ -591,13 +587,11 @@ impl FleetManager {
                             restarts,
                             "Agent exceeded max restart attempts — marking as error"
                         );
-                        sqlx::query(
-                            "UPDATE openclaw_agents SET status = 'error' WHERE id = $1",
-                        )
-                        .bind(agent_id)
-                        .execute(&db_pool)
-                        .await
-                        .ok();
+                        sqlx::query("UPDATE openclaw_agents SET status = 'error' WHERE id = $1")
+                            .bind(agent_id)
+                            .execute(&db_pool)
+                            .await
+                            .ok();
 
                         sqlx::query(
                             r#"INSERT INTO fleet_events (event_type, agent_id, metadata)
@@ -730,7 +724,10 @@ impl FleetManager {
                 .unwrap_or(0);
 
         if existing > 0 {
-            info!(existing, "Agents already exist in DB, skipping initial fleet deploy");
+            info!(
+                existing,
+                "Agents already exist in DB, skipping initial fleet deploy"
+            );
             return Ok(Vec::new());
         }
 
@@ -749,7 +746,9 @@ impl FleetManager {
             for _ in 0..entry.count {
                 match self.deploy_agent(profile).await {
                     Ok(id) => deployed.push(id),
-                    Err(e) => warn!(profile = %entry.profile, error = %e, "Failed to deploy initial agent"),
+                    Err(e) => {
+                        warn!(profile = %entry.profile, error = %e, "Failed to deploy initial agent")
+                    }
                 }
             }
         }
@@ -771,8 +770,7 @@ impl FleetManager {
         let interval = self.config.fleet.health_check_interval_secs;
 
         tokio::spawn(async move {
-            let mut ticker =
-                tokio::time::interval(tokio::time::Duration::from_secs(interval));
+            let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(interval));
             ticker.tick().await; // skip immediate first tick
 
             loop {
@@ -822,8 +820,7 @@ impl FleetManager {
         let interval = self.config.fleet.rebalance_interval_secs;
 
         tokio::spawn(async move {
-            let mut ticker =
-                tokio::time::interval(tokio::time::Duration::from_secs(interval));
+            let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(interval));
             ticker.tick().await; // skip first
 
             loop {
@@ -831,7 +828,10 @@ impl FleetManager {
 
                 match fleet.rebalance().await {
                     Ok(result) => {
-                        if let Some(stopped) = result.get("underperformers_stopped").and_then(|v| v.as_u64()) {
+                        if let Some(stopped) = result
+                            .get("underperformers_stopped")
+                            .and_then(|v| v.as_u64())
+                        {
                             if stopped > 0 {
                                 info!(stopped, "Periodic rebalance stopped underperformers");
                             }

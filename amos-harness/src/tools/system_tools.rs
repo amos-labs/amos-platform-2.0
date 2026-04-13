@@ -338,13 +338,21 @@ impl Tool for BashTool {
         let stdout = if stdout_truncated {
             // Find a char boundary at or before max_output to avoid mid-codepoint panic
             let boundary = stdout.floor_char_boundary(max_output);
-            format!("{}...\n[truncated — {} bytes total]", &stdout[..boundary], stdout.len())
+            format!(
+                "{}...\n[truncated — {} bytes total]",
+                &stdout[..boundary],
+                stdout.len()
+            )
         } else {
             stdout
         };
         let stderr = if stderr_truncated {
             let boundary = stderr.floor_char_boundary(max_output);
-            format!("{}...\n[truncated — {} bytes total]", &stderr[..boundary], stderr.len())
+            format!(
+                "{}...\n[truncated — {} bytes total]",
+                &stderr[..boundary],
+                stderr.len()
+            )
         } else {
             stderr
         };
