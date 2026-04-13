@@ -104,7 +104,9 @@ impl HarnessClient {
 
     /// Register the agent with the harness.
     pub async fn register(&mut self, name: &str, card_url: Option<&str>) -> Result<()> {
-        let sidecar_secret = std::env::var("AMOS_SIDECAR_SECRET").ok().filter(|s| !s.is_empty());
+        let sidecar_secret = std::env::var("AMOS_SIDECAR_SECRET")
+            .ok()
+            .filter(|s| !s.is_empty());
 
         let req = RegisterRequest {
             name: name.to_string(),
