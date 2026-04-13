@@ -150,6 +150,7 @@ pub struct AutonomousAgentLoop {
     bounty_cache: Arc<RwLock<Vec<RelayBounty>>>,
     state: Arc<RwLock<LoopState>>,
     telemetry: Arc<RwLock<AgentTelemetry>>,
+    last_flush_at: Arc<RwLock<chrono::DateTime<chrono::Utc>>>,
     stop_signal: Arc<tokio::sync::Notify>,
 }
 
@@ -169,6 +170,7 @@ impl AutonomousAgentLoop {
             bounty_cache,
             state: Arc::new(RwLock::new(LoopState::Idle)),
             telemetry: Arc::new(RwLock::new(AgentTelemetry::default())),
+            last_flush_at: Arc::new(RwLock::new(chrono::Utc::now())),
             stop_signal: Arc::new(tokio::sync::Notify::new()),
         }
     }
@@ -205,6 +207,12 @@ impl AutonomousAgentLoop {
     async fn flush_telemetry(&self) {
         let t = self.telemetry.read().await;
         let now = chrono::Utc::now();
+        let period_start = {
+            let mut last = self.last_flush_at.write().await;
+            let start = *last;
+            *last = now;
+            start
+        };
         let completion_rate = if t.bounties_claimed > 0 {
             t.bounties_completed as f64 / t.bounties_claimed as f64
         } else {
@@ -218,7 +226,7 @@ impl AutonomousAgentLoop {
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
         )
         .bind(self.config.agent_id)
-        .bind(now)
+        .bind(period_start)
         .bind(now)
         .bind(t.bounties_discovered as i32)
         .bind(t.bounties_claimed as i32)
@@ -259,7 +267,8 @@ impl AutonomousAgentLoop {
         .await
         .ok()
         .flatten()
-        .unwrap_or(0) as u32
+        .unwrap_or(0)
+        .max(0) as u32
     }
 
     /// Execute a bounty by sending its description to the agent service.
@@ -313,7 +322,7 @@ impl AutonomousAgentLoop {
                 (format!("Execute bounty {bounty_id}"), String::new())
             }
         };
-        let _ = capabilities; // may be used for future context
+        drop(capabilities);
 
         let body = json!({
             "message": bounty_prompt,

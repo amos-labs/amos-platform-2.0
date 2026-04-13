@@ -1,10 +1,12 @@
 -- Expand fleet_events CHECK constraint to include supervisor & reconciliation events
-ALTER TABLE fleet_events DROP CONSTRAINT IF EXISTS fleet_events_event_type_check;
-ALTER TABLE fleet_events ADD CONSTRAINT fleet_events_event_type_check
-    CHECK (event_type IN (
-        'deployed', 'stopped', 'rebalanced', 'promoted', 'demoted',
-        'restarted', 'reconciled', 'error', 'trust_upgraded'
-    ));
+-- Use single ALTER TABLE to avoid window where constraint is absent
+ALTER TABLE fleet_events
+    DROP CONSTRAINT IF EXISTS fleet_events_event_type_check,
+    ADD CONSTRAINT fleet_events_event_type_check
+        CHECK (event_type IN (
+            'deployed', 'stopped', 'rebalanced', 'promoted', 'demoted',
+            'restarted', 'reconciled', 'error', 'trust_upgraded'
+        ));
 
 -- Persistent daily claim counters (survive harness restarts)
 CREATE TABLE IF NOT EXISTS agent_daily_claims (

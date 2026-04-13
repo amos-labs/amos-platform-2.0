@@ -181,7 +181,7 @@ pub async fn create_server(
         }
 
         // Reconcile agents stuck in transient states from prior crash
-        if let Err(e) = fm.reconcile_on_startup().await {
+        if let Err(e) = fm.reconcile_on_startup(&harness_id).await {
             tracing::warn!("Fleet reconciliation failed (non-fatal): {e}");
         }
 

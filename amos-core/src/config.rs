@@ -421,6 +421,9 @@ pub struct FleetConfig {
     /// Interval in seconds for automatic rebalancing (default: 1800 = 30 min).
     #[serde(default = "default_fleet_rebalance_interval")]
     pub rebalance_interval_secs: u64,
+    /// Max seconds to wait for bounty verification before timing out (default: 86400 = 24h).
+    #[serde(default = "default_fleet_verification_timeout")]
+    pub verification_timeout_secs: u64,
 }
 
 /// An entry in the initial fleet composition.
@@ -435,6 +438,9 @@ fn default_fleet_health_check_interval() -> u64 {
 }
 fn default_fleet_rebalance_interval() -> u64 {
     1800
+}
+fn default_fleet_verification_timeout() -> u64 {
+    86400
 }
 
 impl Default for FleetConfig {
@@ -451,6 +457,7 @@ impl Default for FleetConfig {
             initial_fleet: Vec::new(),
             health_check_interval_secs: default_fleet_health_check_interval(),
             rebalance_interval_secs: default_fleet_rebalance_interval(),
+            verification_timeout_secs: default_fleet_verification_timeout(),
         }
     }
 }

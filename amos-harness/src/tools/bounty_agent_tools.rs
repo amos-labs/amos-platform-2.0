@@ -123,7 +123,7 @@ impl Tool for DiscoverBountiesTool {
 
         // Try cache first
         let cached = self.bounty_cache.read().await;
-        let mut bounties: Vec<&RelayBounty> = cached.iter().collect();
+        let bounties: Vec<&RelayBounty> = cached.iter().collect();
 
         // If cache is empty, try direct API call
         if bounties.is_empty() {
@@ -158,52 +158,29 @@ impl Tool for DiscoverBountiesTool {
             }
         }
 
-        // Filter cached bounties by capabilities
-        if !agent_capabilities.is_empty() {
-            bounties.retain(|b| {
-                b.required_capabilities.is_empty()
-                    || b.required_capabilities
-                        .iter()
-                        .all(|req| agent_capabilities.contains(req))
-            });
-        }
-
-        // Filter by complexity (reward-tier bucketing)
-        if let Some(ref complexity) = complexity_filter {
-            bounties.retain(|b| match complexity.as_str() {
-                "small" => b.reward_tokens <= 100,
-                "medium" => b.reward_tokens > 100 && b.reward_tokens <= 500,
-                "large" => b.reward_tokens > 500,
-                _ => true,
-            });
-        }
+        // Reuse shared filter logic (same as relay path)
+        let mut filtered = self.filter_bounties(
+            &cached,
+            &agent_capabilities,
+            max_trust_level,
+            complexity_filter.as_deref(),
+            limit,
+        );
 
         // Exclude bounties already claimed by this harness
         let claimed_ids = self.claimed_bounty_ids().await;
         if !claimed_ids.is_empty() {
-            bounties.retain(|b| !claimed_ids.contains(&b.id.to_string()));
+            filtered.retain(|b| {
+                b.get("bounty_id")
+                    .and_then(|v| v.as_str())
+                    .map(|id| !claimed_ids.contains(&id.to_string()))
+                    .unwrap_or(true)
+            });
         }
 
-        // Truncate to limit
-        bounties.truncate(limit);
-
-        let result: Vec<JsonValue> = bounties
-            .iter()
-            .map(|b| {
-                json!({
-                    "bounty_id": b.id.to_string(),
-                    "title": b.title,
-                    "description": b.description,
-                    "reward_tokens": b.reward_tokens,
-                    "deadline": b.deadline,
-                    "required_capabilities": b.required_capabilities,
-                })
-            })
-            .collect();
-
-        let count = result.len();
+        let count = filtered.len();
         Ok(ToolResult::success(json!({
-            "bounties": result,
+            "bounties": filtered,
             "count": count,
             "source": "cache"
         })))

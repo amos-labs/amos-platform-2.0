@@ -208,9 +208,18 @@ impl FleetManager {
     /// On harness restart, any agent marked as 'active' or 'working' in the DB
     /// was mid-loop when the process died. Reset them to 'idle' so they can be
     /// re-attached or redeployed cleanly.
-    pub async fn reconcile_on_startup(&self) -> Result<u64> {
+    ///
+    /// Scoped to this harness's agents to avoid disrupting other harness instances
+    /// sharing the same database.
+    pub async fn reconcile_on_startup(&self, harness_id: &str) -> Result<u64> {
+        // Only reset agents whose role starts with our harness prefix, or all
+        // agents if we're the only harness (no harness_id column exists, so we
+        // scope by matching agent IDs that were deployed from this harness —
+        // agents carry the harness identity in their `role` field as "autonomous-*").
         let result = sqlx::query(
-            "UPDATE openclaw_agents SET status = 'idle' WHERE status IN ('active', 'working', 'executing')",
+            r#"UPDATE openclaw_agents SET status = 'idle'
+               WHERE status IN ('active', 'working', 'executing')
+               AND role LIKE 'autonomous-%'"#,
         )
         .execute(&self.db_pool)
         .await
@@ -219,21 +228,25 @@ impl FleetManager {
         let reconciled = result.rows_affected();
 
         if reconciled > 0 {
-            info!(reconciled, "Reconciled stuck agents on startup");
+            info!(reconciled, harness_id, "Reconciled stuck agents on startup");
 
             sqlx::query(
                 r#"INSERT INTO fleet_events (event_type, metadata)
                    VALUES ('reconciled', $1)"#,
             )
-            .bind(json!({ "agents_reset": reconciled }))
+            .bind(json!({ "agents_reset": reconciled, "harness_id": harness_id }))
             .execute(&self.db_pool)
             .await
             .ok();
         }
 
-        // Also reset any bounty claims stuck in 'executing' state
+        // Reset bounty claims stuck in 'executing' state for agents managed by this fleet
         let claims_reset = sqlx::query(
-            "UPDATE bounty_claims SET status = 'expired' WHERE status = 'executing'",
+            r#"UPDATE bounty_claims SET status = 'expired'
+               WHERE status = 'executing'
+               AND agent_id IN (
+                   SELECT id FROM openclaw_agents WHERE role LIKE 'autonomous-%'
+               )"#,
         )
         .execute(&self.db_pool)
         .await
@@ -324,7 +337,7 @@ impl FleetManager {
             polling_interval_secs: self.config.fleet.polling_interval_secs,
             backoff_max_secs: self.config.fleet.backoff_max_secs,
             min_fit_score: self.config.fleet.min_fit_score,
-            verification_timeout_secs: 86400, // 24 hours
+            verification_timeout_secs: self.config.fleet.verification_timeout_secs,
         };
 
         let autonomous_loop = Arc::new(AutonomousAgentLoop::new(
@@ -776,17 +789,28 @@ impl FleetManager {
                 }
                 drop(agents);
 
-                // Log finished agents (the supervisor inside the task handles restarts;
+                // Clean up finished agents (the supervisor inside the task handles restarts;
                 // if the supervisor itself exited, the agent hit max restarts)
-                for id in finished_ids {
-                    sqlx::query(
-                        r#"INSERT INTO fleet_events (event_type, agent_id, metadata)
-                           VALUES ('error', $1, '{"reason": "task_handle_finished"}')"#,
-                    )
-                    .bind(id)
-                    .execute(&fleet.db_pool)
-                    .await
-                    .ok();
+                if !finished_ids.is_empty() {
+                    let mut agents = fleet.agents.write().await;
+                    for id in &finished_ids {
+                        agents.remove(id);
+                        sqlx::query(
+                            r#"INSERT INTO fleet_events (event_type, agent_id, metadata)
+                               VALUES ('error', $1, '{"reason": "task_handle_finished"}')"#,
+                        )
+                        .bind(*id)
+                        .execute(&fleet.db_pool)
+                        .await
+                        .ok();
+
+                        // Mark the agent as stopped in the DB
+                        sqlx::query("UPDATE openclaw_agents SET status = 'stopped' WHERE id = $1")
+                            .bind(*id)
+                            .execute(&fleet.db_pool)
+                            .await
+                            .ok();
+                    }
                 }
             }
         });
@@ -814,6 +838,12 @@ impl FleetManager {
                         }
                     }
                     Err(e) => warn!(error = %e, "Periodic rebalance failed"),
+                }
+
+                // Check trust progression for all active agents
+                let agent_ids: Vec<i32> = fleet.agents.read().await.keys().copied().collect();
+                for id in agent_ids {
+                    fleet.check_trust_progression(id).await;
                 }
             }
         });
