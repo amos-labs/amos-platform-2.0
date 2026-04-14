@@ -278,8 +278,8 @@ mod tests {
         let y4 = daily_emission_for_day(1460).emission;
         let y10 = daily_emission_for_day(3650).emission;
         assert!(y1 > 13_000, "Year 1 too low: {}", y1);
-        assert!(y4 > 7_000 && y4 < 9_000, "Year 4 unexpected: {}", y4);
-        assert!(y10 >= 100 && y10 < 500, "Year 10 unexpected: {}", y10);
+        assert!((7_000..9_000).contains(&y4), "Year 4 unexpected: {}", y4);
+        assert!((100..500).contains(&y10), "Year 10 unexpected: {}", y10);
     }
 
     #[test]
