@@ -116,10 +116,10 @@ pub struct SolanaConfig {
     #[serde(default)]
     pub oracle_keypair_path: Option<String>,
     /// AMOS SPL token mint address.
-    #[serde(default)]
+    #[serde(default = "default_mint_address")]
     pub mint_address: Option<String>,
     /// Treasury token account that holds distribution tokens.
-    #[serde(default)]
+    #[serde(default = "default_treasury_token_account")]
     pub treasury_token_account: Option<String>,
 }
 
@@ -132,8 +132,8 @@ impl Default for SolanaConfig {
             governance_program_id: default_governance_program(),
             bounty_program_id: default_bounty_program(),
             oracle_keypair_path: None,
-            mint_address: None,
-            treasury_token_account: None,
+            mint_address: default_mint_address(),
+            treasury_token_account: default_treasury_token_account(),
         }
     }
 }
@@ -541,6 +541,12 @@ fn default_governance_program() -> String {
 }
 fn default_bounty_program() -> String {
     "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq".into()
+}
+fn default_mint_address() -> Option<String> {
+    Some("8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej".into())
+}
+fn default_treasury_token_account() -> Option<String> {
+    Some("6fh9KrCT7Jv9WFMhyYQSMXwr8wu59bS2fUuv7nmJuhZX".into())
 }
 fn default_aws_region() -> String {
     "us-west-2".into()
