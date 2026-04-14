@@ -12,12 +12,6 @@ pub enum BountyError {
     #[msg("Invalid decay rate: Must be between 2% and 25% annually")]
     InvalidDecayRate,
 
-    #[msg("Halving not yet available: 365 days must pass between halvings")]
-    HalvingNotAvailable,
-
-    #[msg("Maximum halvings reached: Already at minimum emission rate")]
-    MaxHalvingsReached,
-
     #[msg("Insufficient emission: Not enough tokens remain in daily pool")]
     InsufficientEmission,
 

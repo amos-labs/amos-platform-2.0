@@ -9,11 +9,11 @@
 ///    - Tokens = (adjusted_points / total_points_today) × remaining_emission
 ///    - Fair share based on contribution value
 ///
-/// 2. **Halving Schedule**
-///    - Starts at 16,000 tokens/day
-///    - Halves every 365 days
+/// 2. **Sigmoid Emission Schedule**
+///    - Starts at ~16,000 tokens/day
+///    - Smoothly decays via sigmoid curve (midpoint at ~4 years)
 ///    - Minimum floor of 100 tokens/day
-///    - Maximum 10 halving epochs
+///    - No discrete halving events — fully stateless computation
 ///
 /// 3. **Token Decay**
 ///    - Recycles unused tokens back to treasury
@@ -42,7 +42,7 @@
 ///
 /// - Oracle validates work but cannot manipulate distribution math
 /// - All parameters bounded by protocol constants
-/// - Permissionless operations (anyone can trigger decay, halvings, upgrades)
+/// - Permissionless operations (anyone can trigger decay, upgrades)
 /// - Complete on-chain audit trail
 /// - All arithmetic uses checked operations (no overflow/underflow)
 /// - Immutable records (cannot alter history)
@@ -78,7 +78,7 @@ pub mod amos_bounty {
     /// Sets up the singleton configuration with:
     /// - Oracle authority for bounty validation
     /// - Token mint and treasury references
-    /// - Initial emission rate (16,000 tokens/day)
+    /// - Sigmoid emission: 16,000 → 100 AMOS/day (no halving epochs)
     /// - Default decay rate (5% annual)
     ///
     /// This can only be called once.
@@ -95,16 +95,6 @@ pub mod amos_bounty {
     /// * `new_rate_bps` - New rate in basis points (200-2500)
     pub fn update_decay_rate(ctx: Context<UpdateDecayRate>, new_rate_bps: u16) -> Result<()> {
         instructions::admin::handler_update_decay(ctx, new_rate_bps)
-    }
-
-    /// Advance to the next halving epoch
-    ///
-    /// Anyone can call this once 365 days have passed since the last halving.
-    /// Reduces daily emission by 50% (minimum 100 tokens/day).
-    ///
-    /// This is a PERMISSIONLESS operation - no authorization required.
-    pub fn advance_halving(ctx: Context<AdvanceHalving>) -> Result<()> {
-        instructions::admin::handler_advance_halving(ctx)
     }
 
     /// Update the treasury token account address. Oracle-only.
@@ -495,10 +485,11 @@ mod tests {
         assert!(DEFAULT_DECAY_RATE_BPS >= MIN_DECAY_RATE_BPS);
         assert!(DEFAULT_DECAY_RATE_BPS <= MAX_DECAY_RATE_BPS);
 
-        // Halving parameters are sensible
-        assert!(MINIMUM_DAILY_EMISSION > 0);
-        assert!(INITIAL_DAILY_EMISSION > MINIMUM_DAILY_EMISSION);
-        assert!(HALVING_INTERVAL_DAYS == 365);
+        // Sigmoid emission parameters are sensible
+        assert!(EMISSION_FLOOR > 0);
+        assert!(EMISSION_CEILING > EMISSION_FLOOR);
+        assert!(EMISSION_MIDPOINT_DAYS > 0);
+        assert!(EMISSION_K_SCALED > 0);
 
         // Trust levels are properly configured
         assert_eq!(TRUST_LEVEL_MAX_POINTS.len(), 5);

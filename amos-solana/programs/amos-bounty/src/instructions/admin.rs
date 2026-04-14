@@ -21,7 +21,7 @@ use crate::state::*;
 ///
 /// # Trustless Guarantees
 /// - Immutable oracle authority (cannot be changed after init)
-/// - Fixed initial emission rate (16,000 tokens/day)
+/// - Sigmoid emission: 16,000 → 100 AMOS/day over ~13 years (no halving epochs)
 /// - Default decay rate within protocol bounds (5% annual)
 /// - All parameters are transparent and on-chain
 #[derive(Accounts)]
@@ -60,8 +60,8 @@ pub fn handler_initialize(ctx: Context<Initialize>, oracle_authority: Pubkey) ->
     config.mint = ctx.accounts.mint.key();
     config.treasury = ctx.accounts.treasury.key();
     config.start_time = clock.unix_timestamp;
-    config.halving_epoch = 0;
-    config.daily_emission = INITIAL_DAILY_EMISSION;
+    config._deprecated_halving_epoch = 0; // Deprecated, kept for layout compat
+    config.daily_emission = EMISSION_CEILING; // Initial value; sigmoid_daily_emission() computes per-day
     config.total_tokens_distributed = 0;
     config.total_bounties = 0;
     config.total_points = 0;
@@ -73,7 +73,7 @@ pub fn handler_initialize(ctx: Context<Initialize>, oracle_authority: Pubkey) ->
 
     msg!("AMOS Bounty Program initialized");
     msg!("Oracle Authority: {}", oracle_authority);
-    msg!("Initial Daily Emission: {} tokens", INITIAL_DAILY_EMISSION);
+    msg!("Emission: sigmoid curve, {} → {} AMOS/day", EMISSION_CEILING, EMISSION_FLOOR);
     msg!("Default Decay Rate: {}%", DEFAULT_DECAY_RATE_BPS / 100);
 
     Ok(())
@@ -124,84 +124,6 @@ pub fn handler_update_decay(ctx: Context<UpdateDecayRate>, new_rate_bps: u16) ->
         new_rate_bps
     );
     msg!("New annual decay rate: {}%", new_rate_bps / 100);
-
-    Ok(())
-}
-
-// ============================================================================
-// Advance Halving
-// ============================================================================
-
-/// Advance to the next halving epoch, reducing daily emission by 50%.
-/// Anyone can call this once 365 days have passed since last halving.
-///
-/// # Trustless Guarantees
-/// - Time-locked: Can only advance after HALVING_INTERVAL_DAYS (365 days)
-/// - Automatic halving: Emission rate cut in half each epoch
-/// - Minimum floor: Never goes below MINIMUM_DAILY_EMISSION (100 tokens)
-/// - Max epochs: Stops at MAX_HALVING_EPOCHS (10 halvings)
-/// - Permissionless: Anyone can trigger when time requirements met
-#[derive(Accounts)]
-pub struct AdvanceHalving<'info> {
-    #[account(
-        mut,
-        seeds = [BOUNTY_CONFIG_SEED],
-        bump = config.bump
-    )]
-    pub config: Account<'info, BountyConfig>,
-}
-
-pub fn handler_advance_halving(ctx: Context<AdvanceHalving>) -> Result<()> {
-    let config = &mut ctx.accounts.config;
-    let clock = Clock::get()?;
-
-    // Check if max halvings reached
-    require!(
-        config.halving_epoch < MAX_HALVING_EPOCHS,
-        BountyError::MaxHalvingsReached
-    );
-
-    // Calculate time since start
-    let time_elapsed = clock
-        .unix_timestamp
-        .checked_sub(config.start_time)
-        .ok_or(BountyError::InvalidTimestamp)?;
-
-    // Calculate expected epoch based on time
-    let days_elapsed = (time_elapsed as u64)
-        .checked_div(86400) // seconds per day
-        .ok_or(BountyError::ArithmeticOverflow)?;
-
-    let expected_epoch = days_elapsed
-        .checked_div(HALVING_INTERVAL_DAYS)
-        .ok_or(BountyError::ArithmeticOverflow)?;
-
-    // Check if we can advance to next epoch
-    require!(
-        expected_epoch > config.halving_epoch as u64,
-        BountyError::HalvingNotAvailable
-    );
-
-    // Advance epoch and halve emission
-    config.halving_epoch = config.halving_epoch.saturating_add(1);
-
-    let new_emission = config
-        .daily_emission
-        .checked_div(2)
-        .ok_or(BountyError::ArithmeticOverflow)?;
-
-    // Apply minimum emission floor
-    config.daily_emission = new_emission.max(MINIMUM_DAILY_EMISSION);
-
-    msg!("Halving epoch advanced to {}", config.halving_epoch);
-    msg!("New daily emission: {} tokens", config.daily_emission);
-
-    // Emit event for off-chain tracking
-    emit!(HalvingAdvanced {
-        epoch: config.halving_epoch,
-        new_emission: config.daily_emission,
-        timestamp: clock.unix_timestamp,
-    });
 
     Ok(())
 }
@@ -306,30 +228,15 @@ pub fn handler_set_fee_recipients(ctx: Context<SetFeeRecipients>) -> Result<()> 
 // Events
 // ============================================================================
 
-#[event]
-pub struct HalvingAdvanced {
-    pub epoch: u8,
-    pub new_emission: u64,
-    pub timestamp: i64,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_halving_schedule() {
-        let mut emission = INITIAL_DAILY_EMISSION;
-
-        for epoch in 1..=MAX_HALVING_EPOCHS {
-            emission = emission / 2;
-            emission = emission.max(MINIMUM_DAILY_EMISSION);
-
-            println!("Epoch {}: {} tokens/day", epoch, emission);
-
-            // Verify emission never goes below minimum
-            assert!(emission >= MINIMUM_DAILY_EMISSION);
-        }
+    fn test_sigmoid_emission_initial_value() {
+        // handler_initialize sets daily_emission = EMISSION_CEILING
+        assert_eq!(EMISSION_CEILING, 16_000);
+        assert!(EMISSION_CEILING > EMISSION_FLOOR);
     }
 
     #[test]

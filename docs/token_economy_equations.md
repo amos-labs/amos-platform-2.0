@@ -175,16 +175,24 @@ Where:
 ### Daily Emission Pool
 
 ```
-E_daily = 16,000 × Halving_Multiplier
+E_daily(t) = 100 + (16,000 - 100) / (1 + e^(0.005 × (t - 1,460)))
 
-Halving Schedule:
-  Year 0-1:  × 1.00    = 16,000/day
-  Year 1-2:  × 0.50    =  8,000/day
-  Year 2-3:  × 0.25    =  4,000/day
-  Year 3-4:  × 0.125   =  2,000/day
-  Year 4-5:  × 0.0625  =  1,000/day
-  Year 5-6:  × 0.03125 =    500/day
-  Floor:     Minimum   =    100 AMOS/day
+Sigmoid Parameters:
+  EMISSION_CEILING:       16,000 AMOS/day (launch rate)
+  EMISSION_FLOOR:            100 AMOS/day (permanent minimum)
+  EMISSION_MIDPOINT_DAYS:  1,460 days (~4 years)
+  EMISSION_K_SCALED:          50 (k = 0.005)
+
+Approximate Trajectory:
+  Year 1:   ~14,500/day
+  Year 2:   ~12,300/day
+  Year 4:    ~8,050/day  (midpoint)
+  Year 6:    ~3,800/day
+  Year 8:    ~1,200/day
+  Year 10:     ~350/day
+  Year 13+:    ~100/day  (floor)
+
+First-decade total: ~25-27M tokens (~27% of 95M treasury)
 ```
 
 ### Sigmoid Pool Separation
@@ -349,7 +357,7 @@ After 90 days: Stake is confirmed permanent
 │                     KEY NUMBERS                                   │
 ├──────────────────────────────────────────────────────────────────┤
 │  Total Supply:          100,000,000 AMOS                         │
-│  Daily Emission:        16,000 AMOS (halving annually)           │
+│  Daily Emission:        16,000 → 100 AMOS (sigmoid decay)        │
 │  Base Decay:            10% annual                               │
 │  Min/Max Decay:         2% - 25% annual                          │
 │  Protocol Fee:          3% on commercial bounties                │

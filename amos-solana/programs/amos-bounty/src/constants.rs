@@ -16,20 +16,42 @@ pub const TOTAL_SUPPLY: u64 = 100_000_000;
 /// This is the pool from which bounties are distributed
 pub const TREASURY_ALLOCATION: u64 = 95_000_000;
 
-/// Initial daily emission rate (16,000 tokens per day)
-/// This represents the starting rate before any halvings occur
-pub const INITIAL_DAILY_EMISSION: u64 = 16_000;
+// ============================================================================
+// Sigmoid Emission Schedule
+//
+// emission(t) = floor + (ceiling - floor) / (1 + e^(k × (t - midpoint)))
+//
+// Smooth, ungameable decay from 16,000 AMOS/day at launch to 100 AMOS/day
+// floor. No discrete halving events. No epochs. Emission is computed directly
+// from elapsed time since launch using the same integer sigmoid math
+// (EXP_LOOKUP table) used for pool separation.
+// ============================================================================
 
-/// Number of days between halving events (365 days = 1 year)
-pub const HALVING_INTERVAL_DAYS: u64 = 365;
+/// Maximum daily emission at launch (tokens per day)
+pub const EMISSION_CEILING: u64 = 16_000;
 
-/// Minimum daily emission floor (100 tokens)
-/// Emissions will never go below this amount, ensuring ongoing rewards
-pub const MINIMUM_DAILY_EMISSION: u64 = 100;
+/// Minimum daily emission floor (tokens per day)
+/// Emission never drops below this, ensuring perpetual rewards
+pub const EMISSION_FLOOR: u64 = 100;
 
-/// Maximum number of halving epochs (10 halvings)
-/// After this, emission stays at minimum
-pub const MAX_HALVING_EPOCHS: u8 = 10;
+/// Sigmoid midpoint in days (~4 years)
+/// At this point, daily emission is halfway between ceiling and floor (~8,050/day)
+pub const EMISSION_MIDPOINT_DAYS: u64 = 1_460;
+
+/// Sigmoid steepness parameter × 10,000
+/// 50 = k of 0.005. Lower = gentler curve, higher = steeper
+pub const EMISSION_K_SCALED: u64 = 50;
+
+// Governance bounds for emission parameters (prevent capture via parameter manipulation)
+
+/// Minimum allowed EMISSION_K_SCALED (prevents flattening curve to near-linear)
+pub const EMISSION_K_MIN: u64 = 20;
+/// Maximum allowed EMISSION_K_SCALED (prevents creating quasi-halving cliff)
+pub const EMISSION_K_MAX: u64 = 200;
+/// Minimum allowed midpoint in days (can't make transition immediate)
+pub const EMISSION_MIDPOINT_MIN_DAYS: u64 = 730;
+/// Maximum allowed midpoint in days (can't push transition to infinity)
+pub const EMISSION_MIDPOINT_MAX_DAYS: u64 = 3_650;
 
 // ============================================================================
 // Protocol Fee Constants (must match amos-treasury/src/constants.rs)
@@ -503,6 +525,70 @@ pub fn sigmoid_growth_cap_bps_params(
     result.min(ceiling_bps as u64) as u16
 }
 
+// ============================================================================
+// Sigmoid Emission Computation
+// ============================================================================
+
+/// Compute daily emission for a given elapsed day using sigmoid decay.
+///
+/// Formula: emission(t) = floor + (ceiling - floor) / (1 + e^(k × (t - midpoint)))
+///
+/// Uses the same EXP_LOOKUP table and integer arithmetic as sigmoid_growth_cap_bps.
+/// Returns tokens per day (not basis points).
+pub fn sigmoid_daily_emission(elapsed_days: u64) -> u64 {
+    sigmoid_daily_emission_params(
+        elapsed_days,
+        EMISSION_CEILING,
+        EMISSION_FLOOR,
+        EMISSION_MIDPOINT_DAYS,
+        EMISSION_K_SCALED,
+    )
+}
+
+/// Parameterized version for registry-stored or configurable parameters.
+pub fn sigmoid_daily_emission_params(
+    elapsed_days: u64,
+    ceiling: u64,
+    floor: u64,
+    midpoint_days: u64,
+    k_scaled: u64,
+) -> u64 {
+    let range = ceiling.saturating_sub(floor);
+    if range == 0 {
+        return floor;
+    }
+
+    // Calculate k × (t - midpoint) in hundredths for exp_scaled lookup
+    // k_scaled is k × 10000, so k × (t - midpoint) = k_scaled × (t - midpoint) / 10000
+    // For exp_scaled we need x in hundredths: k × (t - midpoint) × 100
+    // = k_scaled × (t - midpoint) / 100
+    let diff = if elapsed_days >= midpoint_days {
+        (elapsed_days - midpoint_days) as i64
+    } else {
+        -((midpoint_days - elapsed_days) as i64)
+    };
+
+    let x_hundredths = (k_scaled as i64)
+        .checked_mul(diff)
+        .unwrap_or(i64::MAX)
+        / 100;
+
+    // e^(k × (t - midpoint)), scaled by 10000
+    let exp_val = exp_scaled(x_hundredths);
+
+    // 1 + e^(...), scaled: 10000 + exp_val
+    let denominator = 10_000u64.saturating_add(exp_val);
+
+    // range / (1 + e^(...))
+    // = range * 10000 / denominator
+    let sigmoid_value = range
+        .checked_mul(10_000)
+        .unwrap_or(u64::MAX)
+        / denominator;
+
+    floor.saturating_add(sigmoid_value)
+}
+
 /// Get the maximum concurrent claims for a given trust level
 pub fn get_max_concurrent_claims(trust_level: u8) -> Result<u8> {
     if trust_level == 0 || trust_level > 5 {
@@ -767,15 +853,77 @@ mod tests {
     }
 
     #[test]
-    fn test_halving_schedule_sensibility() {
-        let mut emission = INITIAL_DAILY_EMISSION;
-        for _ in 0..MAX_HALVING_EPOCHS {
-            emission /= 2;
-            if emission < MINIMUM_DAILY_EMISSION {
-                emission = MINIMUM_DAILY_EMISSION;
-            }
+    fn test_sigmoid_emission_at_launch() {
+        let emission = sigmoid_daily_emission(0);
+        assert!(emission >= 15_800, "Launch emission too low: {}", emission);
+        assert!(emission <= EMISSION_CEILING, "Launch emission above ceiling: {}", emission);
+    }
+
+    #[test]
+    fn test_sigmoid_emission_at_midpoint() {
+        let emission = sigmoid_daily_emission(EMISSION_MIDPOINT_DAYS);
+        let expected_mid = (EMISSION_CEILING + EMISSION_FLOOR) / 2; // ~8,050
+        let tolerance = expected_mid / 20; // 5%
+        assert!(emission >= expected_mid - tolerance, "Midpoint emission too low: {}", emission);
+        assert!(emission <= expected_mid + tolerance, "Midpoint emission too high: {}", emission);
+    }
+
+    #[test]
+    fn test_sigmoid_emission_at_maturity() {
+        let emission = sigmoid_daily_emission(5000); // ~13.7 years
+        assert!(emission >= EMISSION_FLOOR, "Below floor: {}", emission);
+        assert!(emission <= EMISSION_FLOOR + 200, "Too far above floor at maturity: {}", emission);
+    }
+
+    #[test]
+    fn test_sigmoid_emission_monotonically_decreasing() {
+        let mut prev = sigmoid_daily_emission(0);
+        for day in (1..5000).step_by(10) {
+            let current = sigmoid_daily_emission(day);
+            assert!(current <= prev, "Emission increased at day {}: {} > {}", day, current, prev);
+            prev = current;
         }
-        assert!(emission <= MINIMUM_DAILY_EMISSION);
+    }
+
+    #[test]
+    fn test_sigmoid_emission_never_below_floor() {
+        for day in (0..10000).step_by(100) {
+            let emission = sigmoid_daily_emission(day);
+            assert!(emission >= EMISSION_FLOOR, "Below floor at day {}: {}", day, emission);
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_emission_never_above_ceiling() {
+        for day in 0..10000 {
+            let emission = sigmoid_daily_emission(day);
+            assert!(emission <= EMISSION_CEILING, "Above ceiling at day {}: {}", day, emission);
+        }
+    }
+
+    #[test]
+    fn test_sigmoid_emission_sample_trajectory() {
+        let year1 = sigmoid_daily_emission(365);
+        let year2 = sigmoid_daily_emission(730);
+        let year4 = sigmoid_daily_emission(1460);
+        let year6 = sigmoid_daily_emission(2190);
+        let year8 = sigmoid_daily_emission(2920);
+        let year10 = sigmoid_daily_emission(3650);
+
+        assert!(year1 > 13_000, "Year 1 too low: {}", year1);
+        assert!(year2 > 10_000, "Year 2 too low: {}", year2);
+        assert!(year4 > 7_000 && year4 < 9_000, "Year 4 unexpected: {}", year4);
+        assert!(year6 > 2_000 && year6 < 5_000, "Year 6 unexpected: {}", year6);
+        assert!(year8 > 500 && year8 < 2_000, "Year 8 unexpected: {}", year8);
+        assert!(year10 > 100 && year10 < 500, "Year 10 unexpected: {}", year10);
+    }
+
+    #[test]
+    fn test_sigmoid_emission_governance_bounds() {
+        assert!(EMISSION_K_MIN < EMISSION_K_SCALED);
+        assert!(EMISSION_K_SCALED < EMISSION_K_MAX);
+        assert!(EMISSION_MIDPOINT_MIN_DAYS < EMISSION_MIDPOINT_DAYS);
+        assert!(EMISSION_MIDPOINT_DAYS < EMISSION_MIDPOINT_MAX_DAYS);
     }
 
     #[test]

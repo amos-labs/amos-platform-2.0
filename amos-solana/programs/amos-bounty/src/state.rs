@@ -171,12 +171,12 @@ pub struct BountyConfig {
     /// Unix timestamp when the program was initialized
     pub start_time: i64, // 8 bytes
 
-    /// Current halving epoch (0-10)
-    /// Increments every 365 days, affects daily emission rate
-    pub halving_epoch: u8, // 1 byte
+    /// Deprecated: was halving_epoch. Kept as padding for backwards-compatible account layout.
+    /// Always 0 under sigmoid emission model.
+    pub _deprecated_halving_epoch: u8, // 1 byte
 
-    /// Current daily emission rate in tokens
-    /// Starts at 16,000, halves each epoch, minimum 100
+    /// Current daily emission rate in tokens (computed via sigmoid, cached for gas efficiency)
+    /// Updated each day in prepare.rs via sigmoid_daily_emission(elapsed_days)
     pub daily_emission: u64, // 8 bytes
 
     /// Total tokens distributed across all time
@@ -208,6 +208,7 @@ pub struct BountyConfig {
 impl BountyConfig {
     /// Size calculation:
     /// 8 (discriminator) + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 64 = 276 bytes
+    /// _deprecated_halving_epoch (1 byte) kept for backwards-compatible account layout.
     pub const SIZE: usize = 8 + 32 + 32 + 32 + 8 + 1 + 8 + 8 + 8 + 8 + 2 + 1 + 32 + 32 + 64;
 }
 
@@ -726,12 +727,29 @@ pub struct ContributionTypeRegistry {
     /// Sigmoid steepness: k × 10000 (higher = sharper transition)
     pub sigmoid_k_scaled: u64, // 8
 
-    /// Reserved space
-    pub reserved: [u64; 16], // 128
+    // ── Sigmoid Emission Parameters ──────────────────────────────
+    // emission(t) = floor + (ceiling - floor) / (1 + e^(k × (t - midpoint)))
+    // Governance-tunable within bounds defined in constants.rs
+
+    /// Emission ceiling: max daily emission at launch (tokens/day)
+    pub emission_ceiling: u64, // 8
+
+    /// Emission floor: permanent min daily emission (tokens/day)
+    pub emission_floor: u64, // 8
+
+    /// Emission midpoint: days from launch when emission = (ceiling+floor)/2
+    pub emission_midpoint_days: u64, // 8
+
+    /// Emission steepness: k × 10000 (higher = sharper decay)
+    pub emission_k_scaled: u64, // 8
+
+    /// Reserved space (reduced from 16 to 12 u64s to fit emission params)
+    pub reserved: [u64; 12], // 96
 }
 
 impl ContributionTypeRegistry {
-    /// 8 (disc) + 1 + 32 + 1 + 8 + 1 + 864 + 2 + 2 + 8 + 1 + 1 + 8 + 2 + 2 + 8 + 8 + 128 = 1085
+    /// 8 (disc) + 1 + 32 + 1 + 8 + 1 + 864 + 2 + 2 + 8 + 1 + 1 + 8 + 2 + 2 + 8 + 8 + 8 + 8 + 8 + 8 + 96 = 1085
+    /// Same total as before: 4 emission u64s (32 bytes) moved from reserved (128→96).
     pub const SIZE: usize = 8   // discriminator
         + 1                      // bump
         + 32                     // authority
@@ -749,7 +767,11 @@ impl ContributionTypeRegistry {
         + 2                      // sigmoid_floor_bps
         + 8                      // sigmoid_midpoint_days
         + 8                      // sigmoid_k_scaled
-        + 128;                   // reserved
+        + 8                      // emission_ceiling
+        + 8                      // emission_floor
+        + 8                      // emission_midpoint_days
+        + 8                      // emission_k_scaled
+        + 96;                    // reserved (was 128, 32 bytes moved to emission params)
 }
 
 #[cfg(test)]

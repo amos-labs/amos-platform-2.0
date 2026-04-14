@@ -173,7 +173,7 @@ bounty_types:
 
   system:
     source: Bounty Treasury (95M allocation)
-    funding: Daily emission pool (16,000 AMOS/day, halving annually)
+    funding: Daily emission pool (sigmoid: 16,000 → 100 AMOS/day)
     protocol_fee: 0%  # No fee — treasury is already the protocol
     purpose: Build the protocol itself. Seed bounties, infrastructure, research.
     who_posts: Protocol governance / automated emission system
@@ -293,13 +293,31 @@ growth_bounties:
       - Custodial wallets convert to self-custody when user is ready
 ```
 
-### Emission Schedule
+### Emission Schedule — Sigmoid Curve
+
+Daily emission follows a smooth sigmoid decay from 16,000 AMOS/day at launch to a 100 AMOS/day floor:
+
+    emission(t) = 100 + (16,000 - 100) / (1 + e^(0.005 × (t - 1,460)))
+
 ```yaml
-initial_daily_emission: 16,000 AMOS/day  # From treasury
-halving_interval: 365 days               # Annual halving
-minimum_daily_emission: 100 AMOS/day     # Floor
-max_halving_epochs: 10                   # Prevents underflow
+emission_ceiling: 16,000 AMOS/day       # Launch emission rate
+emission_floor: 100 AMOS/day            # Permanent minimum emission
+emission_midpoint_days: 1,460            # ~4 years — emission at ~8,050/day
+emission_k_scaled: 50                    # Steepness (k = 0.005)
 ```
+
+No discrete halving events. No epochs. Emission is computed directly from elapsed time since launch using the same integer sigmoid math (EXP_LOOKUP table) used for pool separation. Fully deterministic, fully stateless.
+
+Approximate trajectory:
+- Year 1: ~14,500/day
+- Year 2: ~12,300/day
+- Year 4: ~8,050/day (midpoint)
+- Year 6: ~3,800/day
+- Year 8: ~1,200/day
+- Year 10: ~350/day
+- Year 13+: approaches 100/day floor
+
+First-decade total emission: ~25-27M tokens (~27% of 95M treasury)
 
 ### Emission Pool Separation
 Daily emission is split into two pools to prevent growth floods from diluting technical work.

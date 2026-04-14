@@ -115,20 +115,25 @@ pub const VAULT_GOLD_REDUCTION_BPS: u64 = 8_000;
 pub const VAULT_PERMANENT_REDUCTION_BPS: u64 = 9_500;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EMISSION / HALVING
+// SIGMOID EMISSION SCHEDULE
+//
+// emission(t) = floor + (ceiling - floor) / (1 + e^(k × (t - midpoint)))
+//
+// Smooth, ungameable decay from 16,000 AMOS/day at launch to 100 AMOS/day
+// floor. No discrete halving events. No epochs. Fully stateless.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Initial daily emission from treasury: 16,000 AMOS/day.
-pub const INITIAL_DAILY_EMISSION: u64 = 16_000;
+/// Maximum daily emission at launch (tokens per day).
+pub const EMISSION_CEILING: u64 = 16_000;
 
-/// Halving interval: every 365 days (annual).
-pub const HALVING_INTERVAL_DAYS: u64 = 365;
+/// Minimum daily emission floor (tokens per day).
+pub const EMISSION_FLOOR: u64 = 100;
 
-/// Minimum daily emission floor: 100 AMOS/day.
-pub const MINIMUM_DAILY_EMISSION: u64 = 100;
+/// Sigmoid midpoint in days (~4 years).
+pub const EMISSION_MIDPOINT_DAYS: u64 = 1_460;
 
-/// Maximum halving epochs (prevents underflow).
-pub const MAX_HALVING_EPOCHS: u64 = 10;
+/// Sigmoid steepness parameter × 10,000 (50 = k of 0.005).
+pub const EMISSION_K_SCALED: u64 = 50;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAKING REQUIREMENTS

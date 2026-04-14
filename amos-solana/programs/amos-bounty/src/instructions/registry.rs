@@ -127,7 +127,13 @@ pub fn handler_initialize_registry(ctx: Context<InitializeRegistry>) -> Result<(
     registry.sigmoid_midpoint_days = SIGMOID_MIDPOINT_DAYS;
     registry.sigmoid_k_scaled = SIGMOID_K_SCALED;
 
-    registry.reserved = [0; 16];
+    // Sigmoid emission parameters (governance-tunable within bounds)
+    registry.emission_ceiling = EMISSION_CEILING;
+    registry.emission_floor = EMISSION_FLOOR;
+    registry.emission_midpoint_days = EMISSION_MIDPOINT_DAYS;
+    registry.emission_k_scaled = EMISSION_K_SCALED;
+
+    registry.reserved = [0; 12];
 
     msg!("Contribution type registry initialized with 11 types (8 technical + 3 growth)");
     msg!(

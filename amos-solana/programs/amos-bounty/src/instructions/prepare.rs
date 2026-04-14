@@ -54,7 +54,8 @@ pub fn handler_prepare(ctx: Context<PrepareBountySubmission>, operator_key: Pubk
     let current_day = calculate_day_index(config.start_time)?;
     if daily_pool.day_index == 0 {
         daily_pool.day_index = current_day;
-        daily_pool.daily_emission = config.daily_emission;
+        // Compute emission from sigmoid curve — stateless, no halving epochs needed
+        daily_pool.daily_emission = sigmoid_daily_emission(current_day as u64);
         daily_pool.tokens_distributed = 0;
         daily_pool.total_points = 0;
         daily_pool.proof_count = 0;

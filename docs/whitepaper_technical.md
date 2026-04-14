@@ -536,25 +536,35 @@ Your share: 150/1,700 = 8.8%
 Your tokens: 16,000 × 8.8% = 1,412 AMOS
 ```
 
-### 6.6 Halving Schedule
+### 6.6 Sigmoid Emission Schedule
 
-Daily emission pool decreases over time to create scarcity:
+Daily emission follows a smooth sigmoid decay curve instead of discrete halvings. The sigmoid provides a predictable, ungameable schedule with no exploitable discontinuities:
 
-| Year | Daily Emission | Rationale |
-|------|----------------|-----------|
-| 0-1 | 16,000 AMOS | Bootstrap phase |
-| 1-2 | 8,000 AMOS | First halving |
-| 2-3 | 4,000 AMOS | Second halving |
-| 3-4 | 2,000 AMOS | Third halving |
-| 4-5 | 1,000 AMOS | Fourth halving |
-| 5-6 | 500 AMOS | Fifth halving |
-| 6+ | 100 AMOS | Maintenance floor |
+    emission(t) = 100 + (16,000 - 100) / (1 + e^(0.005 × (t - 1,460)))
 
-This means early contributors earn more tokens per point, but late contributors earn tokens that are likely worth more (scarcity + network effects).
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Ceiling | 16,000 AMOS/day | Launch emission rate |
+| Floor | 100 AMOS/day | Permanent minimum emission |
+| Midpoint | 1,460 days (~4 years) | Emission at ~8,050/day |
+| k | 0.005 (K_SCALED=50) | Steepness of decay curve |
+
+| Year | Approx. Daily Emission |
+|------|----------------------|
+| 0 (launch) | ~15,900 AMOS |
+| 1 | ~14,500 AMOS |
+| 2 | ~12,300 AMOS |
+| 4 (midpoint) | ~8,050 AMOS |
+| 6 | ~3,800 AMOS |
+| 8 | ~1,200 AMOS |
+| 10 | ~350 AMOS |
+| 13+ | approaches 100 AMOS (floor) |
+
+First-decade total emission: ~25-27M tokens (~27% of 95M treasury). Early contributors earn more tokens per point, but late contributors earn tokens that are likely worth more (scarcity + network effects). Uses the same integer sigmoid math (EXP_LOOKUP table) as pool separation — no floating point on-chain.
 
 ### 6.7 Sigmoid Pool Separation
 
-The daily emission (16,000 AMOS/day at launch) is split dynamically between two pools using a sigmoid function:
+The daily emission (~16,000 AMOS/day at launch, decaying via sigmoid) is split dynamically between two pools using a separate sigmoid function:
 
 **Technical Pool** (core platform work):
 - Floor: ~80% at launch
@@ -1275,7 +1285,7 @@ Token holders vote on multiple categories with different requirements:
 | **Treasury Usage** | Fund usage proposals | 5,000 | 40% | 50% (majority) |
 | **Feature Priority** | Feature prioritization | 500 | 20% | 50% (majority) |
 | **Partnership** | Strategic partnerships | 2,500 | 35% | 50% (majority) |
-| **Parameter Change** | Decay/halving adjustments | 10,000 | 50% | 66.7% (supermajority) |
+| **Parameter Change** | Decay/emission adjustments | 10,000 | 50% | 66.7% (supermajority) |
 | **Constitutional** | Core mechanic changes | 25,000 | 60% | 66.7% (supermajority) |
 
 ### 8.3 Proposal Process
@@ -1478,18 +1488,26 @@ This section models various market scenarios, stress tests, and long-term implic
 Tokens enter circulation gradually through contributor rewards:
 
 ```
-Year 0-1:  ~16,000 AMOS/day × 365 days = 5,840,000 AMOS (5.8%)
-Year 1-2:  ~8,000 AMOS/day × 365 days  = 2,920,000 AMOS (2.9%)
-Year 2-3:  ~4,000 AMOS/day × 365 days  = 1,460,000 AMOS (1.5%)
-Year 3-4:  ~2,000 AMOS/day × 365 days  =   730,000 AMOS (0.7%)
-Year 4-5:  ~1,000 AMOS/day × 365 days  =   365,000 AMOS (0.4%)
-Year 5-6:  ~500 AMOS/day × 365 days    =   182,500 AMOS (0.2%)
-Year 6+:   ~100 AMOS/day (ongoing)
+Emission follows a smooth sigmoid curve — no discrete halving events:
 
-TOTAL after 10 years: ~13,000,000 AMOS distributed (13% of supply)
+  E_daily(t) = 100 + (16,000 - 100) / (1 + e^(0.005 × (t - 1,460)))
+
+Year 0-1:   avg ~14,500 AMOS/day × 365 = ~5,292,500 AMOS (5.6%)
+Year 1-2:   avg ~12,300 AMOS/day × 365 = ~4,489,500 AMOS (4.7%)
+Year 2-3:   avg ~10,000 AMOS/day × 365 = ~3,650,000 AMOS (3.8%)
+Year 3-4:   avg  ~8,050 AMOS/day × 365 = ~2,938,250 AMOS (3.1%)
+Year 4-5:   avg  ~5,900 AMOS/day × 365 = ~2,153,500 AMOS (2.3%)
+Year 5-6:   avg  ~3,800 AMOS/day × 365 = ~1,387,000 AMOS (1.5%)
+Year 6-7:   avg  ~2,200 AMOS/day × 365 =   ~803,000 AMOS (0.8%)
+Year 7-8:   avg  ~1,200 AMOS/day × 365 =   ~438,000 AMOS (0.5%)
+Year 8-9:   avg    ~600 AMOS/day × 365 =   ~219,000 AMOS (0.2%)
+Year 9-10:  avg    ~350 AMOS/day × 365 =   ~127,750 AMOS (0.1%)
+Year 13+:   100 AMOS/day (floor, ongoing)
+
+TOTAL after 10 years: ~25-27M AMOS distributed (~27% of supply)
 ```
 
-**Key Insight**: Even after 10 years, 87% of tokens remain in the bounty treasury. This slow distribution is intentional—there's no "everyone sells" scenario because tokens are earned incrementally through bounties.
+**Key Insight**: After 10 years, ~73% of tokens remain in the bounty treasury. The sigmoid curve front-loads emission during the critical bootstrap phase while maintaining a permanent floor. There's no "everyone sells" scenario because tokens are earned incrementally through bounties, and the smooth curve eliminates gaming edges around discrete halving events.
 
 ### 11.2 Liquidity Pool Dynamics
 

@@ -1,14 +1,17 @@
 //! # Token Emission Engine
 //!
 //! Calculates the daily emission pool and per-bounty token awards
-//! with halving schedule:
+//! using a smooth sigmoid decay curve:
 //!
 //! ```text
-//! Year 0-1: 16,000 AMOS/day
-//! Year 1-2:  8,000 AMOS/day
-//! Year 2-3:  4,000 AMOS/day
-//! ...
-//! Floor:       100 AMOS/day (never goes below)
+//! emission(t) = 100 + (16,000 - 100) / (1 + e^(0.005 × (t - 1,460)))
+//!
+//! Year 0:   ~15,900/day
+//! Year 1:   ~14,500/day
+//! Year 2:   ~12,300/day
+//! Year 4:   ~8,050/day  (midpoint)
+//! Year 8:   ~1,200/day
+//! Year 13+: approaches 100/day floor
 //! ```
 //!
 //! Individual bounty award:
@@ -25,8 +28,6 @@ use crate::error::{AmosError, Result};
 pub struct DailyEmission {
     /// Day index (0-based from program start).
     pub day_index: u64,
-    /// Current halving epoch.
-    pub halving_epoch: u64,
     /// Total AMOS available for distribution today.
     pub emission: u64,
 }
@@ -100,19 +101,30 @@ impl ContributionType {
 }
 
 /// Calculate the daily emission for a given day since program start.
+///
+/// Uses a sigmoid decay curve. Off-chain version uses f64 for simplicity
+/// since determinism across validators is not required.
 pub fn daily_emission_for_day(day_index: u64) -> DailyEmission {
-    let epoch = (day_index / HALVING_INTERVAL_DAYS).min(MAX_HALVING_EPOCHS);
-
-    let emission = INITIAL_DAILY_EMISSION
-        .checked_div(1u64.checked_shl(epoch as u32).unwrap_or(1024))
-        .unwrap_or(MINIMUM_DAILY_EMISSION)
-        .max(MINIMUM_DAILY_EMISSION);
-
+    let emission = sigmoid_daily_emission(day_index);
     DailyEmission {
         day_index,
-        halving_epoch: epoch,
         emission,
     }
+}
+
+/// Compute daily emission using sigmoid decay (f64 version for off-chain use).
+///
+/// Formula: emission(t) = floor + (ceiling - floor) / (1 + e^(k × (t - midpoint)))
+pub fn sigmoid_daily_emission(elapsed_days: u64) -> u64 {
+    let ceiling = EMISSION_CEILING as f64;
+    let floor = EMISSION_FLOOR as f64;
+    let midpoint = EMISSION_MIDPOINT_DAYS as f64;
+    let k = EMISSION_K_SCALED as f64 / 10_000.0;
+
+    let exponent = k * (elapsed_days as f64 - midpoint);
+    let sigmoid = floor + (ceiling - floor) / (1.0 + exponent.exp());
+
+    (sigmoid as u64).max(EMISSION_FLOOR)
 }
 
 /// Calculate the token award for a completed bounty.
@@ -197,29 +209,77 @@ mod tests {
     use super::*;
 
     #[test]
-    fn year_0_emission_is_16k() {
+    fn launch_emission_near_ceiling() {
         let em = daily_emission_for_day(0);
-        assert_eq!(em.emission, 16_000);
-        assert_eq!(em.halving_epoch, 0);
+        assert!(
+            em.emission >= 15_800,
+            "Launch emission too low: {}",
+            em.emission
+        );
+        assert!(em.emission <= EMISSION_CEILING);
     }
 
     #[test]
-    fn year_1_emission_is_8k() {
-        let em = daily_emission_for_day(365);
-        assert_eq!(em.emission, 8_000);
-        assert_eq!(em.halving_epoch, 1);
+    fn midpoint_emission_near_halfway() {
+        let em = daily_emission_for_day(EMISSION_MIDPOINT_DAYS);
+        let expected = (EMISSION_CEILING + EMISSION_FLOOR) / 2;
+        let tolerance = expected / 20; // 5%
+        assert!(
+            em.emission >= expected - tolerance,
+            "Midpoint too low: {}",
+            em.emission
+        );
+        assert!(
+            em.emission <= expected + tolerance,
+            "Midpoint too high: {}",
+            em.emission
+        );
     }
 
     #[test]
-    fn year_2_emission_is_4k() {
-        let em = daily_emission_for_day(730);
-        assert_eq!(em.emission, 4_000);
+    fn emission_monotonically_decreasing() {
+        let mut prev = daily_emission_for_day(0).emission;
+        for day in (1..5000).step_by(10) {
+            let current = daily_emission_for_day(day).emission;
+            assert!(current <= prev, "Emission increased at day {}", day);
+            prev = current;
+        }
     }
 
     #[test]
-    fn emission_never_goes_below_floor() {
-        let em = daily_emission_for_day(365 * 20);
-        assert!(em.emission >= MINIMUM_DAILY_EMISSION);
+    fn emission_never_below_floor() {
+        for day in (0..10000).step_by(100) {
+            let em = daily_emission_for_day(day);
+            assert!(
+                em.emission >= EMISSION_FLOOR,
+                "Below floor at day {}: {}",
+                day,
+                em.emission
+            );
+        }
+    }
+
+    #[test]
+    fn emission_never_above_ceiling() {
+        for day in 0..10000 {
+            let em = daily_emission_for_day(day);
+            assert!(
+                em.emission <= EMISSION_CEILING,
+                "Above ceiling at day {}: {}",
+                day,
+                em.emission
+            );
+        }
+    }
+
+    #[test]
+    fn emission_trajectory_sample() {
+        let y1 = daily_emission_for_day(365).emission;
+        let y4 = daily_emission_for_day(1460).emission;
+        let y10 = daily_emission_for_day(3650).emission;
+        assert!(y1 > 13_000, "Year 1 too low: {}", y1);
+        assert!(y4 > 7_000 && y4 < 9_000, "Year 4 unexpected: {}", y4);
+        assert!(y10 >= 100 && y10 < 500, "Year 10 unexpected: {}", y10);
     }
 
     #[test]

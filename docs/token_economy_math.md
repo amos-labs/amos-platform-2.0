@@ -58,7 +58,7 @@
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │  Key Dynamics:                                                      │    │
-│  │  • Emission: Pool-based daily distribution (16K/day, halving)       │    │
+│  │  • Emission: Sigmoid curve (16K → 100/day, midpoint ~4yr)           │    │
 │  │  • Decay: Dynamic rate tied to platform economics (2-25%)           │    │
 │  │  • Fee Share: 50% of relay protocol fees to staked token holders    │    │
 │  │  • Fixed Supply: 100M tokens ever, deflationary                     │    │
@@ -291,29 +291,36 @@ The dynamic decay creates **organic equilibrium**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     DAILY EMISSION EQUATION                             │
+│                  DAILY EMISSION — SIGMOID CURVE                         │
 │                                                                         │
-│        E_daily = E_base × H(t)                                          │
+│  E(t) = floor + (ceiling - floor) / (1 + e^(k × (t - midpoint)))       │
 │                                                                         │
 │  Where:                                                                 │
-│  • E_base = 16,000 AMOS tokens                                          │
-│  • H(t) = Halving multiplier based on platform age                      │
+│  • ceiling = 16,000 AMOS/day (launch rate)                               │
+│  • floor   = 100 AMOS/day (permanent minimum)                            │
+│  • midpoint = 1,460 days (~4 years)                                      │
+│  • k = 0.005 (steepness, K_SCALED=50)                                    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.2 Halving Schedule
+### 6.2 Sigmoid Emission Trajectory
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     HALVING MULTIPLIER H(t)                             │
+│                   EMISSION TRAJECTORY                                   │
 │                                                                         │
-│  Year 0-1:   H = 1.00    →  16,000 tokens/day                           │
-│  Year 1-2:   H = 0.50    →   8,000 tokens/day                           │
-│  Year 2-3:   H = 0.25    →   4,000 tokens/day                           │
-│  Year 3-4:   H = 0.125   →   2,000 tokens/day                           │
-│  Year 4-5:   H = 0.0625  →   1,000 tokens/day                           │
-│  Year 5-6:   H = 0.03125 →     500 tokens/day                           │
-│  Year 6+:    Floor       →     100 tokens/day (minimum)                 │
+│  Year 0 (launch):  ~15,900 tokens/day                                   │
+│  Year 1:           ~14,500 tokens/day                                   │
+│  Year 2:           ~12,300 tokens/day                                   │
+│  Year 3:           ~10,000 tokens/day                                   │
+│  Year 4 (midpoint):~8,050 tokens/day                                    │
+│  Year 6:           ~3,800 tokens/day                                    │
+│  Year 8:           ~1,200 tokens/day                                    │
+│  Year 10:          ~350 tokens/day                                      │
+│  Year 13+:         approaches 100 tokens/day (floor)                    │
+│                                                                         │
+│  No discrete halving events. Smooth, ungameable curve.                  │
+│  First-decade total: ~25-27M tokens (~27% of 95M treasury)              │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -727,9 +734,9 @@ R_total = R_protocol (relay is the ONLY monetized layer)
 δ = max(0.02, min(0.25, 0.10 - π × 0.05))
 ```
 
-### Token Emission
+### Token Emission (Sigmoid)
 ```
-E_daily = 16,000 × H(year)  where H = halving multiplier
+E_daily = 100 + (16,000 - 100) / (1 + e^(0.005 × (day - 1,460)))
 ```
 
 ### Token Reward
@@ -858,7 +865,7 @@ Where R_holders = 50% of protocol fees
 |--------|---------|----------|
 | Token Economics | Constants & core types | `amos-core/src/token/economics.rs` |
 | Decay Engine | Dynamic decay, profit calc | `amos-core/src/token/decay.rs` |
-| Emission Engine | Points → tokens, halving | `amos-core/src/token/emission.rs` |
+| Emission Engine | Points → tokens, sigmoid | `amos-core/src/token/emission.rs` |
 | Revenue Distribution | $AMOS distribution, claims | `amos-core/src/token/revenue.rs` |
 | Trust System | Agent trust levels 1-5 | `amos-core/src/token/trust.rs` |
 | Treasury Program | On-chain revenue & staking | `amos-solana/programs/amos-treasury/` |

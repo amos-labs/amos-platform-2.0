@@ -588,17 +588,17 @@ Here's why:
 
 ### 1. Tokens Are Earned Slowly, Not Dumped At Once
 
-Unlike tokens that are given out all at once (which everyone immediately sells), AMOS tokens are earned over time through **annual halvings**:
+Unlike tokens that are given out all at once (which everyone immediately sells), AMOS tokens are earned gradually. Daily token emission starts high and smoothly decreases over time, following a mathematical curve that ensures early contributors earn more while maintaining a permanent minimum reward floor:
 
 ```
-Year 0-1:  16,000 AMOS/day = ~5.84M tokens for the year
-Year 1-2:  8,000 AMOS/day = ~2.92M tokens
-Year 2-3:  4,000 AMOS/day = ~1.46M tokens
-Year 3-4:  2,000 AMOS/day = ~730K tokens
-...
-Minimum floor: 100 AMOS/day (never goes below this)
+Launch:     ~16,000 AMOS/day = lots of tokens for early builders
+Year 1:     ~14,500 AMOS/day (gradual decrease, no sudden drops)
+Year 4:     ~8,050 AMOS/day (midpoint of the curve)
+Year 8:     ~1,200 AMOS/day
+Year 13+:   100 AMOS/day (permanent floor — never goes below this)
 
 There's never a moment where "everyone" has tokens to sell.
+No sudden 50% drops. The curve is smooth and predictable.
 ```
 
 ### 2. Selling Punishes Sellers

@@ -454,10 +454,14 @@ async fn handle_token_command(
             use amos_core::token::economics::*;
             println!("Total Supply: {} AMOS", TOTAL_SUPPLY);
             println!("Grace Period: {} days", INACTIVITY_GRACE_PERIOD_DAYS);
-            println!("Halving Interval: {} days", HALVING_INTERVAL_DAYS);
             println!(
-                "Initial Daily Emission: {} AMOS/day",
-                INITIAL_DAILY_EMISSION
+                "Emission: sigmoid curve, {} → {} AMOS/day",
+                EMISSION_CEILING, EMISSION_FLOOR
+            );
+            println!(
+                "Emission Midpoint: {} days (~{} years)",
+                EMISSION_MIDPOINT_DAYS,
+                EMISSION_MIDPOINT_DAYS / 365
             );
 
             if history {

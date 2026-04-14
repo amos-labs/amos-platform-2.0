@@ -52,13 +52,13 @@ pub struct BountyParams {
     pub contribution_multipliers: HashMap<String, u64>,
 }
 
-/// Emission schedule parameters.
+/// Emission schedule parameters (sigmoid curve).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmissionSchedule {
-    pub initial_daily_emission: u64,
-    pub halving_interval_days: u64,
-    pub minimum_daily_emission: u64,
-    pub max_halving_epochs: u64,
+    pub emission_ceiling: u64,
+    pub emission_floor: u64,
+    pub emission_midpoint_days: u64,
+    pub emission_k_scaled: u64,
 }
 
 impl AgentContext {
@@ -138,19 +138,19 @@ impl AgentContext {
             ));
         }
 
-        // Emission schedule
-        if self.emission_schedule.initial_daily_emission != economics::INITIAL_DAILY_EMISSION {
+        // Emission schedule (sigmoid)
+        if self.emission_schedule.emission_ceiling != economics::EMISSION_CEILING {
             errors.push(format!(
-                "initial_daily_emission mismatch: context={} economics={}",
-                self.emission_schedule.initial_daily_emission,
-                economics::INITIAL_DAILY_EMISSION,
+                "emission_ceiling mismatch: context={} economics={}",
+                self.emission_schedule.emission_ceiling,
+                economics::EMISSION_CEILING,
             ));
         }
-        if self.emission_schedule.halving_interval_days != economics::HALVING_INTERVAL_DAYS {
+        if self.emission_schedule.emission_floor != economics::EMISSION_FLOOR {
             errors.push(format!(
-                "halving_interval_days mismatch: context={} economics={}",
-                self.emission_schedule.halving_interval_days,
-                economics::HALVING_INTERVAL_DAYS,
+                "emission_floor mismatch: context={} economics={}",
+                self.emission_schedule.emission_floor,
+                economics::EMISSION_FLOOR,
             ));
         }
 
@@ -173,7 +173,7 @@ impl AgentContext {
             "## AMOS Protocol Context\n\
              - Total supply: {} AMOS (fixed, mint disabled)\n\
              - Treasury: {} AMOS (distributed via bounties)\n\
-             - Daily emission: {} AMOS/day (halving every {} days)\n\
+             - Emission: sigmoid curve, {} → {} AMOS/day (midpoint ~{} days)\n\
              - Minimum quality score: {}/100\n\
              - Maximum bounty points: {}\n\
              - Trust levels: 1-{} (earn through verified work)\n\
@@ -185,8 +185,9 @@ impl AgentContext {
              {}\n",
             self.token_params.total_supply,
             self.token_params.treasury_allocation,
-            self.emission_schedule.initial_daily_emission,
-            self.emission_schedule.halving_interval_days,
+            self.emission_schedule.emission_ceiling,
+            self.emission_schedule.emission_floor,
+            self.emission_schedule.emission_midpoint_days,
             self.bounty_params.min_quality_score,
             self.bounty_params.max_bounty_points,
             self.trust_levels.max_level,
@@ -293,20 +294,20 @@ impl AgentContext {
     }
 
     fn parse_emission_schedule(content: &str) -> Result<EmissionSchedule, String> {
-        let initial = Self::extract_yaml_u64(content, "initial_daily_emission")
-            .unwrap_or(economics::INITIAL_DAILY_EMISSION);
-        let halving = Self::extract_yaml_u64(content, "halving_interval")
-            .unwrap_or(economics::HALVING_INTERVAL_DAYS);
-        let minimum = Self::extract_yaml_u64(content, "minimum_daily_emission")
-            .unwrap_or(economics::MINIMUM_DAILY_EMISSION);
-        let max_epochs = Self::extract_yaml_u64(content, "max_halving_epochs")
-            .unwrap_or(economics::MAX_HALVING_EPOCHS);
+        let ceiling = Self::extract_yaml_u64(content, "emission_ceiling")
+            .unwrap_or(economics::EMISSION_CEILING);
+        let floor =
+            Self::extract_yaml_u64(content, "emission_floor").unwrap_or(economics::EMISSION_FLOOR);
+        let midpoint = Self::extract_yaml_u64(content, "emission_midpoint_days")
+            .unwrap_or(economics::EMISSION_MIDPOINT_DAYS);
+        let k_scaled = Self::extract_yaml_u64(content, "emission_k_scaled")
+            .unwrap_or(economics::EMISSION_K_SCALED);
 
         Ok(EmissionSchedule {
-            initial_daily_emission: initial,
-            halving_interval_days: halving,
-            minimum_daily_emission: minimum,
-            max_halving_epochs: max_epochs,
+            emission_ceiling: ceiling,
+            emission_floor: floor,
+            emission_midpoint_days: midpoint,
+            emission_k_scaled: k_scaled,
         })
     }
 
@@ -455,10 +456,10 @@ impl FileContextProvider {
                 contribution_multipliers: multipliers,
             },
             emission_schedule: EmissionSchedule {
-                initial_daily_emission: economics::INITIAL_DAILY_EMISSION,
-                halving_interval_days: economics::HALVING_INTERVAL_DAYS,
-                minimum_daily_emission: economics::MINIMUM_DAILY_EMISSION,
-                max_halving_epochs: economics::MAX_HALVING_EPOCHS,
+                emission_ceiling: economics::EMISSION_CEILING,
+                emission_floor: economics::EMISSION_FLOOR,
+                emission_midpoint_days: economics::EMISSION_MIDPOINT_DAYS,
+                emission_k_scaled: economics::EMISSION_K_SCALED,
             },
             bounty_lifecycle: vec![
                 "DISCOVER".into(),
@@ -539,6 +540,7 @@ mod tests {
         let prompt = ctx.to_system_prompt();
         assert!(prompt.contains("100000000"));
         assert!(prompt.contains("95000000"));
+        assert!(prompt.contains("sigmoid"));
         assert!(prompt.contains("DISCOVER"));
     }
 
@@ -596,10 +598,10 @@ level_parameters:
 min_quality_score: 30
 max_bounty_points: 2000
 max_daily_bounties: 50
-initial_daily_emission: 16,000
-halving_interval: 365
-minimum_daily_emission: 100
-max_halving_epochs: 10
+emission_ceiling: 16,000
+emission_floor: 100
+emission_midpoint_days: 1,460
+emission_k_scaled: 50
 ```
 "#;
         let ctx = AgentContext::parse(content).unwrap();
