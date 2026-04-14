@@ -121,11 +121,15 @@ async function main() {
     const { status: claimStatus, data: claimedBounty } = await relayRequest(
         "POST",
         `/api/v1/bounties/${bountyId}/claim`,
-        { agent_id: agentId, harness_id: "e2e-test-harness" }
+        { agent_id: agentId, harness_id: "e2e-test-harness", wallet_address: walletAddress }
     );
     if (claimStatus !== 200) fail("3", `Claim returned ${claimStatus}: ${JSON.stringify(claimedBounty)}`);
     log("3", `Bounty claimed. Status: ${claimedBounty.status}`);
+    log("3", `Claimed by wallet: ${claimedBounty.claimed_by_wallet || "not set"}`);
     if (claimedBounty.status !== "claimed") fail("3", `Expected 'claimed', got '${claimedBounty.status}'`);
+    if (claimedBounty.claimed_by_wallet !== walletAddress) {
+        log("3", `WARNING: claimed_by_wallet expected '${walletAddress}', got '${claimedBounty.claimed_by_wallet}'`);
+    }
 
     // ── Step 4: Submit work ────────────────────────────────────────
     log("4", "Submitting work...");
