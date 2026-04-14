@@ -528,16 +528,16 @@ fn default_redis_url() -> String {
     "redis://127.0.0.1:6379".into()
 }
 fn default_solana_rpc() -> String {
-    "https://api.devnet.solana.com".into()
+    "https://api.mainnet-beta.solana.com".into()
 }
 fn default_solana_ws() -> String {
-    "wss://api.devnet.solana.com".into()
+    "wss://api.mainnet-beta.solana.com".into()
 }
 fn default_treasury_program() -> String {
-    "3p2MqHiQVLWfvvfU7psLyEsLLVzbGwqa3bSG7avKqiYP".into()
+    "8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s".into()
 }
 fn default_governance_program() -> String {
-    "AQEf6P1qhKC2dCTMhqRh2rmKNpcQsR4ahwT1MvSoSehu".into()
+    "245xpoWLEAAPmUQxMSBDqQw5qnGfqt5roi5enuFG9fZZ".into()
 }
 fn default_bounty_program() -> String {
     "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq".into()

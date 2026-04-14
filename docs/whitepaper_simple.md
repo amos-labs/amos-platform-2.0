@@ -424,7 +424,9 @@ Example: If platform base rate is 10%:
 
 **Yes!** AMOS is a real cryptocurrency on the Solana blockchain:
 
-✅ Fixed supply (100 million, can never be more)
+- Token Mint: [`8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej`](https://solscan.io/token/8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej)
+
+✅ Fixed supply (100 million, can never be more — mint authority permanently disabled)
 ✅ Trade on real exchanges
 ✅ Store in your own wallet (Phantom, etc.)
 ✅ Not controlled by any single company

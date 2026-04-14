@@ -1886,15 +1886,17 @@ Fast revenue growth creates a significant price premium, similar to high-growth 
 
 | Network | Type | Address |
 |---------|------|---------|
-| Mainnet | Token Mint | TBD |
-| Mainnet | Treasury | TBD |
-| Mainnet | Treasury Token Account | TBD |
-| Devnet | Token Mint | `FRy8bMyGnZrTNggCD8V5Ts6wKgogMn9CjSnEK949u6Qm` |
-| Devnet | Treasury Wallet | `26ib9EpT6NhJSghU8GxDB1tTuBou3pQjhut9HXYQb71d` |
-| Devnet | Treasury Token Account | `GnL73gXxUPcazgUK6vcbQtS3Go9EkzWrTtZnpfFFgR5V` |
+| Mainnet | Token Mint | `8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej` |
+| Mainnet | Treasury Program | `8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s` |
+| Mainnet | Governance Program | `245xpoWLEAAPmUQxMSBDqQw5qnGfqt5roi5enuFG9fZZ` |
+| Mainnet | Bounty Program | `4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq` |
+| Mainnet | Treasury Token Account | `6fh9KrCT7Jv9WFMhyYQSMXwr8wu59bS2fUuv7nmJuhZX` |
+| Mainnet | Reserve Vault | `7y5GvW3nk4x8AAGkokQMBhXWG2B6vLXw9j6tiR7w7K2v` |
 
 **Explorer Links:**
-- Devnet Token: [View on Solana Explorer](https://explorer.solana.com/address/FRy8bMyGnZrTNggCD8V5Ts6wKgogMn9CjSnEK949u6Qm?cluster=devnet)
+- Mainnet Token: [View on Solscan](https://solscan.io/token/8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej)
+- Treasury Program: [View on Solscan](https://solscan.io/account/8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s)
+- Bounty Program: [View on Solscan](https://solscan.io/account/4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq)
 
 ---
 

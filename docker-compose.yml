@@ -379,9 +379,9 @@ services:
       AMOS__REDIS__POOL_SIZE: 10
 
       # Solana
-      AMOS__SOLANA__NETWORK: ${SOLANA_NETWORK:-devnet}
-      AMOS__SOLANA__RPC_URL: ${SOLANA_RPC_URL:-https://api.devnet.solana.com}
-      AMOS__SOLANA__WS_URL: ${SOLANA_WS_URL:-wss://api.devnet.solana.com}
+      AMOS__SOLANA__NETWORK: ${SOLANA_NETWORK:-mainnet}
+      AMOS__SOLANA__RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      AMOS__SOLANA__WS_URL: ${SOLANA_WS_URL:-wss://api.mainnet-beta.solana.com}
 
       # Observability
       RUST_LOG: ${RUST_LOG:-info,amos_relay=debug}
@@ -455,7 +455,7 @@ networks:
 # - AWS_ACCESS_KEY_ID
 # - AWS_SECRET_ACCESS_KEY
 #
-# Required for Solana (use devnet in dev):
+# Required for Solana:
 # - SOLANA_TREASURY_PROGRAM_ID
 # - SOLANA_GOVERNANCE_PROGRAM_ID
 # - SOLANA_BOUNTY_PROGRAM_ID
@@ -466,7 +466,7 @@ networks:
 # - POSTGRES_DB=amos_development
 # - ENVIRONMENT=development
 # - AWS_REGION=us-west-2
-# - SOLANA_NETWORK=devnet
+# - SOLANA_NETWORK=mainnet
 # - CUSTOMER_ID=dev-customer-001
 # - CUSTOMER_NAME=Development Customer
 # - RELAY_API_KEY=dev_relay_key_change_in_prod

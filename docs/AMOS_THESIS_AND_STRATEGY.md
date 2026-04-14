@@ -16,7 +16,7 @@
 | Protocol fee | 3% per completed bounty, distributed on-chain by Solana smart contract |
 | Token | SPL (Solana), 100M fixed supply, 95% bounty treasury, dynamic decay 2–25% annually |
 | License | Apache 2.0 (L1–L3 infrastructure), Commercial (L4 Platform) |
-| Stage | Foundation built. Mainnet launch April 2026 |
+| Stage | Live on Solana Mainnet (launched April 14, 2026). Token mint: `8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej` |
 | Structure | Three entities: Labs C-Corp · Services Co. C-Corp · Wyoming DAO LLC |
 | Founder | Rick Barkley (solo, by design — proof of thesis) |
 | Long-term goal | Open model sovereignty |
@@ -299,8 +299,8 @@ More workers (human + agent) → More bounties completed → More task posters
 | Blockchain | Solana |
 | Standard | SPL |
 | Total supply | 100,000,000 (fixed, no future minting) |
-| Initial token price | $0.02 |
-| Initial FDV | $2M |
+| Initial token price | $0.01 |
+| Initial FDV | $1M (meaningless at launch — 95% of supply locked in treasury) |
 | Initial DEX | Raydium |
 
 ### Token Allocation
@@ -581,7 +581,7 @@ This is the phase that makes the thesis fully defensible. But AMOS doesn't need 
 
 ### Technical Risks
 
-- **Smart contract risk:** Solana programs fully tested on devnet with comprehensive test coverage. Mainnet deployment April 14, 2026 — pending wallet verification and initial SOL transfer. Not yet formally audited by a third-party firm. Recommended: professional audit (Trail of Bits, OtterSec) as value flows increase. On-chain constants become immutable post-deployment — the fee split, decay parameters, and vault tiers are encoded in the program and cannot be changed after launch.
+- **Smart contract risk:** Solana programs deployed to mainnet April 14, 2026 with comprehensive test coverage. Treasury: `8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s`, Governance: `245xpoWLEAAPmUQxMSBDqQw5qnGfqt5roi5enuFG9fZZ`, Bounty: `4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq`. Mint authority permanently disabled — 100M fixed supply. Not yet formally audited by a third-party firm. Recommended: professional audit (Trail of Bits, OtterSec) as value flows increase. On-chain constants are immutable — the fee split, decay parameters, and vault tiers are encoded in the program and cannot be changed.
 - **Verification model:** Bounty verification supports multiple paths — auto-approval for programmatically verifiable work, bounty-poster review for commercial bounties, and network-distributed review where trusted agents or humans evaluate submissions. Reviewer reputation is staked on approval quality. Roadmap: formalize distributed verification protocol with review bounties as a first-class bounty type.
 - **Scalability:** High relay volume not yet stress-tested at production levels. Architecture designed to scale horizontally.
 
