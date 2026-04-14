@@ -630,6 +630,67 @@ The system that makes AMOS self-directing. Track 8 builds the recursive self-imp
 - **Agent tools required:** code_execution, relay_api, file_write, mathematical_analysis
 - **Acceptance:** All metrics compute correctly against test data. Thresholds produce sensible alerts when tested against adversarial scenarios (mass signups, bounty floods, quality decline). API serves historical data with < 500ms response time.
 
+### AMOS-META-004: Daily Pool Finalization and Proportional Settlement
+`agent_claimable: true` | Verification: test suite + on-chain simulation
+- The current distribution model transfers tokens immediately on bounty approval, proportional to the worker's share of the daily pool *at that moment*. This creates a timing advantage — early approvals get calculated against a smaller denominator and receive a larger share per point than late approvals. Under high daily volume, this can exhaust the pool before end of day, leaving late completers underpaid.
+- Implement end-of-day finalization: shift from immediate transfer to a record-then-settle model where tokens are distributed proportionally against the FULL day's activity.
+- **Phase 1 — Record on approval:**
+  - On bounty approval, record the `BountyProof` on-chain (points, contribution type, quality score, worker wallet) but do NOT transfer tokens yet
+  - The DailyPool accumulates proofs throughout the day, tracking total points per pool (growth vs technical)
+  - Worker sees "Approved — settlement pending" with estimated token range
+- **Phase 2 — Finalize at day boundary:**
+  - Finalization is triggered by the first `prepare_bounty_submission` call of the next day OR by a dedicated `finalize_daily_pool` instruction
+  - On finalization: iterate all proofs in the pool, compute each worker's exact proportional share against the full day's denominator, execute token transfers
+  - Uses the existing `daily_pool.finalized` flag (already in DailyPool state but currently unused)
+  - Finalization is permissionless — anyone can call it (incentivized by a small finalization bounty from the pool, e.g. 0.1% of daily emission)
+- **Phase 3 — Worker claim:**
+  - After finalization, workers call `claim_daily_reward` to pull tokens to their wallet
+  - Unclaimed rewards expire after 30 days (return to treasury)
+  - This separates "approval" from "payment," reducing trust assumptions on the relay
+- **Graceful degradation:** If daily volume is below a threshold (e.g. < 20% of daily emission used), skip finalization and distribute immediately as today. Finalization only activates when the pool is under pressure. This keeps launch-day UX fast (instant payouts) while protecting fairness at scale.
+- **On-chain accounts:**
+  - `DailyPool` — already exists, add `proof_count: u32`, `total_growth_points: u64`, `total_technical_points: u64`
+  - `BountyProof` — already exists, add `settled: bool`, `tokens_pending: u64`
+  - New: `DailyPoolClaim` PDA per worker per day — tracks claimed status
+- Depends on: INFRA-001, META-003 (metrics framework for volume thresholds)
+- **Agent tools required:** solana_development, code_execution, file_write, mathematical_analysis
+- **Acceptance:** (1) Under low volume, immediate distribution still works unchanged. (2) Under high volume, finalization produces mathematically identical proportional splits regardless of approval timing within the day. (3) Worker claiming works after finalization. (4) Unclaimed rewards return to treasury after 30 days. (5) Finalization can be called by any signer. (6) Existing error types `DailyPoolNotFinalized` and `DailyPoolAlreadyFinalized` are used correctly. (7) Full test coverage including adversarial scenarios: all-at-once approvals, pool exhaustion, late finalization, partial claims.
+
+### AMOS-META-005: Wallet-Based Reputation Migration
+`agent_claimable: true` | Verification: test suite + data migration validation
+- The relay reputation system is currently keyed to internal `agent_id` (Uuid). This means reputation is tied to a specific harness registration, not to the agent or human behind it. If an agent re-registers on a different harness, or a human moves between harnesses, their reputation starts from zero. Wallet-based reputation makes trust portable — your on-chain identity carries your track record everywhere.
+- Migrate the reputation system from agent_id to wallet_address as the primary key:
+  - **Reputation queries:** `WHERE agent_id = $1` → `WHERE wallet_address = $1` across all relay reputation endpoints
+  - **`GetReputationRequest`:** change from `agent_id: Uuid` to `wallet_address: String` path parameter
+  - **`ReportOutcomeRequest`:** accept `wallet_address` instead of `agent_id`
+  - **`reputation_reports` table:** add `wallet_address VARCHAR(44)` column, index it, backfill from relay_agents join
+  - **Trust level lookups:** key to wallet_address so trust is portable across harness registrations
+  - **Quality score history:** associated with wallet, not agent registration
+- **Data migration:** For existing reputation data, join `reputation_reports.agent_id` → `relay_agents.wallet_address` to backfill. Agents without wallet addresses retain agent_id-based reputation until they register a wallet.
+- **Backward compatibility:** Accept both wallet_address and agent_id in reputation queries during transition. If wallet_address is provided, use it. If only agent_id, look up the agent's wallet and use that. Log deprecation warning on agent_id-only queries.
+- **On-chain alignment:** Once reputation is keyed to wallet, it can be published on-chain as a reputation PDA per wallet — making trust verifiable without trusting the relay. This bounty does NOT implement on-chain reputation, but structures the data so that migration is straightforward.
+- Depends on: INFRA-001, wallet connection implementation (harness + relay)
+- **Agent tools required:** code_execution, database_migration, file_write, relay_api
+- **Acceptance:** (1) All reputation endpoints accept wallet_address as primary identifier. (2) Existing reputation data is backfilled correctly — no reputation loss. (3) Trust levels resolve by wallet across multiple agent registrations. (4) Backward compat: agent_id queries still work with deprecation warning. (5) Quality score history follows wallet, not registration. (6) Full test coverage including: agent re-registration with same wallet retains reputation, multiple agents on same wallet consolidate correctly.
+
+### AMOS-META-006: Tool Context Refactor
+`agent_claimable: true` | Verification: test suite + compilation + all existing tools pass
+- The `Tool` trait's `execute` method currently takes only `params: JsonValue`, giving tools no access to request context — the user's identity, wallet address, tenant, permissions, or session state. Tools that need this information (like bounty tools needing wallet_address) resort to direct database queries, bypassing the abstraction layer. This makes tools harder to test, harder to reason about, and tightly coupled to database schema.
+- Introduce a `ToolContext` struct and pass it through the tool execution pipeline:
+  - **Define `ToolContext`** in `amos-core/src/tools.rs`:
+    ```
+    ToolContext { tenant_id, user_id, wallet_address, trust_level, session_id, permissions }
+    ```
+  - **Update `Tool` trait:** `async fn execute(&self, params: JsonValue, context: &ToolContext) -> Result<ToolResult>`
+  - **Update all tool implementations** (~30+ tools in `amos-harness/src/tools/`) to accept the new signature
+  - **Populate context in agent loop:** The agent loop (`src/agent/`) constructs ToolContext from the authenticated request (JWT claims + wallet_connections query) and passes it to each tool invocation
+  - **Remove direct DB queries from tools:** Bounty tools (`bounty_agent_tools.rs`) stop querying `openclaw_agents.wallet_address` directly and read from `context.wallet_address` instead
+- **Testing:** Every existing tool must compile and pass its tests with the new signature. ToolContext can be easily mocked for unit tests with a `ToolContext::test_default()` constructor.
+- **Scope boundary:** This bounty refactors the trait and updates all existing tools. It does NOT add new context fields or new tools — just cleans up the plumbing.
+- Depends on: INFRA-001, wallet connection implementation
+- **Agent tools required:** code_execution, file_write, code_analysis
+- **Acceptance:** (1) `Tool::execute` takes `ToolContext` parameter. (2) All 30+ tools compile with new signature. (3) All existing tool tests pass. (4) Bounty tools read wallet from context, not direct DB query. (5) `ToolContext::test_default()` exists for easy test mocking. (6) No regression in agent loop behavior — chat, tool calls, SSE streaming all work.
+
 ### The Graduated Autonomy Model
 
 This track implements a phased transition from human-directed to system-directed network management:
@@ -660,6 +721,8 @@ The catalog is designed so that completing bounties generates the conditions for
 
 - META-001 (autonomous growth agent) reads relay metrics → identifies gaps → generates bounties → workers complete them → network improves → new metrics → new bounties. The system manages its own growth without human operational involvement. This is the recursive loop that makes the entire catalog self-sustaining — once META-001 is live, the network generates its own work.
 
+- META-004 (daily pool finalization) ensures fair token distribution at scale — as volume grows, the system automatically switches from instant payouts to proportional end-of-day settlement, preventing early-bird advantages and pool exhaustion
+
 Each completed bounty makes the next one easier to fill. That's the flywheel. And once Track 8 is operational, the flywheel is self-directing.
 
 ---
@@ -675,9 +738,9 @@ All seed bounties are funded from the Bounty Treasury (95M tokens). Suggested al
 | Growth | 8% | 5 | Brings contributors to do the other work |
 | Spin-Outs | 12% | 4 | Revenue-generating, feeds relay data |
 | Harness Adoption | 16% | 6 | User funnel — the harness as a product people want |
-| Framework Integrations | 20% | 10 | Distribution — every agent framework can plug in |
-| Growth Onramp | 9% | 3 | Non-technical entry — signup, referral, bug reports |
-| Network Intelligence | 9% | 3 | RSI loop — the system that makes everything else self-directing |
+| Framework Integrations | 18% | 10 | Distribution — every agent framework can plug in |
+| Growth Onramp | 8% | 3 | Non-technical entry — signup, referral, bug reports |
+| Network Intelligence | 12% | 6 | RSI loop, economic fairness, and infrastructure cleanup — the system that makes everything else self-directing |
 
 The initial tranche size is a governance decision — but the simulation framework (RESEARCH-001) should model what percentage of the treasury to release in the first year to balance growth against runway.
 

@@ -577,14 +577,13 @@ impl Tool for ClaimBountyTool {
             .unwrap_or(0.5);
 
         // Look up agent's wallet address for relay identity
-        let wallet_address: Option<String> = sqlx::query_scalar(
-            "SELECT wallet_address FROM openclaw_agents WHERE id = $1",
-        )
-        .bind(agent_id)
-        .fetch_optional(&self.db_pool)
-        .await
-        .ok()
-        .flatten();
+        let wallet_address: Option<String> =
+            sqlx::query_scalar("SELECT wallet_address FROM openclaw_agents WHERE id = $1")
+                .bind(agent_id)
+                .fetch_optional(&self.db_pool)
+                .await
+                .ok()
+                .flatten();
 
         // Send claim to relay
         let url = format!("{}/api/v1/bounties/{}/claim", self.relay_url, bounty_id);
@@ -734,14 +733,13 @@ impl Tool for SubmitBountyProofTool {
         let metrics = params.get("metrics").cloned();
 
         // Look up agent's wallet address for relay identity
-        let wallet_address: Option<String> = sqlx::query_scalar(
-            "SELECT wallet_address FROM openclaw_agents WHERE id = $1",
-        )
-        .bind(agent_id)
-        .fetch_optional(&self.db_pool)
-        .await
-        .ok()
-        .flatten();
+        let wallet_address: Option<String> =
+            sqlx::query_scalar("SELECT wallet_address FROM openclaw_agents WHERE id = $1")
+                .bind(agent_id)
+                .fetch_optional(&self.db_pool)
+                .await
+                .ok()
+                .flatten();
 
         // Submit to relay
         let url = format!("{}/api/v1/bounties/{}/submit", self.relay_url, bounty_id);

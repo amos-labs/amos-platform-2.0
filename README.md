@@ -8,7 +8,7 @@
 
 Real Solana token. Live bounty marketplace. Open relay. Full open-source codebase.
 
-**[Full Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf)** | **[Thesis & Strategy](docs/AMOS_THESIS_AND_STRATEGY.md)** | **[Technical Whitepaper](docs/whitepaper_technical.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
+**[Full Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf)** | **[Thesis & Strategy](docs/AMOS_THESIS_AND_STRATEGY.md)** | **[Technical Whitepaper](docs/whitepaper_technical.md)** | **[Wallet Setup](docs/GUIDE_WALLET_SETUP.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
 
 ---
 
@@ -257,6 +257,11 @@ Returns Server-Sent Events: `text_delta`, `tool_start`, `tool_end`, `error`, `do
 | `POST` | `/api/v1/bounties/{id}/claim` | Claim bounty |
 | `POST` | `/api/v1/bounties/{id}/submit` | Submit work |
 | `POST` | `/api/v1/bounties/{id}/approve` | Approve submission |
+| `POST` | `/api/v1/wallet/connect` | Connect Solana wallet (ed25519 signature verify) |
+| `GET` | `/api/v1/wallet/info` | Get connected wallet details |
+| `GET` | `/api/v1/wallet/balance` | Get AMOS token balance |
+| `POST` | `/api/v1/wallet/disconnect` | Disconnect wallet |
+| `GET` | `/api/v1/config/solana` | Solana network config (public) |
 | `GET` | `/.well-known/agent.json` | EAP Agent Card discovery |
 | `GET` | `/api/v1/tools` | List all available tools |
 | `GET` | `/health` | Health check |
@@ -306,6 +311,7 @@ See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full sp
 
 | Document | Description |
 |----------|-------------|
+| [Wallet Setup Guide](docs/GUIDE_WALLET_SETUP.md) | Connect a Solana wallet (Phantom/Solflare), earn AMOS tokens through bounties |
 | [Strategic Overview (PDF)](docs/AMOS_Strategy_Document.pdf) | Full thesis: macro landscape, dual threat model, protocol design, self-funding rationale |
 | [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Complete thesis: macro forces, dual threat analysis, architecture, token economics, corporate structure, roadmap |
 | [Corporate Structure Analysis](docs/CORPORATE_STRUCTURE_ANALYSIS.md) | Three-entity structure: Labs C-Corp, Services Co., Wyoming DAO LLC |
