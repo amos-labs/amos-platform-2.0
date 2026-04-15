@@ -417,12 +417,21 @@ async fn approve_submission(
     Path(id): Path<Uuid>,
     Json(req): Json<ApproveSubmissionRequest>,
 ) -> Result<Json<BountyResponse>, StatusCode> {
+    // Validate reviewer wallet format
+    if !crate::validate_wallet_address(&req.reviewer_wallet) {
+        warn!(
+            "Invalid reviewer wallet in approval: {}",
+            req.reviewer_wallet
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let now = Utc::now();
 
-    // First, fetch the current bounty to get the reward amount
+    // Fetch the bounty with poster and claimer wallets for separation-of-duties checks
     let current_bounty = sqlx::query(
         r#"
-        SELECT reward_tokens
+        SELECT reward_tokens, poster_wallet, claimed_by_wallet
         FROM relay_bounties
         WHERE id = $1 AND status = $2
         "#,
@@ -436,6 +445,62 @@ async fn approve_submission(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::NOT_FOUND)?;
+
+    // --- Separation of duties: prevent self-approval ---
+
+    // 1. Poster cannot approve their own bounty
+    let poster_wallet: Option<String> = current_bounty.get("poster_wallet");
+    if let Some(ref poster) = poster_wallet {
+        if poster == &req.reviewer_wallet {
+            warn!(
+                "Self-approval blocked: poster {} tried to approve bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
+    // 2. Claimer/submitter cannot approve their own submission
+    let claimed_by_wallet: Option<String> = current_bounty.get("claimed_by_wallet");
+    if let Some(ref claimer) = claimed_by_wallet {
+        if claimer == &req.reviewer_wallet {
+            warn!(
+                "Self-approval blocked: claimer {} tried to approve bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
+    // 3. Reviewer must be a registered agent with trust level >= 3
+    let reviewer_trust: Option<i16> = sqlx::query_scalar(
+        "SELECT trust_level FROM relay_agents WHERE wallet_address = $1 AND status = 'active'",
+    )
+    .bind(&req.reviewer_wallet)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to look up reviewer trust level: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    match reviewer_trust {
+        None => {
+            warn!(
+                "Reviewer {} is not a registered agent — cannot approve bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+        Some(level) if level < 3 => {
+            warn!(
+                "Reviewer {} has trust level {} (need >= 3) — cannot approve bounty {}",
+                req.reviewer_wallet, level, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+        _ => {} // trust level >= 3, proceed
+    }
 
     // Calculate protocol fee
     let reward_tokens: i64 = current_bounty.get("reward_tokens");
@@ -632,6 +697,76 @@ async fn reject_submission(
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in rejection");
         return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // --- Separation of duties: same rules as approve ---
+
+    // Fetch poster and claimer wallets
+    let bounty_check = sqlx::query(
+        "SELECT poster_wallet, claimed_by_wallet FROM relay_bounties WHERE id = $1 AND status = $2",
+    )
+    .bind(id)
+    .bind(BountyStatus::Submitted.as_str())
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to fetch bounty for rejection check {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Poster cannot reject their own bounty (could be used to grief claimers)
+    let poster_wallet: Option<String> = bounty_check.get("poster_wallet");
+    if let Some(ref poster) = poster_wallet {
+        if poster == &req.reviewer_wallet {
+            warn!(
+                "Self-rejection blocked: poster {} tried to reject bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
+    // Claimer cannot reject their own submission (use withdraw instead)
+    let claimed_by_wallet: Option<String> = bounty_check.get("claimed_by_wallet");
+    if let Some(ref claimer) = claimed_by_wallet {
+        if claimer == &req.reviewer_wallet {
+            warn!(
+                "Self-rejection blocked: claimer {} tried to reject bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
+    // Reviewer must be a registered agent with trust level >= 3
+    let reviewer_trust: Option<i16> = sqlx::query_scalar(
+        "SELECT trust_level FROM relay_agents WHERE wallet_address = $1 AND status = 'active'",
+    )
+    .bind(&req.reviewer_wallet)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to look up reviewer trust level: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    match reviewer_trust {
+        None => {
+            warn!(
+                "Reviewer {} is not a registered agent — cannot reject bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+        Some(level) if level < 3 => {
+            warn!(
+                "Reviewer {} has trust level {} (need >= 3) — cannot reject bounty {}",
+                req.reviewer_wallet, level, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+        _ => {}
     }
 
     let now = Utc::now();
