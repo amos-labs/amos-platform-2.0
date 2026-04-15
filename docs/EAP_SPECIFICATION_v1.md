@@ -276,7 +276,7 @@ Authorization: Bearer eap_{token}
   "context": {},
   "category": "internal | external",
   "priority": "integer (1=highest, 10=lowest)",
-  "reward_tokens": "integer (0 for internal tasks)",
+  "reward_tokens": "integer — bounty points, not literal AMOS (dynamic payout from daily pool)",
   "deadline_at": "ISO 8601 timestamp (optional)",
   "created_at": "ISO 8601 timestamp"
 }

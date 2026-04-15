@@ -13,6 +13,7 @@ pub mod protocol_fees;
 pub mod reputation;
 pub mod routes;
 pub mod server;
+pub mod settlement_retry;
 pub mod solana;
 pub mod state;
 

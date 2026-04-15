@@ -48,7 +48,7 @@ output_format:
     path: "sim/src/agents/active_human.rs"
   - type: "test_file"
     path: "sim/tests/active_human_test.rs"
-reward_tokens: TBD
+reward_tokens: TBD  # Points — actual AMOS payout computed dynamically from daily pool
 estimated_complexity: "small"
 agent_claimable: true
 ```

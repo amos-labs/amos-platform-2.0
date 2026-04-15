@@ -39,6 +39,12 @@ async fn main() -> Result<()> {
     state.run_migrations().await?;
     info!("Database migrations completed");
 
+    // Spawn background settlement retry task
+    let settle_state = state.clone();
+    tokio::spawn(async move {
+        amos_relay::settlement_retry::run_settlement_retry_loop(settle_state).await;
+    });
+
     // Start HTTP server
     let http_server = server::start_http_server(state);
 

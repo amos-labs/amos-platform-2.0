@@ -30,6 +30,13 @@ const BOUNTY_PROOF_SEED: &[u8] = b"bounty_proof";
 const OPERATOR_STATS_SEED: &[u8] = b"operator_stats";
 const AGENT_TRUST_SEED: &[u8] = b"agent_trust";
 
+// ── Dynamic payout constants ─────────────────────────────────────────
+/// Virtual points added to the denominator so no single submission can drain the pool.
+const VIRTUAL_POINTS_BASE: u64 = 10_000;
+
+/// One whole AMOS token in lamports (10^9).
+const ONE_TOKEN: u64 = 1_000_000_000;
+
 /// Wrapper around Solana RPC client for relay operations.
 pub struct SolanaClient {
     rpc: Arc<RpcClient>,
@@ -78,6 +85,90 @@ pub struct SettlementParams {
     pub evidence_hash: [u8; 32],
     /// Maximum token payout in lamports (reward_tokens * 10^9). 0 = no cap.
     pub max_reward: u64,
+}
+
+/// Deserialized state from the on-chain DailyPool PDA.
+#[derive(Debug, Clone)]
+pub struct DailyPoolState {
+    pub day_index: u32,
+    /// Total emission allocated for this day (in lamports, i.e. tokens × 10^9).
+    pub daily_emission: u64,
+    /// Tokens already distributed from this pool (lamports).
+    pub tokens_distributed: u64,
+    /// Total points accumulated across all bounties today.
+    pub total_points: u64,
+    /// Number of bounty proofs submitted today.
+    pub proof_count: u32,
+}
+
+/// Compute the dynamic max_reward for a bounty using the combined
+/// virtual-points + time-drip formula.
+///
+/// ```text
+/// seconds_elapsed = now - day_start
+/// emission_so_far = daily_emission × seconds_elapsed / 86400
+/// available_pool  = emission_so_far - tokens_already_distributed
+/// denominator     = total_points_today + VIRTUAL_POINTS_BASE + my_points
+/// max_reward      = (my_points / denominator) × available_pool
+/// ```
+///
+/// `start_time` is the on-chain program start timestamp (BountyConfig.start_time).
+/// `points` is the submitter's base_points for this bounty.
+/// Returns max_reward in lamports (tokens × 10^9).
+pub fn compute_dynamic_max_reward(
+    points: u64,
+    pool: &DailyPoolState,
+    start_time: i64,
+    now: i64,
+) -> u64 {
+    if points == 0 || pool.daily_emission == 0 {
+        return 0;
+    }
+
+    // When did this day start?
+    let day_start = start_time + (pool.day_index as i64) * 86400;
+    let seconds_elapsed = (now - day_start).max(0) as u64;
+    let seconds_in_day: u64 = 86400;
+
+    // Time-drip: only the fraction of emission that has "dripped" so far is available
+    // Use u128 to avoid overflow: daily_emission (up to ~16000 * 10^9) × seconds_elapsed
+    let emission_so_far = ((pool.daily_emission as u128) * (seconds_elapsed as u128)
+        / (seconds_in_day as u128)) as u64;
+
+    // Available pool = what has dripped minus what's already been paid out
+    let available = emission_so_far.saturating_sub(pool.tokens_distributed);
+    if available == 0 {
+        return 0;
+    }
+
+    // Virtual-points-adjusted proportional share
+    // denominator = total_points_today + VIRTUAL_BASE + my_points
+    let denominator = pool.total_points + VIRTUAL_POINTS_BASE + points;
+    if denominator == 0 {
+        return 0;
+    }
+
+    // max_reward = (points / denominator) × available
+    // Use u128 to prevent overflow
+    let max_reward = ((points as u128) * (available as u128) / (denominator as u128)) as u64;
+
+    // Safety floor: at least 1 token (10^9 lamports) if any emission is available,
+    // so dust submissions still get something.
+    max_reward.max(ONE_TOKEN.min(available))
+}
+
+/// Compute a fallback max_reward when the on-chain pool cannot be read
+/// (e.g., pool not created yet, RPC error). Uses a conservative estimate
+/// based on the sigmoid emission schedule.
+pub fn fallback_max_reward(points: u64) -> u64 {
+    // Conservative: assume day 0 emission (16,000 AMOS), full day elapsed,
+    // 10,000 total_points already accumulated. This underestimates payout
+    // which is the safe direction (on-chain proportional formula still runs).
+    let daily_emission: u64 = 16_000 * ONE_TOKEN;
+    let assumed_total_points: u64 = 10_000;
+    let denominator = assumed_total_points + VIRTUAL_POINTS_BASE + points;
+    let max_reward = ((points as u128) * (daily_emission as u128) / (denominator as u128)) as u64;
+    max_reward.max(ONE_TOKEN)
 }
 
 impl SolanaClient {
@@ -458,6 +549,103 @@ impl SolanaClient {
             operator_tokens: 0, // Actual amount determined by on-chain pool math
             reviewer_tokens: 0,
         })
+    }
+
+    // ── Dynamic Pool Reader ─────────────────────────────────────────
+
+    /// Read the on-chain BountyConfig start_time.
+    /// Returns (start_time, day_index) for the current moment.
+    pub async fn read_config_timing(&self) -> Result<(i64, u32)> {
+        let program_id = self.bounty_program_id;
+        let (config_pda, _) = Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+
+        let rpc = self.rpc.clone();
+        let (start_time, now) = tokio::task::spawn_blocking(move || {
+            let account = rpc
+                .get_account(&config_pda)
+                .map_err(|e| AmosError::SolanaRpc(format!("Failed to fetch config: {}", e)))?;
+            let data = account.data;
+            if data.len() < 112 {
+                return Err(AmosError::Internal("Config account too small".into()));
+            }
+            // Layout: 8 disc + 32 oracle + 32 mint + 32 treasury + 8 start_time
+            let ts = i64::from_le_bytes(data[104..112].try_into().map_err(|_| {
+                AmosError::Internal("Config start_time slice conversion failed".into())
+            })?);
+            let now = chrono::Utc::now().timestamp();
+            Ok::<(i64, i64), AmosError>((ts, now))
+        })
+        .await
+        .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
+
+        let day_index = ((now - start_time) / 86400) as u32;
+        Ok((start_time, day_index))
+    }
+
+    /// Read the on-chain DailyPool PDA for a given day_index.
+    /// Returns `None` if the account doesn't exist yet (no submissions today).
+    pub async fn read_daily_pool(&self, day_index: u32) -> Result<Option<DailyPoolState>> {
+        let program_id = self.bounty_program_id;
+        let (daily_pool_pda, _) =
+            Pubkey::find_program_address(&[DAILY_POOL_SEED, &day_index.to_le_bytes()], &program_id);
+
+        let rpc = self.rpc.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            match rpc.get_account(&daily_pool_pda) {
+                Ok(account) => {
+                    let data = account.data;
+                    // DailyPool layout (after 8-byte Anchor discriminator):
+                    //   day_index: u32 (4)
+                    //   daily_emission: u64 (8)
+                    //   tokens_distributed: u64 (8)
+                    //   total_points: u64 (8)
+                    //   proof_count: u32 (4)
+                    //   finalized: bool (1)
+                    //   bump: u8 (1)
+                    //   growth_tokens_distributed: u64 (8)
+                    //   growth_points: u64 (8)
+                    //   technical_tokens_distributed: u64 (8)
+                    //   technical_points: u64 (8)
+                    if data.len() < 8 + 4 + 8 + 8 + 8 + 4 + 1 + 1 + 8 + 8 + 8 + 8 {
+                        return Err(AmosError::Internal("DailyPool account too small".into()));
+                    }
+                    let off = 8; // skip discriminator
+                    let daily_emission =
+                        u64::from_le_bytes(data[off + 4..off + 12].try_into().unwrap());
+                    let tokens_distributed =
+                        u64::from_le_bytes(data[off + 12..off + 20].try_into().unwrap());
+                    let total_points =
+                        u64::from_le_bytes(data[off + 20..off + 28].try_into().unwrap());
+                    let proof_count =
+                        u32::from_le_bytes(data[off + 28..off + 32].try_into().unwrap());
+
+                    Ok(Some(DailyPoolState {
+                        day_index,
+                        daily_emission,
+                        tokens_distributed,
+                        total_points,
+                        proof_count,
+                    }))
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if err_str.contains("AccountNotFound")
+                        || err_str.contains("could not find account")
+                    {
+                        Ok(None) // Pool not created yet today
+                    } else {
+                        Err(AmosError::SolanaRpc(format!(
+                            "Failed to fetch daily pool: {}",
+                            e
+                        )))
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
+
+        Ok(result)
     }
 
     /// Burn protocol fees (ops/burn share) by sending tokens to the burn address.
@@ -1251,5 +1439,162 @@ mod tests {
             .is_err());
 
         let _ = std::fs::remove_file(tmpfile);
+    }
+
+    // ── Dynamic max_reward computation ────────────────────────────────
+
+    fn make_pool(
+        daily_emission: u64,
+        tokens_distributed: u64,
+        total_points: u64,
+    ) -> DailyPoolState {
+        DailyPoolState {
+            day_index: 0,
+            daily_emission,
+            tokens_distributed,
+            total_points,
+            proof_count: 0,
+        }
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_basic() {
+        // Day 0, noon (half the day elapsed), 16,000 AMOS emission
+        let pool = make_pool(16_000 * ONE_TOKEN, 0, 0);
+        let start_time = 1000;
+        let now = start_time + 43200; // 12 hours elapsed
+
+        // 1000 points, no prior points, no prior distribution
+        let reward = compute_dynamic_max_reward(1000, &pool, start_time, now);
+
+        // emission_so_far = 16000 * 43200 / 86400 = 8000 AMOS = 8_000_000_000_000
+        // denominator = 0 + 10000 + 1000 = 11000
+        // reward = 1000/11000 * 8000 AMOS = ~727.27 AMOS
+        let expected = ((1000u128 * 8_000 * ONE_TOKEN as u128) / 11_000u128) as u64;
+        assert_eq!(reward, expected);
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_with_competition() {
+        // Half day, 8000 AMOS already distributed, 15000 total_points
+        let pool = make_pool(
+            16_000 * ONE_TOKEN,
+            4_000 * ONE_TOKEN, // 4000 AMOS already paid out
+            15_000,            // 15000 points accumulated
+        );
+        let start_time = 1000;
+        let now = start_time + 43200; // noon
+
+        let reward = compute_dynamic_max_reward(1000, &pool, start_time, now);
+
+        // emission_so_far = 8000 AMOS, available = 8000 - 4000 = 4000 AMOS
+        // denominator = 15000 + 10000 + 1000 = 26000
+        // reward = 1000/26000 * 4000 AMOS ≈ 153.8 AMOS
+        let expected = ((1000u128 * 4_000 * ONE_TOKEN as u128) / 26_000u128) as u64;
+        assert_eq!(reward, expected);
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_shrinks_over_day() {
+        let emission = 16_000 * ONE_TOKEN;
+
+        // Morning: 8am, no prior activity
+        let pool_8am = make_pool(emission, 0, 0);
+        let start = 0;
+        let at_8am = 8 * 3600; // 8 hours
+
+        let reward_8am = compute_dynamic_max_reward(1000, &pool_8am, start, at_8am);
+
+        // Afternoon: 4pm, some activity already
+        let pool_4pm = make_pool(emission, 3_000 * ONE_TOKEN, 5_000);
+        let at_4pm = 16 * 3600; // 16 hours
+
+        let reward_4pm = compute_dynamic_max_reward(1000, &pool_4pm, start, at_4pm);
+
+        // Evening: 10pm, lots of activity
+        let pool_10pm = make_pool(emission, 10_000 * ONE_TOKEN, 20_000);
+        let at_10pm = 22 * 3600;
+
+        let reward_10pm = compute_dynamic_max_reward(1000, &pool_10pm, start, at_10pm);
+
+        // Rewards should decrease as the day fills up
+        assert!(
+            reward_8am > reward_4pm,
+            "8am ({}) should beat 4pm ({})",
+            reward_8am,
+            reward_4pm
+        );
+        assert!(
+            reward_4pm > reward_10pm,
+            "4pm ({}) should beat 10pm ({})",
+            reward_4pm,
+            reward_10pm
+        );
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_zero_points() {
+        let pool = make_pool(16_000 * ONE_TOKEN, 0, 0);
+        assert_eq!(compute_dynamic_max_reward(0, &pool, 0, 43200), 0);
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_zero_emission() {
+        let pool = make_pool(0, 0, 0);
+        assert_eq!(compute_dynamic_max_reward(1000, &pool, 0, 43200), 0);
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_pool_exhausted() {
+        // Everything already distributed
+        let pool = make_pool(16_000 * ONE_TOKEN, 16_000 * ONE_TOKEN, 50_000);
+        let reward = compute_dynamic_max_reward(1000, &pool, 0, 86400);
+        // available = emission_so_far (16000) - distributed (16000) = 0
+        assert_eq!(reward, 0);
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_minimum_floor() {
+        // Very small points, should still get at least 1 AMOS (the floor)
+        let pool = make_pool(16_000 * ONE_TOKEN, 0, 100_000);
+        let reward = compute_dynamic_max_reward(1, &pool, 0, 43200);
+        assert!(
+            reward >= ONE_TOKEN,
+            "Minimum floor should be 1 AMOS, got {}",
+            reward
+        );
+    }
+
+    #[test]
+    fn test_dynamic_max_reward_virtual_base_prevents_drain() {
+        // First submitter of the day with 2000 points (max trust level)
+        let pool = make_pool(16_000 * ONE_TOKEN, 0, 0);
+        let reward = compute_dynamic_max_reward(2000, &pool, 0, 86400); // full day
+
+        // Without virtual base: 2000/2000 = 100% of 16000 = 16000 AMOS
+        // With virtual base: 2000/(0+10000+2000) = 16.67% of 16000 = ~2667 AMOS
+        let full_emission = 16_000 * ONE_TOKEN;
+        assert!(
+            reward < full_emission / 2,
+            "Virtual base should prevent >50% drain, got {}",
+            reward
+        );
+    }
+
+    #[test]
+    fn test_fallback_max_reward() {
+        let reward = fallback_max_reward(1000);
+        // 1000 / (10000 + 10000 + 1000) * 16000 AMOS ≈ 762 AMOS
+        let expected = ((1000u128 * 16_000 * ONE_TOKEN as u128) / 21_000u128) as u64;
+        assert_eq!(reward, expected);
+    }
+
+    #[test]
+    fn test_fallback_max_reward_minimum() {
+        let reward = fallback_max_reward(1);
+        assert!(
+            reward >= ONE_TOKEN,
+            "Fallback should return at least 1 AMOS"
+        );
     }
 }

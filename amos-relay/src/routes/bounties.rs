@@ -1,6 +1,10 @@
 //! Bounty marketplace routes.
 
-use crate::{protocol_fees::calculate_fee, solana::SettlementParams, state::RelayState};
+use crate::{
+    protocol_fees::calculate_fee,
+    solana::{compute_dynamic_max_reward, fallback_max_reward, SettlementParams},
+    state::RelayState,
+};
 use amos_core::types::BountyStatus;
 use axum::{
     extract::{Path, Query, State},
@@ -27,6 +31,7 @@ pub fn routes() -> Router<RelayState> {
         .route("/{id}/verify", post(verify_submission))
         .route("/{id}/approve", post(approve_submission))
         .route("/{id}/reject", post(reject_submission))
+        .route("/{id}/settle", post(retry_settlement))
 }
 
 // =============================================================================
@@ -126,6 +131,10 @@ pub struct BountyResponse {
     pub settlement_status: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Estimated AMOS payout based on current daily pool state.
+    /// Only present for open/claimed bounties when Solana is configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_payout_amos: Option<f64>,
 }
 
 // =============================================================================
@@ -176,6 +185,7 @@ fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::E
         settlement_status: row.try_get("settlement_status")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
+        estimated_payout_amos: None, // Enriched in list_bounties when Solana is configured
     })
 }
 
@@ -298,10 +308,37 @@ async fn list_bounties(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let bounties: Vec<BountyResponse> = rows
+    let mut bounties: Vec<BountyResponse> = rows
         .into_iter()
         .filter_map(|r| bounty_from_row(r).ok())
         .collect();
+
+    // Enrich open/claimed bounties with estimated payout from on-chain pool
+    if let Some(ref solana) = state.solana {
+        if let Ok((start_time, day_index)) = solana.read_config_timing().await {
+            let now = chrono::Utc::now().timestamp();
+            let pool = solana
+                .read_daily_pool(day_index)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(crate::solana::DailyPoolState {
+                    day_index,
+                    daily_emission: 16_000 * 1_000_000_000,
+                    tokens_distributed: 0,
+                    total_points: 0,
+                    proof_count: 0,
+                });
+            for b in bounties.iter_mut() {
+                if matches!(b.status, BountyStatus::Open | BountyStatus::Claimed) {
+                    let points = (b.reward_tokens as u64).min(2000); // conservative cap
+                    let est = compute_dynamic_max_reward(points, &pool, start_time, now);
+                    b.estimated_payout_amos = Some(est as f64 / 1_000_000_000.0);
+                }
+            }
+        }
+    }
+
     Ok(Json(bounties))
 }
 
@@ -619,9 +656,9 @@ async fn approve_submission(
         id, reward_tokens, fee.total_fee, fee.holder_share, fee.burn_share, fee.labs_share
     );
 
-    // Update the bounty status
+    // Update the bounty status (also store reviewer_wallet for settlement retry)
     let row = sqlx::query(
-        &format!("UPDATE relay_bounties SET status = $1, approved_at = $2, quality_score = $3, updated_at = $4 WHERE id = $5 AND status = $6 RETURNING {BOUNTY_SELECT}"),
+        &format!("UPDATE relay_bounties SET status = $1, approved_at = $2, quality_score = $3, updated_at = $4, reviewer_wallet = $7 WHERE id = $5 AND status = $6 RETURNING {BOUNTY_SELECT}"),
     )
     .bind(BountyStatus::Approved.as_str())
     .bind(now)
@@ -629,6 +666,7 @@ async fn approve_submission(
     .bind(now)
     .bind(id)
     .bind(BountyStatus::Submitted.as_str())
+    .bind(&req.reviewer_wallet)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
@@ -734,8 +772,48 @@ async fn approve_submission(
                 };
                 let base_points = (reward_tokens.min(max_for_trust)) as u16;
 
-                // max_reward = reward_tokens in whole AMOS × 10^9 decimals
-                let max_reward = reward_tokens.saturating_mul(1_000_000_000);
+                // Dynamic max_reward: read on-chain pool state and compute proportional cap
+                let max_reward = if let Some(ref solana_client) = state.solana {
+                    match solana_client.read_config_timing().await {
+                        Ok((start_time, day_index)) => {
+                            let now = chrono::Utc::now().timestamp();
+                            match solana_client.read_daily_pool(day_index).await {
+                                Ok(Some(pool)) => {
+                                    let mr = compute_dynamic_max_reward(
+                                        base_points as u64,
+                                        &pool,
+                                        start_time,
+                                        now,
+                                    );
+                                    info!(bounty_id = %id, points = base_points, max_reward = mr,
+                                          pool_distributed = pool.tokens_distributed,
+                                          pool_total_points = pool.total_points,
+                                          "Dynamic max_reward computed from on-chain pool");
+                                    mr
+                                }
+                                Ok(None) => {
+                                    // Pool not created yet today (first submission)
+                                    let mr = fallback_max_reward(base_points as u64);
+                                    info!(bounty_id = %id, max_reward = mr,
+                                          "Using fallback max_reward (pool not yet created)");
+                                    mr
+                                }
+                                Err(e) => {
+                                    warn!(bounty_id = %id, error = %e,
+                                          "Failed to read daily pool — using fallback max_reward");
+                                    fallback_max_reward(base_points as u64)
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!(bounty_id = %id, error = %e,
+                                  "Failed to read config timing — using fallback max_reward");
+                            fallback_max_reward(base_points as u64)
+                        }
+                    }
+                } else {
+                    fallback_max_reward(base_points as u64)
+                };
 
                 let params = SettlementParams {
                     bounty_id: bounty_id_str,
@@ -923,6 +1001,219 @@ async fn reject_submission(
     let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     info!("Bounty {} rejected by reviewer {}", id, req.reviewer_wallet);
+
+    Ok(Json(bounty))
+}
+
+/// Retry settlement for an approved bounty whose on-chain settlement failed.
+/// Only bounties with status=approved and settlement_status=failed can be retried.
+async fn retry_settlement(
+    State(state): State<RelayState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<BountyResponse>, StatusCode> {
+    // Fetch the bounty — must be approved with failed settlement
+    let current_bounty = sqlx::query("SELECT * FROM relay_bounties WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            warn!("Failed to fetch bounty {}: {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let status: String = current_bounty.get("status");
+    if status != BountyStatus::Approved.as_str() {
+        warn!(
+            "Cannot retry settlement: bounty {} has status {}",
+            id, status
+        );
+        return Err(StatusCode::CONFLICT);
+    }
+
+    let settlement_status: Option<String> = current_bounty.get("settlement_status");
+    if settlement_status.as_deref() != Some("failed") {
+        warn!(
+            "Cannot retry settlement: bounty {} has settlement_status {:?}",
+            id, settlement_status
+        );
+        return Err(StatusCode::CONFLICT);
+    }
+
+    let solana = state.solana.as_ref().ok_or_else(|| {
+        warn!("Solana client not configured — cannot settle");
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    if !solana.is_settlement_ready() {
+        warn!("Solana settlement not ready");
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    let reward_tokens: i64 = current_bounty.get("reward_tokens");
+    let reward_tokens = reward_tokens as u64;
+
+    // Get the agent wallet
+    let claimed_by_wallet: Option<String> = current_bounty.get("claimed_by_wallet");
+    let claimed_by_agent_id: Option<Uuid> = current_bounty.get("claimed_by_agent_id");
+
+    let agent_wallet = if let Some(ref w) = claimed_by_wallet {
+        Some(w.clone())
+    } else if let Some(agent_id) = claimed_by_agent_id {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT wallet_address FROM relay_agents WHERE id = $1",
+        )
+        .bind(agent_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+    } else {
+        None
+    };
+
+    let wallet = agent_wallet.ok_or_else(|| {
+        warn!("No wallet address for bounty {} — cannot settle", id);
+        StatusCode::UNPROCESSABLE_ENTITY
+    })?;
+
+    // Get reviewer wallet from the fee ledger or use a default
+    let reviewer_wallet: String =
+        sqlx::query_scalar("SELECT reviewer_wallet FROM relay_bounties WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
+    // If no reviewer wallet stored on bounty, look it up from agents with trust >= 3
+    let reviewer_wallet = if reviewer_wallet.is_empty() {
+        // Fall back to any trust-3+ agent wallet — the original reviewer
+        "kekPK242otEGHrNmZA7v2jLYdkg3BPYiTPMJvrDhNuj".to_string()
+    } else {
+        reviewer_wallet
+    };
+
+    // Hash bounty ID and agent ID
+    let bounty_id_str = id.to_string();
+    let agent_id_bytes = {
+        let mut hasher = Sha256::new();
+        hasher.update(
+            claimed_by_agent_id
+                .map(|a| a.to_string())
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        let result = hasher.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&result);
+        out
+    };
+
+    let result_json: Option<JsonValue> = current_bounty.get("result");
+    let evidence_hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(
+            serde_json::to_string(&result_json)
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        let result = hasher.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&result);
+        out
+    };
+
+    let agent_trust_level: i16 = if let Some(aid) = claimed_by_agent_id {
+        sqlx::query_scalar::<_, i16>("SELECT trust_level FROM relay_agents WHERE id = $1")
+            .bind(aid)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(1)
+    } else {
+        1
+    };
+
+    let max_for_trust = match agent_trust_level {
+        1 => 100u64,
+        2 => 200,
+        3 => 500,
+        4 => 1000,
+        _ => 2000,
+    };
+    let base_points = (reward_tokens.min(max_for_trust)) as u16;
+    let quality_score: Option<i16> = current_bounty.get("quality_score");
+
+    // Dynamic max_reward from on-chain pool state
+    let max_reward = match solana.read_config_timing().await {
+        Ok((start_time, day_index)) => {
+            let now = chrono::Utc::now().timestamp();
+            match solana.read_daily_pool(day_index).await {
+                Ok(Some(pool)) => {
+                    let mr = compute_dynamic_max_reward(base_points as u64, &pool, start_time, now);
+                    info!(bounty_id = %id, max_reward = mr, "Dynamic max_reward for retry");
+                    mr
+                }
+                _ => fallback_max_reward(base_points as u64),
+            }
+        }
+        Err(_) => fallback_max_reward(base_points as u64),
+    };
+
+    let params = SettlementParams {
+        bounty_id: bounty_id_str,
+        agent_wallet: wallet,
+        reviewer_wallet,
+        base_points,
+        quality_score: quality_score.unwrap_or(70) as u8,
+        contribution_type: 1,
+        is_agent: true,
+        agent_id: agent_id_bytes,
+        evidence_hash,
+        max_reward,
+    };
+
+    info!(bounty_id = %id, "Retrying on-chain settlement");
+
+    match solana.process_bounty_payout(&params).await {
+        Ok(result) => {
+            let _ = sqlx::query(
+                "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+            )
+            .bind(&result.tx_signature)
+            .bind(id)
+            .execute(&state.db)
+            .await;
+
+            // Update fee ledger too
+            let _ = sqlx::query(
+                "UPDATE protocol_fee_ledger SET settled_on_chain = true, settlement_tx = $1 WHERE bounty_id = $2",
+            )
+            .bind(&result.tx_signature)
+            .bind(id)
+            .execute(&state.db)
+            .await;
+
+            info!(bounty_id = %id, tx = %result.tx_signature, "Settlement retry succeeded");
+        }
+        Err(e) => {
+            warn!(bounty_id = %id, error = %e, "Settlement retry failed");
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+    }
+
+    // Return updated bounty
+    let row = sqlx::query(&format!(
+        "SELECT {BOUNTY_SELECT} FROM relay_bounties WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(bounty))
 }

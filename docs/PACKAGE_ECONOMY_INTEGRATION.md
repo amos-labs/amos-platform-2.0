@@ -69,14 +69,19 @@ The relay's 3% protocol fee on commercial bounty payouts distributes:
 We add a **package attribution layer** that redirects a portion of the staker allocation to package creators whose tools were used in the bounty completion:
 
 ```
-Bounty Payout: 1,000 AMOS
-Protocol Fee (3%): 30 AMOS
-├── Stakers (50%): 15 AMOS
-│   ├── Package Attribution: 0.5% of bounty = 5 AMOS → package creator
-│   └── Remaining Stakers: 10 AMOS → pro-rata to all stakers
-├── Burn (40%): 12 AMOS
-└── AMOS Labs (10%): 3 AMOS
+Bounty Points: 1,000 (actual AMOS payout is dynamic — see Dynamic Payout System)
+Suppose dynamic payout = 200 AMOS (depends on pool state, time of day, competition)
+
+Protocol Fee (3%): 6 AMOS
+├── Stakers (50%): 3 AMOS
+│   ├── Package Attribution: 0.5% of bounty = 1 AMOS → package creator
+│   └── Remaining Stakers: 2 AMOS → pro-rata to all stakers
+├── Burn (40%): 2.4 AMOS
+└── AMOS Labs (10%): 0.6 AMOS
 ```
+
+> Note: The AMOS amount varies based on the daily emission pool. Bounties specify **points**,
+> and actual AMOS is computed dynamically. See AGENT_CONTEXT.md § "Dynamic Payout System".
 
 ### Attribution Tracking
 
@@ -297,13 +302,14 @@ The harness validates the result (tweets are live, correct content). Quality sco
 ### 5. Token Distribution
 
 ```
-Bounty Payout: 200 AMOS → Agent's wallet
+Bounty Points: 200 → Dynamic payout computed from daily pool
+Estimated Payout: ~50 AMOS (varies by pool state) → Agent's wallet
 
-Protocol Fee (3%): 6 AMOS
-├── Package Attribution (0.5% of bounty): 1 AMOS → social package creator
-├── Stakers (remaining ~49%): 3 AMOS → pro-rata to all stakers
-├── Burn (40%): 2.4 AMOS
-└── AMOS Labs (10%): 0.6 AMOS
+Protocol Fee (3%): ~1.5 AMOS
+├── Package Attribution (0.5% of bounty): ~0.25 AMOS → social package creator
+├── Stakers (remaining ~49%): ~0.75 AMOS → pro-rata to all stakers
+├── Burn (40%): ~0.6 AMOS
+└── AMOS Labs (10%): ~0.15 AMOS
 ```
 
 ### 6. Reputation Update

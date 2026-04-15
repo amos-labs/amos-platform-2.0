@@ -225,20 +225,48 @@ Growth pool = min(sigmoid_cap, natural_weighted_share)
 Unused growth allocation rolls into technical pool
 ```
 
-### Your Token Reward
+### Your Token Reward (Dynamic Payout)
+
+Bounty rewards are **points**, not literal AMOS amounts. The actual AMOS payout is computed
+using three anti-gaming mechanisms:
 
 ```
-                Your Points
-Your Tokens = ────────────── × Daily Pool
-              Total Points
+1. Time Drip — Pool fills gradually over 24 hours:
+   emission_so_far = E_daily × seconds_elapsed / 86,400
+
+2. Available Pool — What's dripped minus what's been paid:
+   available = emission_so_far - tokens_distributed_today
+
+3. Virtual Points Floor — Prevents first-mover drain:
+   VIRTUAL_BASE = 10,000 (always added to denominator)
+
+Combined Formula:
+                        Your Points
+Your Tokens = ────────────────────────────────────────── × available
+              Total Points Today + VIRTUAL_BASE + Your Points
 ```
 
-**Example:**
+**Example — Day 0 (emission = 16,000 AMOS), noon, some activity:**
 ```
-You: 100 points, Total: 5,000 points, Pool: 16,000 AMOS
+Your points: 1000, Total points today: 8,000
+Emission dripped so far: 16,000 × 43,200/86,400 = 8,000 AMOS
+Already distributed: 4,000 AMOS
+Available: 8,000 - 4,000 = 4,000 AMOS
 
-Your Tokens = (100 / 5,000) × 16,000 = 320 AMOS
+Your Tokens = (1,000 / (8,000 + 10,000 + 1,000)) × 4,000 = 210.5 AMOS
 ```
+
+**Without virtual base** (susceptible to first-mover drain):
+```
+If you're first at midnight: 1,000 / (0 + 1,000) × pool = 100% of pool!
+```
+
+**With virtual base** (safe):
+```
+If you're first at midnight: 1,000 / (0 + 10,000 + 1,000) × pool = 9.1% of pool
+```
+
+Pool status: `GET /api/v1/pool/today` returns current state and estimated AMOS per 1000 points.
 
 ---
 

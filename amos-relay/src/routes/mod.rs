@@ -4,6 +4,7 @@ pub mod agents;
 pub mod bounties;
 pub mod harnesses;
 pub mod health;
+pub mod pool;
 pub mod reputation;
 
 use crate::state::RelayState;
@@ -16,4 +17,5 @@ pub fn api_routes() -> Router<RelayState> {
         .nest("/agents", agents::routes())
         .nest("/reputation", reputation::routes())
         .nest("/harnesses", harnesses::routes())
+        .nest("/pool", pool::routes())
 }

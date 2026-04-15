@@ -443,33 +443,44 @@ The token economy accommodates multiple participation styles:
 
 ## 6. Reward Calculation
 
-### 6.1 The Simple Model
+### 6.1 The Dynamic Model
 
-AMOS uses a **pool-based distribution** with the simplest possible rules:
+AMOS uses **pool-based distribution** with three anti-gaming mechanisms:
 
 ```
-Your Tokens = (Your Points / Total Points Today) × Daily Pool
+1. Time Drip — Pool fills gradually over 24 hours:
+   emission_so_far = daily_emission × seconds_elapsed / 86,400
+
+2. Available Pool — What's dripped minus what's been paid:
+   available = emission_so_far - tokens_distributed_today
+
+3. Virtual Points Floor — 10,000 virtual points always in denominator:
+
+            Your Points
+Payout = ─────────────────────────────────────────── × available
+         Total Points Today + 10,000 + Your Points
 ```
 
 **Two ways to earn points:**
 
 1. **Sales**: 1 user signed up = 1 point
-2. **Bounties**: Bounty value = points (50 AMOS bounty = 50 points)
+2. **Bounties**: Bounty value = points (50-point bounty = 50 points, actual AMOS computed dynamically)
 
-That's it. No multipliers, no complexity scales, no formulas. A token is a token.
+Bounty `reward_tokens` are **points**, not literal AMOS amounts. The actual payout depends on when you submit, how many others have submitted that day, and how much of the daily emission has been distributed.
 
-### 6.2 Why Pool-Based?
+### 6.2 Why Dynamic Pool-Based?
 
 Fixed rewards don't work in reality:
-- What if everyone signs up 1 million users one day?
-- You'd blow through the treasury instantly
-- The daily emission is the cap
+- What if everyone signs up 1 million users one day? Treasury blown instantly.
+- What if one person submits at midnight and takes the entire pool? First-mover drain.
+- What if everyone waits until 11pm for maximum pool? Timing games.
 
-Pool-based distribution ensures:
+Dynamic pool-based distribution with virtual base + time drip ensures:
 - Treasury is protected (never overspend)
-- Proportionality is preserved (2x contribution = 2x tokens)
+- Proportionality is preserved (2x contribution = 2x tokens, adjusted for competition)
+- No time-of-day is inherently optimal (time drip prevents timing games)
+- No single submission can drain the pool (virtual base prevents first-mover drain)
 - Self-balancing economics
-- Simple to understand
 
 ### 6.3 Sales Rewards
 
@@ -520,20 +531,27 @@ Code and community contributions use a **bounty system**:
 
 ### 6.5 Combined Pool
 
-All points go into the same daily pool:
+All points go into the same daily pool with virtual base protection:
 
 ```
-Today's total activity:
+Today's total activity (by 6pm, 75% of day elapsed):
 ├── Sales: 500 users signed up = 500 points
 ├── Code: 1,000 bounty points claimed
 ├── Community: 200 bounty points claimed
-└── Total: 1,700 points
+└── Total: 1,700 points today
 
-Daily pool: 16,000 AMOS
+Daily emission: 16,000 AMOS
+Emission dripped (75%): 12,000 AMOS
+Already distributed: 9,800 AMOS
+Available pool: 2,200 AMOS
 
-Example - you completed a 150-point bounty:
-Your share: 150/1,700 = 8.8%
-Your tokens: 16,000 × 8.8% = 1,412 AMOS
+Example - you completed a 150-point bounty at 6pm:
+Denominator: 1,700 + 10,000 (virtual) + 150 (yours) = 11,850
+Your share: 150/11,850 = 1.27%
+Your tokens: 2,200 × 1.27% = 27.8 AMOS
+
+(Earlier in the day with less competition, the same 150 points
+would earn more AMOS. Later with more competition, less.)
 ```
 
 ### 6.6 Sigmoid Emission Schedule
