@@ -123,6 +123,18 @@ jobs:
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent
 
+      - name: Build and push amos-relay
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/relay/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/amos-relay:${{ steps.vars.outputs.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/amos-relay:latest
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,mode=max,scope=relay
+
       - name: Register release with platform
         run: |
           curl -sf -X POST "https://app.amoslabs.com/api/v1/releases" \
@@ -139,5 +151,6 @@ jobs:
           echo "|-------|-----|" >> "$GITHUB_STEP_SUMMARY"
           echo "| amos-harness | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| amos-agent | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| amos-relay | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "New harnesses will use this image. Existing harnesses can pull updates via the dashboard." >> "$GITHUB_STEP_SUMMARY"

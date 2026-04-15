@@ -49,5 +49,8 @@ EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:4100/health || exit 1
 
+# Entrypoint: write oracle keypair from env var to file, then run relay
+COPY docker/relay/entrypoint.sh /usr/local/bin/entrypoint.sh
+
 # Run the relay
-CMD ["amos-relay"]
+CMD ["/usr/local/bin/entrypoint.sh"]
