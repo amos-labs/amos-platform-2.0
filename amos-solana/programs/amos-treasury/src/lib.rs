@@ -65,6 +65,13 @@ pub mod amos_treasury {
         instructions::admin::update_labs_wallet(ctx, new_labs_wallet)
     }
 
+    /// Transfer tokens from treasury vault to a destination account.
+    /// Authority-only. Used to rebalance tokens between program-controlled
+    /// accounts (e.g., moving emission pool to bounty program treasury).
+    pub fn authority_withdraw(ctx: Context<AuthorityWithdraw>, amount: u64) -> Result<()> {
+        instructions::admin::authority_withdraw(ctx, amount)
+    }
+
     // ========================================================================
     // Revenue Instructions
     // ========================================================================

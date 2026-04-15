@@ -8,7 +8,7 @@
 /// 1. `initialize` — creates treasury_config and holder_pool
 /// 2. `initialize_vaults` — creates treasury_amos_vault and reserve_vault
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, Token, TokenAccount};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 use crate::constants::seeds;
 use crate::errors::TreasuryError;
@@ -257,4 +257,87 @@ pub struct UpdateLabsWallet<'info> {
         has_one = authority @ TreasuryError::Unauthorized,
     )]
     pub treasury_config: Account<'info, TreasuryConfig>,
+}
+
+// ============================================================================
+// Authority Withdraw (Token Rebalancing)
+// ============================================================================
+
+/// Transfer tokens from the treasury vault to a destination token account.
+/// Authority-only. Used to rebalance tokens between program-controlled
+/// accounts (e.g., moving emission pool to the bounty program treasury).
+///
+/// # Arguments
+/// * `amount` - Number of tokens to transfer (in raw units with decimals)
+pub fn authority_withdraw(ctx: Context<AuthorityWithdraw>, amount: u64) -> Result<()> {
+    require!(amount > 0, TreasuryError::ZeroRevenueAmount);
+
+    let vault_balance = ctx.accounts.treasury_amos_vault.amount;
+    require!(
+        vault_balance >= amount,
+        TreasuryError::InsufficientTokenBalance
+    );
+
+    let treasury_config = &ctx.accounts.treasury_config;
+    let treasury_seeds = &[seeds::TREASURY_CONFIG, &[treasury_config.bump]];
+    let signer_seeds = &[&treasury_seeds[..]];
+
+    token::transfer(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.treasury_amos_vault.to_account_info(),
+                to: ctx.accounts.destination.to_account_info(),
+                authority: ctx.accounts.treasury_config.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        amount,
+    )?;
+
+    msg!(
+        "Authority withdraw: {} tokens from treasury vault to {}",
+        amount,
+        ctx.accounts.destination.key()
+    );
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct AuthorityWithdraw<'info> {
+    /// Treasury authority (must be the original deployer)
+    pub authority: Signer<'info>,
+
+    /// Treasury configuration
+    #[account(
+        seeds = [seeds::TREASURY_CONFIG],
+        bump = treasury_config.bump,
+        has_one = authority @ TreasuryError::Unauthorized,
+        has_one = amos_mint,
+    )]
+    pub treasury_config: Box<Account<'info, TreasuryConfig>>,
+
+    /// AMOS token mint
+    pub amos_mint: Box<Account<'info, Mint>>,
+
+    /// Treasury AMOS vault (source)
+    #[account(
+        mut,
+        seeds = [seeds::TREASURY_AMOS],
+        bump,
+        token::mint = treasury_config.amos_mint,
+        token::authority = treasury_config,
+    )]
+    pub treasury_amos_vault: Box<Account<'info, TokenAccount>>,
+
+    /// Destination token account (must be same mint)
+    #[account(
+        mut,
+        token::mint = treasury_config.amos_mint,
+    )]
+    pub destination: Box<Account<'info, TokenAccount>>,
+
+    /// SPL Token program
+    pub token_program: Program<'info, Token>,
 }
