@@ -62,3 +62,4 @@ AMOS_Launch_Posts.md
 
 # Internal instructions (prompts, drafts)
 /instructions/
+amos-packages/agent-context-parser/__pycache__/
