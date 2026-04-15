@@ -245,7 +245,7 @@ impl SolanaClient {
 
         // ── Instruction 1: prepare_bounty_submission ──────────────────
         // Creates daily_pool and operator_stats if they don't exist (idempotent)
-        let prepare_data = build_prepare_bounty_submission_data(&operator);
+        let prepare_data = build_prepare_bounty_submission_data(&operator, day_index);
 
         let prepare_accounts = vec![
             AccountMeta::new_readonly(config_pda, false),
@@ -269,6 +269,7 @@ impl SolanaClient {
             params.contribution_type,
             params.is_agent,
             &params.agent_id,
+            day_index,
             &reviewer,
             &params.evidence_hash,
         );
@@ -423,12 +424,13 @@ fn anchor_discriminator(name: &str) -> [u8; 8] {
 }
 
 /// Build the instruction data for `prepare_bounty_submission`.
-/// Layout: 8-byte discriminator + operator_key (Pubkey, 32 bytes).
-fn build_prepare_bounty_submission_data(operator: &Pubkey) -> Vec<u8> {
+/// Layout: 8-byte discriminator + operator_key (Pubkey, 32 bytes) + day_index (u32, 4 bytes).
+fn build_prepare_bounty_submission_data(operator: &Pubkey, day_index: u32) -> Vec<u8> {
     let disc = anchor_discriminator("prepare_bounty_submission");
-    let mut data = Vec::with_capacity(8 + 32);
+    let mut data = Vec::with_capacity(8 + 32 + 4);
     data.extend_from_slice(&disc);
     data.extend_from_slice(operator.as_ref());
+    data.extend_from_slice(&day_index.to_le_bytes());
     data
 }
 
@@ -442,13 +444,14 @@ fn build_submit_bounty_proof_data(
     contribution_type: u8,
     is_agent: bool,
     agent_id: &[u8; 32],
+    day_index: u32,
     reviewer: &Pubkey,
     evidence_hash: &[u8; 32],
 ) -> Vec<u8> {
     let disc = anchor_discriminator("submit_bounty_proof");
     let external_reference = [0u8; 64]; // Reserved, zeroed
 
-    let mut data = Vec::with_capacity(8 + 32 + 2 + 1 + 1 + 1 + 32 + 32 + 32 + 64);
+    let mut data = Vec::with_capacity(8 + 32 + 2 + 1 + 1 + 1 + 32 + 4 + 32 + 32 + 64);
     data.extend_from_slice(&disc);
     data.extend_from_slice(bounty_id);
     data.extend_from_slice(&base_points.to_le_bytes());
@@ -456,6 +459,7 @@ fn build_submit_bounty_proof_data(
     data.push(contribution_type);
     data.push(is_agent as u8);
     data.extend_from_slice(agent_id);
+    data.extend_from_slice(&day_index.to_le_bytes());
     data.extend_from_slice(reviewer.as_ref());
     data.extend_from_slice(evidence_hash);
     data.extend_from_slice(&external_reference);
@@ -628,14 +632,15 @@ mod tests {
             1,
             true,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
 
         // 8 (disc) + 32 (bounty_id) + 2 (points) + 1 (quality) + 1 (type)
-        // + 1 (is_agent) + 32 (agent_id) + 32 (reviewer) + 32 (evidence)
-        // + 64 (external_ref) = 205
-        assert_eq!(data.len(), 205);
+        // + 1 (is_agent) + 32 (agent_id) + 4 (day_index) + 32 (reviewer) + 32 (evidence)
+        // + 64 (external_ref) = 209
+        assert_eq!(data.len(), 209);
     }
 
     #[test]
@@ -652,6 +657,7 @@ mod tests {
             0,
             false,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
@@ -674,6 +680,7 @@ mod tests {
             1,
             true,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
@@ -697,6 +704,7 @@ mod tests {
             7,
             true,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
@@ -721,6 +729,7 @@ mod tests {
             1,
             false,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
@@ -742,6 +751,7 @@ mod tests {
             1,
             true,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
@@ -764,12 +774,13 @@ mod tests {
             1,
             true,
             &agent_id,
+            42,
             &reviewer,
             &evidence_hash,
         );
 
         // Last 64 bytes should be zeroed (external_reference)
-        assert_eq!(&data[141..205], &[0u8; 64]);
+        assert_eq!(&data[145..209], &[0u8; 64]);
     }
 
     // ── Hash utility ───────────────────────────────────────────────────
