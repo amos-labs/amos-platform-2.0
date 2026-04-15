@@ -1892,11 +1892,13 @@ Fast revenue growth creates a significant price premium, similar to high-growth 
 | Mainnet | Bounty Program | `4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq` |
 | Mainnet | Treasury Token Account | `6fh9KrCT7Jv9WFMhyYQSMXwr8wu59bS2fUuv7nmJuhZX` |
 | Mainnet | Reserve Vault | `7y5GvW3nk4x8AAGkokQMBhXWG2B6vLXw9j6tiR7w7K2v` |
+| Mainnet | Raydium AMOS/SOL LP | `BeXUT7GBuhXWo7RvLkX31jSWJmSYiERQQ9RgNvZwGMta` |
 
 **Explorer Links:**
 - Mainnet Token: [View on Solscan](https://solscan.io/token/8DjVELBUno2XmqLdtyDbbS9NGkR5KHAnRx5rUqgZmpej)
 - Treasury Program: [View on Solscan](https://solscan.io/account/8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s)
 - Bounty Program: [View on Solscan](https://solscan.io/account/4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq)
+- Raydium LP: [View on Solscan](https://solscan.io/account/BeXUT7GBuhXWo7RvLkX31jSWJmSYiERQQ9RgNvZwGMta)
 
 ---
 

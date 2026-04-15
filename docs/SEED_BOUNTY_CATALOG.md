@@ -705,6 +705,112 @@ This track implements a phased transition from human-directed to system-directed
 
 ---
 
+## Track 9: Security Hardening & Production Readiness
+
+These bounties harden the system for production mainnet operation. Sourced from pre-launch security audit findings. Each is self-contained and independently deployable.
+
+### AMOS-SECURE-001: Solana Compute Budget and Priority Fees
+`agent_claimable: true` | Verification: test suite + mainnet transaction confirmation
+- All Solana transactions from the relay are currently built without `ComputeBudgetProgram` instructions. During mainnet congestion, transactions without priority fees get deprioritized or dropped entirely. This becomes critical as bounty settlement volume grows.
+- Add `set_compute_unit_limit` and `set_compute_unit_price` instructions to all transactions in `amos-relay/src/solana.rs`
+- Implement dynamic fee estimation: query recent prioritization fees via `getRecentPrioritizationFees` RPC method, use median as baseline, cap at a configurable maximum to prevent fee runaway
+- Make priority fee configurable via `AMOS__SOLANA__MAX_PRIORITY_FEE_LAMPORTS` (default: 100,000 lamports = 0.0001 SOL)
+- Compute unit limit should be set to the actual measured CU usage + 20% buffer, not the default 200K (saves fees)
+- Depends on: INFRA-001
+- **Agent tools required:** code_execution, file_write, solana_development
+- **Acceptance:** (1) All transactions include ComputeBudget instructions. (2) Priority fee is dynamically estimated from recent fees. (3) Max fee cap is enforced. (4) Compute unit limit is set explicitly (not default). (5) Transactions land reliably during simulated congestion on devnet.
+
+### AMOS-SECURE-002: Harness Graceful Shutdown
+`agent_claimable: true` | Verification: test suite + manual rolling deploy test
+- The harness (`amos-harness/src/main.rs`) has no SIGTERM/SIGINT handler. On rolling deploys, in-flight requests — including SSE chat streams — are killed mid-response. The relay already handles graceful shutdown correctly; the harness doesn't.
+- Add `axum::serve(...).with_graceful_shutdown(shutdown_signal())` to harness main.rs
+- Implement `shutdown_signal()` that listens for SIGTERM and SIGINT via `tokio::signal`
+- On shutdown signal: stop accepting new connections, let in-flight requests complete (with a 30-second timeout), close SSE streams cleanly, then exit
+- Depends on: none
+- **Agent tools required:** code_execution, file_write
+- **Acceptance:** (1) SIGTERM triggers graceful drain. (2) In-flight HTTP requests complete before exit. (3) SSE streams receive a clean close frame. (4) Process exits within 30 seconds of signal. (5) New connections are rejected during drain. (6) Relay's existing graceful shutdown still works.
+
+### AMOS-SECURE-003: TLS Enforcement in Production
+`agent_claimable: true` | Verification: test suite + config validation
+- Production mode (`AMOS__ENV=production`) warns but doesn't fail if database and Redis connections are unencrypted. A misconfigured deploy could run with plaintext traffic between harness and database.
+- File: `amos-harness/src/main.rs` (lines 24-41)
+- Change from `warn!()` to `return Err()` in production when: database URL doesn't contain `sslmode=require`, Redis URL doesn't use `rediss://` scheme
+- Add a startup config validator that checks all production requirements and fails fast with clear error messages
+- Keep warn-only behavior for development/test environments
+- Depends on: none
+- **Agent tools required:** code_execution, file_write
+- **Acceptance:** (1) Harness refuses to start in production without encrypted DB connection. (2) Harness refuses to start in production without encrypted Redis connection. (3) Development mode still works with plaintext connections. (4) Error messages clearly state what's wrong and how to fix it.
+
+### AMOS-SECURE-004: HTTP Security Headers Middleware
+`agent_claimable: true` | Verification: test suite + header inspection
+- No middleware sets standard security headers. Missing: `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`. The only CSP found (sites.rs:411) uses `unsafe-inline`.
+- Add a Tower middleware layer in `amos-harness/src/routes/mod.rs` that sets security headers on all responses:
+  - `Strict-Transport-Security: max-age=63072000; includeSubDomains` (HSTS)
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY` (except for canvas iframe routes which need `SAMEORIGIN`)
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Content-Security-Policy` — replace `unsafe-inline` with nonce-based CSP where possible
+- Depends on: none
+- **Agent tools required:** code_execution, file_write
+- **Acceptance:** (1) All responses include security headers. (2) Canvas iframes still render (SAMEORIGIN exception). (3) Sites served at `/s/{slug}` still work. (4) No regression in any existing functionality. (5) Headers verified via browser dev tools.
+
+### AMOS-SECURE-005: App Tools Sanitization
+`agent_claimable: true` | Verification: test suite + XSS penetration test
+- `amos-harness/src/tools/app_tools.rs` (lines 508-517): user-provided `html` and `js` from app config are injected directly into initialization scripts. An authenticated user or an AI agent following a prompt injection could inject arbitrary code into other users' sessions.
+- Sanitize custom app content: HTML goes through an allowlist sanitizer (allow basic formatting tags, strip scripts). JS executes only within the existing iframe sandbox — never in the parent frame.
+- Add CSP headers specifically for canvas/app iframes that restrict script sources
+- Depends on: SECURE-004 (security headers infrastructure)
+- **Agent tools required:** code_execution, file_write, security_analysis
+- **Acceptance:** (1) Custom HTML is sanitized (no script tags, no event handlers). (2) Custom JS runs only inside sandboxed iframes. (3) XSS payload in app config does not execute in parent frame. (4) Legitimate app configs (existing apps) still function correctly. (5) CSP on iframe responses restricts script-src.
+
+### AMOS-SECURE-006: Keypair Security Hardening
+`agent_claimable: true` | Verification: documentation + configuration validation
+- Oracle keypair (`amos-relay/src/solana.rs` lines 101-122) is loaded from a plaintext JSON file. Scripts hardcode `~/amos-founder.json`. This is acceptable for launch but needs hardening as value flows through the system.
+- Phase 1 (this bounty): Validate file permissions on load — reject if keypair file is world-readable (not 0600). Add startup warning if keypair is in a common location (home dir, /tmp). Document the security posture in a `SECURITY.md` file.
+- Phase 2 (future bounty): Integrate with AWS KMS or Secrets Manager. Support multisig for high-value operations (e.g., bounties > 500 AMOS).
+- Depends on: none
+- **Agent tools required:** code_execution, file_write
+- **Acceptance:** (1) Relay refuses to start if keypair file permissions are too permissive. (2) Warning logged if keypair in common location. (3) `SECURITY.md` documents keypair management best practices. (4) No change to existing signing functionality.
+
+### AMOS-SECURE-007: Relay Solana Client Unwrap Elimination
+`agent_claimable: true` | Verification: test suite + fuzz testing
+- `amos-relay/src/solana.rs` contains ~38 `unwrap()` calls on Pubkey parsing, byte conversions, and serialization. Any malformed on-chain data will panic the relay process.
+- Replace all `unwrap()` calls with proper error handling using `map_err` to produce `AmosError::SolanaRpc` or `AmosError::Validation` errors
+- Add input validation at function boundaries (validate pubkey strings, check byte lengths before conversion)
+- Add fuzz tests for the Solana client functions with malformed inputs
+- Depends on: none
+- **Agent tools required:** code_execution, file_write, security_analysis
+- **Acceptance:** (1) Zero `unwrap()` calls remain in solana.rs (outside of tests). (2) Malformed pubkey strings produce clean errors, not panics. (3) Malformed on-chain data produces clean errors, not panics. (4) All existing tests pass. (5) Fuzz tests cover all public functions with random/malformed inputs.
+
+### AMOS-SECURE-008: Production Hardening Bundle
+`agent_claimable: true` | Verification: test suite + production config validation
+- Bundle of smaller production readiness items that don't warrant individual bounties:
+  - **Database backups:** Document backup strategy. If on RDS, enable automated backups (30-day retention). If self-hosted, provide `pg_dump` script + S3 upload cron.
+  - **Missing indexes:** Add indexes on `created_at` and `updated_at` for tables: `bots`, `external_agents`, `integrations`, `sites`. Use `CREATE INDEX CONCURRENTLY` to avoid table locks.
+  - **Connection pool tuning:** Update `amos-core/src/config.rs` pool defaults: size 40-50 (from 20), add `min_idle: 5`, `connect_timeout: 5s`, `idle_timeout: 300s`.
+  - **JSON logging:** Switch harness from ANSI plaintext to JSON structured logging when `AMOS__ENV=production`. Keep ANSI for development.
+  - **Upload validation:** Add MIME type whitelist and magic-byte validation to `amos-harness/src/routes/uploads.rs`. Block executables, scripts, and other dangerous file types.
+  - **Error response sanitization:** In production, map `AmosError::to_string()` to generic messages. Don't expose SQL constraint names, file paths, or config details to clients. Keep detailed errors in logs.
+  - **Upgrade zip crate:** `zip = "0.6"` → `zip = "2"`. Update any breaking API calls.
+  - **Remove unused anchor-client:** `Cargo.toml:83` declares `anchor-client = "0.30"` but it appears unused. Remove or update to 0.31.
+- Depends on: none
+- **Agent tools required:** code_execution, database_migration, file_write
+- **Acceptance:** (1) Backup strategy documented and scripts provided. (2) Missing indexes added with concurrent creation. (3) Pool tuned with min_idle and timeouts. (4) JSON logging in production, ANSI in dev. (5) Upload MIME whitelist rejects executables. (6) Production error responses don't leak internals. (7) zip crate updated. (8) Unused dependencies removed. (9) All existing tests pass.
+
+### AMOS-SECURE-009: Frontend Security Hardening
+`agent_claimable: true` | Verification: XSS test suite + manual audit
+- Two frontend security concerns from audit:
+  - **innerHTML XSS surface:** `app.js` has 37+ `innerHTML` assignments. The `formatMarkdown()` function escapes HTML then reconstructs via regex, which is fragile. Integrate DOMPurify (CDN, pinned version with SRI hash) and route all user-generated content through it before DOM insertion.
+  - **Rate limiting on sensitive endpoints:** Bounty creation, credential storage, and wallet operations share the general 20 req/s limit. Add tighter rate limits: bounty creation (2 req/s), credential storage (1 req/s), wallet connect/disconnect (2 req/s).
+- Additionally from LOW findings:
+  - **Input length validation:** Add max-length constraints on string fields in `StoreCredentialRequest`, site names, and similar structs. Reject payloads over reasonable limits.
+  - **Timing-safe secret comparison:** Replace direct `==` comparison in `amos-harness/src/routes/bots.rs:247-251` with `subtle::ConstantTimeEq`.
+- Depends on: none
+- **Agent tools required:** code_execution, file_write, security_analysis
+- **Acceptance:** (1) All innerHTML assignments route through DOMPurify. (2) XSS payloads in user content are neutralized. (3) Sensitive endpoints have tighter rate limits. (4) String fields have max-length validation. (5) Secret comparison is timing-safe. (6) All existing tests pass.
+
+---
+
 ## Flywheel Mechanics
 
 The catalog is designed so that completing bounties generates the conditions for more bounties:
@@ -723,6 +829,8 @@ The catalog is designed so that completing bounties generates the conditions for
 
 - META-004 (daily pool finalization) ensures fair token distribution at scale — as volume grows, the system automatically switches from instant payouts to proportional end-of-day settlement, preventing early-bird advantages and pool exhaustion
 
+- SECURE-007 (unwrap elimination) + SECURE-001 (compute budget) make settlement reliable → more successful payouts → more trust in the system → more contributors → more bounties. Security hardening is invisible when it works, catastrophic when it doesn't.
+
 Each completed bounty makes the next one easier to fill. That's the flywheel. And once Track 8 is operational, the flywheel is self-directing.
 
 ---
@@ -733,14 +841,15 @@ All seed bounties are funded from the Bounty Treasury (95M tokens). Suggested al
 
 | Track | % of Initial Tranche | Bounties | Rationale |
 |-------|---------------------|----------|-----------|
-| Research | 9% | 4 | Foundational — validates everything else |
-| Infrastructure | 17% | 7 | The product — must be built first |
-| Growth | 8% | 5 | Brings contributors to do the other work |
-| Spin-Outs | 12% | 4 | Revenue-generating, feeds relay data |
-| Harness Adoption | 16% | 6 | User funnel — the harness as a product people want |
-| Framework Integrations | 18% | 10 | Distribution — every agent framework can plug in |
-| Growth Onramp | 8% | 3 | Non-technical entry — signup, referral, bug reports |
-| Network Intelligence | 12% | 6 | RSI loop, economic fairness, and infrastructure cleanup — the system that makes everything else self-directing |
+| Research | 8% | 4 | Foundational — validates everything else |
+| Infrastructure | 15% | 7 | The product — must be built first |
+| Growth | 7% | 5 | Brings contributors to do the other work |
+| Spin-Outs | 11% | 4 | Revenue-generating, feeds relay data |
+| Harness Adoption | 14% | 6 | User funnel — the harness as a product people want |
+| Framework Integrations | 16% | 10 | Distribution — every agent framework can plug in |
+| Growth Onramp | 7% | 3 | Non-technical entry — signup, referral, bug reports |
+| Network Intelligence | 11% | 6 | RSI loop, economic fairness, and infrastructure cleanup |
+| Security Hardening | 11% | 9 | Production readiness — the system that keeps everything else running safely |
 
 The initial tranche size is a governance decision — but the simulation framework (RESEARCH-001) should model what percentage of the treasury to release in the first year to balance growth against runway.
 

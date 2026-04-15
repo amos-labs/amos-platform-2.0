@@ -313,6 +313,7 @@ AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixe
 | **Treasury Program** | [`8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s`](https://solscan.io/account/8ZMaZDAxDPsCnMGRkhwLmFhoG43WUJcGC8xqVKo2PN7s) |
 | **Governance Program** | [`245xpoWLEAAPmUQxMSBDqQw5qnGfqt5roi5enuFG9fZZ`](https://solscan.io/account/245xpoWLEAAPmUQxMSBDqQw5qnGfqt5roi5enuFG9fZZ) |
 | **Bounty Program** | [`4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq`](https://solscan.io/account/4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq) |
+| **Raydium AMOS/SOL LP** | [`BeXUT7GBuhXWo7RvLkX31jSWJmSYiERQQ9RgNvZwGMta`](https://solscan.io/account/BeXUT7GBuhXWo7RvLkX31jSWJmSYiERQQ9RgNvZwGMta) |
 | **Treasury Vault** | [`6fh9KrCT7Jv9WFMhyYQSMXwr8wu59bS2fUuv7nmJuhZX`](https://solscan.io/account/6fh9KrCT7Jv9WFMhyYQSMXwr8wu59bS2fUuv7nmJuhZX) |
 
 See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full specification.
