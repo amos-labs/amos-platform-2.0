@@ -407,7 +407,7 @@ impl SolanaClient {
             AccountMeta::new(bounty_proof_pda, false),
             AccountMeta::new(operator_stats_pda, false),
             AccountMeta::new_readonly(operator, false),
-            AccountMeta::new_readonly(agent_trust_account, false),
+            AccountMeta::new(agent_trust_account, false), // mut — on-chain updates trust stats
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(treasury, false),
             AccountMeta::new(operator_ata, false),
