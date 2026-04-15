@@ -1129,6 +1129,7 @@ mod tests {
             reward_tokens: reward,
             deadline: "2026-05-01".into(),
             required_capabilities: caps.into_iter().map(String::from).collect(),
+            category: "infrastructure".into(),
         }
     }
 

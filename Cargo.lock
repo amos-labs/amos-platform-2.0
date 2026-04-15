@@ -303,6 +303,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "hex",
+ "hmac 0.12.1",
  "jsonwebtoken",
  "pretty_assertions",
  "rand 0.8.5",

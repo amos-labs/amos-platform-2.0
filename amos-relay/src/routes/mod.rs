@@ -6,6 +6,7 @@ pub mod harnesses;
 pub mod health;
 pub mod pool;
 pub mod reputation;
+pub mod webhooks;
 
 use crate::state::RelayState;
 use axum::Router;
@@ -18,4 +19,5 @@ pub fn api_routes() -> Router<RelayState> {
         .nest("/reputation", reputation::routes())
         .nest("/harnesses", harnesses::routes())
         .nest("/pool", pool::routes())
+        .nest("/webhooks", webhooks::routes())
 }

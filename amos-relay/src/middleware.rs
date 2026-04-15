@@ -44,11 +44,12 @@ pub async fn api_key_auth(
 ) -> Result<Response, StatusCode> {
     let path = req.uri().path().to_string();
 
-    // Skip auth for health and public read-only endpoints
+    // Skip auth for health, public read-only, and webhook endpoints (use HMAC auth)
     if path == "/health"
         || path.starts_with("/api/v1/harnesses/connect")
         || path.starts_with("/api/v1/agents/register")
         || path.starts_with("/api/v1/pool/")
+        || path.starts_with("/api/v1/webhooks/")
     {
         return Ok(next.run(req).await);
     }

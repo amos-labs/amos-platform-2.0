@@ -37,6 +37,12 @@ pub struct RelayBounty {
     pub reward_tokens: u64,
     pub deadline: String,
     pub required_capabilities: Vec<String>,
+    #[serde(default = "default_category")]
+    pub category: String,
+}
+
+fn default_category() -> String {
+    "infrastructure".to_string()
 }
 
 /// Heartbeat payload sent to relay.

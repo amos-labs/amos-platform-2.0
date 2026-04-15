@@ -480,8 +480,15 @@ impl FleetManager {
                 LoopState::Idle => "idle".to_string(),
                 LoopState::Assessing => "assessing".to_string(),
                 LoopState::Executing { bounty_id, .. } => format!("executing:{bounty_id}"),
-                LoopState::AwaitingVerification { bounty_id } => {
+                LoopState::AwaitingVerification { bounty_id, .. } => {
                     format!("awaiting_verification:{bounty_id}")
+                }
+                LoopState::Reworking {
+                    bounty_id,
+                    revision_count,
+                    ..
+                } => {
+                    format!("reworking:{bounty_id}:rev{revision_count}")
                 }
                 LoopState::Stopping => "stopping".to_string(),
             };
@@ -1289,8 +1296,15 @@ mod tests {
             LoopState::Idle => "idle".to_string(),
             LoopState::Assessing => "assessing".to_string(),
             LoopState::Executing { bounty_id, .. } => format!("executing:{bounty_id}"),
-            LoopState::AwaitingVerification { bounty_id } => {
+            LoopState::AwaitingVerification { bounty_id, .. } => {
                 format!("awaiting_verification:{bounty_id}")
+            }
+            LoopState::Reworking {
+                bounty_id,
+                revision_count,
+                ..
+            } => {
+                format!("reworking:{bounty_id}:rev{revision_count}")
             }
             LoopState::Stopping => "stopping".to_string(),
         }
@@ -1309,9 +1323,19 @@ mod tests {
         );
         assert_eq!(
             format_agent_state(&LoopState::AwaitingVerification {
-                bounty_id: "B-2".into()
+                bounty_id: "B-2".into(),
+                reward_tokens: 200,
             }),
             "awaiting_verification:B-2"
+        );
+        assert_eq!(
+            format_agent_state(&LoopState::Reworking {
+                bounty_id: "B-3".into(),
+                reward_tokens: 300,
+                revision_count: 1,
+                feedback: "fix clippy".into(),
+            }),
+            "reworking:B-3:rev1"
         );
         assert_eq!(format_agent_state(&LoopState::Stopping), "stopping");
     }

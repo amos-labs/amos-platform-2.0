@@ -34,7 +34,17 @@ pub enum LoopState {
         reward_tokens: u64,
     },
     /// Work complete, submitted for verification
-    AwaitingVerification { bounty_id: String },
+    AwaitingVerification {
+        bounty_id: String,
+        reward_tokens: u64,
+    },
+    /// QA revision requested — reworking with feedback
+    Reworking {
+        bounty_id: String,
+        reward_tokens: u64,
+        revision_count: u16,
+        feedback: String,
+    },
     /// Shutting down
     Stopping,
 }
@@ -66,9 +76,18 @@ pub struct AutonomousLoopConfig {
 /// Parse structured proof sections from agent output text.
 ///
 /// Looks for markdown sections: APPROACH, IMPLEMENTATION, VERIFICATION, ARTIFACTS.
+/// Also extracts PR_URL, GIT_SHA, and DELIVERABLE_URLS for relay submission.
 /// Returns a JSON object with extracted sections (or null for missing sections).
 fn parse_structured_proof(output: &str) -> serde_json::Value {
-    let sections = ["APPROACH", "IMPLEMENTATION", "VERIFICATION", "ARTIFACTS"];
+    let sections = [
+        "APPROACH",
+        "IMPLEMENTATION",
+        "VERIFICATION",
+        "ARTIFACTS",
+        "PR_URL",
+        "GIT_SHA",
+        "DELIVERABLE_URLS",
+    ];
     let mut result = serde_json::Map::new();
 
     for section in &sections {
@@ -101,11 +120,42 @@ fn parse_structured_proof(output: &str) -> serde_json::Value {
         }
     }
 
+    // Also try to extract pr_url from inline patterns like "PR: https://..."
+    if !result.contains_key("pr_url") {
+        if let Some(url) = extract_url_after_label(output, "PR_URL:") {
+            result.insert("pr_url".to_string(), serde_json::Value::String(url));
+        } else if let Some(url) = extract_github_pr_url(output) {
+            result.insert("pr_url".to_string(), serde_json::Value::String(url));
+        }
+    }
+
     if result.is_empty() {
         serde_json::Value::Null
     } else {
         serde_json::Value::Object(result)
     }
+}
+
+/// Extract a URL following a label like "PR_URL: https://..."
+fn extract_url_after_label(text: &str, label: &str) -> Option<String> {
+    text.find(label).and_then(|pos| {
+        let after = text[pos + label.len()..].trim_start();
+        after
+            .split_whitespace()
+            .next()
+            .filter(|url| url.starts_with("https://"))
+            .map(|url| url.to_string())
+    })
+}
+
+/// Extract a GitHub PR URL from text (e.g. https://github.com/org/repo/pull/123)
+fn extract_github_pr_url(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .find(|word| word.starts_with("https://github.com/") && word.contains("/pull/"))
+        .map(|url| {
+            url.trim_end_matches([')', ']', '.'])
+                .to_string()
+        })
 }
 
 /// Determine which model provider to use for a bounty execution.
@@ -284,7 +334,7 @@ impl AutonomousAgentLoop {
             std::env::var("AGENT_URL").unwrap_or_else(|_| "http://localhost:3100".to_string());
 
         // Look up bounty from cache for structured context
-        let (bounty_prompt, capabilities) = {
+        let bounty_prompt = {
             let cache = self.bounty_cache.read().await;
             if let Some(b) = cache.iter().find(|b| b.id.to_string() == bounty_id) {
                 let sanitized = crate::prompt_guard::sanitize(
@@ -293,34 +343,57 @@ impl AutonomousAgentLoop {
                     8000,
                 );
                 let caps = b.required_capabilities.join(", ");
-                let prompt = format!(
+                let is_code_bounty = b.category == "infrastructure" || b.category == "research";
+
+                let workflow_instructions = if is_code_bounty {
+                    format!(
+                        "## Workflow (Code Bounty)\n\
+                         1. Create a working branch: `git checkout -b bounty/{bounty_id}`\n\
+                         2. Implement the solution.\n\
+                         3. Run `cargo test --lib` and `cargo clippy --all-targets -- -D warnings` — fix all issues.\n\
+                         4. Commit and push: `git push origin bounty/{bounty_id}`\n\
+                         5. Open a PR: `gh pr create --title \"Bounty {bounty_id}: <short title>\" --body \"<description>\"`\n\
+                         6. Structure your final output with these sections:\n\
+                            - **PR_URL**: The full URL of the opened pull request\n\
+                            - **GIT_SHA**: The commit SHA of your final push\n\
+                            - **APPROACH**: How you solved the task\n\
+                            - **IMPLEMENTATION**: What you built and key decisions\n\
+                            - **VERIFICATION**: How you tested and verified correctness\n\
+                            - **ARTIFACTS**: List of files created or modified\n\
+                         7. Self-evaluate against the task requirements. If incomplete, keep working.\n"
+                    )
+                } else {
+                    "## Workflow (Growth / Content Bounty)\n\
+                     1. Execute the deliverable using available tools (post content, run campaign, etc.).\n\
+                     2. Collect proof: URLs, screenshots, metrics.\n\
+                     3. Structure your final output with these sections:\n\
+                        - **DELIVERABLE_URLS**: URLs of published content or campaign results\n\
+                        - **APPROACH**: How you executed the deliverable\n\
+                        - **IMPLEMENTATION**: What you produced and key decisions\n\
+                        - **VERIFICATION**: How you verified the deliverable meets requirements\n\
+                        - **ARTIFACTS**: List of assets created\n\
+                     4. Self-evaluate against the task requirements. If incomplete, keep working.\n"
+                        .to_string()
+                };
+
+                format!(
                     "{boundary}\n\n\
                      ## Bounty Assignment\n\
                      **Bounty ID:** {bounty_id}\n\
+                     **Category:** {category}\n\
                      **Required Capabilities:** {caps}\n\
                      **Reward:** {reward} AMOS tokens\n\n\
                      ## Task Description\n\
                      {sanitized}\n\n\
-                     ## Instructions\n\
-                     1. Break the task into clear steps using the plan tool if available.\n\
-                     2. Use code execution and file tools to produce concrete artifacts.\n\
-                     3. Test your work before considering it complete.\n\
-                     4. Structure your final output with these sections:\n\
-                        - **APPROACH**: How you plan to solve the task\n\
-                        - **IMPLEMENTATION**: What you built and key decisions made\n\
-                        - **VERIFICATION**: How you tested and verified correctness\n\
-                        - **ARTIFACTS**: List of files created or modified\n\
-                     5. Self-evaluate against the task requirements before finalizing. \
-                        If your output is incomplete, continue working.\n",
+                     {workflow_instructions}",
                     boundary = crate::prompt_guard::DATA_BOUNDARY_INSTRUCTION,
+                    category = b.category,
                     reward = b.reward_tokens,
-                );
-                (prompt, caps)
+                )
             } else {
-                (format!("Execute bounty {bounty_id}"), String::new())
+                format!("Execute bounty {bounty_id}")
             }
         };
-        drop(capabilities);
 
         let body = json!({
             "message": bounty_prompt,
@@ -403,6 +476,119 @@ impl AutonomousAgentLoop {
         };
 
         Ok(output)
+    }
+
+    /// Execute a bounty rework after QA revision request.
+    ///
+    /// Injects the QA feedback into the prompt so the agent knows exactly
+    /// what to fix. Reuses the same agent service endpoint.
+    async fn execute_bounty_rework(
+        &self,
+        bounty_id: &str,
+        provider_type: &str,
+        api_base: &str,
+        model_id: &str,
+        revision_count: u16,
+        feedback: &str,
+    ) -> Result<String, String> {
+        let agent_url =
+            std::env::var("AGENT_URL").unwrap_or_else(|_| "http://localhost:3100".to_string());
+
+        let rework_prompt = {
+            let cache = self.bounty_cache.read().await;
+            if let Some(b) = cache.iter().find(|b| b.id.to_string() == bounty_id) {
+                let sanitized = crate::prompt_guard::sanitize(
+                    "bounty_description",
+                    &format!("{}\n\n{}", b.title, b.description),
+                    4000,
+                );
+                let is_code_bounty = b.category == "infrastructure" || b.category == "research";
+
+                let workflow_hint = if is_code_bounty {
+                    "Run `cargo test --lib` and `cargo clippy --all-targets -- -D warnings` before resubmitting.\n\
+                     Push your fixes and update the PR."
+                } else {
+                    "Verify your deliverables are live and accessible before resubmitting."
+                };
+
+                format!(
+                    "{boundary}\n\n\
+                     ## Revision Required (attempt {revision_count}/3)\n\n\
+                     **Bounty ID:** {bounty_id}\n\
+                     **Original Task:** {sanitized}\n\n\
+                     ## QA Feedback\n\
+                     {feedback}\n\n\
+                     ## Instructions\n\
+                     Fix ONLY the issues identified in the QA feedback above.\n\
+                     {workflow_hint}\n\n\
+                     Structure your output with:\n\
+                     - **PR_URL**: The PR URL (if code bounty)\n\
+                     - **GIT_SHA**: The commit SHA of your fix\n\
+                     - **APPROACH**: What you changed to address the feedback\n\
+                     - **IMPLEMENTATION**: Specific fixes made\n\
+                     - **VERIFICATION**: How you verified the fixes resolve the issues\n\
+                     - **ARTIFACTS**: Files modified\n",
+                    boundary = crate::prompt_guard::DATA_BOUNDARY_INSTRUCTION,
+                )
+            } else {
+                format!(
+                    "Rework bounty {bounty_id}. QA Feedback:\n{feedback}\n\nFix the issues identified."
+                )
+            }
+        };
+
+        let body = json!({
+            "message": rework_prompt,
+            "provider_type": provider_type,
+            "api_base": api_base,
+            "model_id": model_id,
+            "task_context": "bounty_rework",
+        });
+
+        let url = format!("{agent_url}/api/v1/chat");
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("HTTP client error: {e}"))?;
+
+        let response = client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Agent service unavailable at {agent_url}: {e}"))?;
+
+        if !response.status().is_success() {
+            return Err(format!("Agent service returned {}", response.status()));
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read agent response: {e}"))?;
+
+        let mut text_parts: Vec<String> = Vec::new();
+        for line in body.lines() {
+            let line = line.trim();
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
+                    if matches!(
+                        event.get("type").and_then(|t| t.as_str()),
+                        Some("text_delta") | Some("message_delta")
+                    ) {
+                        if let Some(text) = event.get("text").and_then(|t| t.as_str()) {
+                            text_parts.push(text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(if text_parts.is_empty() {
+            body
+        } else {
+            text_parts.join("")
+        })
     }
 
     /// Run the autonomous loop. Spawns as a tokio task.
@@ -687,7 +873,13 @@ impl AutonomousAgentLoop {
                     // Parse structured proof sections from agent output
                     let proof = parse_structured_proof(&execution_log);
 
-                    let submit_params = json!({
+                    // Extract pr_url from proof for relay storage
+                    let pr_url = proof
+                        .get("pr_url")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    let mut submit_params = json!({
                         "bounty_id": bounty_id,
                         "agent_id": agent_id,
                         "output": {
@@ -696,6 +888,7 @@ impl AutonomousAgentLoop {
                             "provider": provider_type,
                             "model": model_id,
                             "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "pr_url": pr_url,
                         },
                         "execution_log": execution_log,
                         "proof": proof,
@@ -709,6 +902,10 @@ impl AutonomousAgentLoop {
                             },
                         }
                     });
+                    // Also put pr_url at top level for relay's submit_work extraction
+                    if let Some(url) = &pr_url {
+                        submit_params["pr_url"] = json!(url);
+                    }
 
                     match submit_tool.execute(submit_params).await {
                         Ok(result) => {
@@ -737,8 +934,10 @@ impl AutonomousAgentLoop {
                                 );
                                 *self.state.write().await = LoopState::Idle;
                             } else {
-                                *self.state.write().await =
-                                    LoopState::AwaitingVerification { bounty_id };
+                                *self.state.write().await = LoopState::AwaitingVerification {
+                                    bounty_id,
+                                    reward_tokens,
+                                };
                                 verification_started_at = Some(std::time::Instant::now());
                             }
                         }
@@ -752,7 +951,10 @@ impl AutonomousAgentLoop {
                     current_backoff = self.config.polling_interval_secs;
                 }
 
-                LoopState::AwaitingVerification { ref bounty_id } => {
+                LoopState::AwaitingVerification {
+                    ref bounty_id,
+                    reward_tokens,
+                } => {
                     let bounty_id = bounty_id.clone();
 
                     // Track when we started waiting for verification
@@ -787,6 +989,9 @@ impl AutonomousAgentLoop {
                                 .and_then(|d| d.get("status"))
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("pending_review");
+
+                            // Also check relay_data for revision info
+                            let relay_data = result.data.as_ref().and_then(|d| d.get("relay_data"));
 
                             match status {
                                 "approved" => {
@@ -826,6 +1031,56 @@ impl AutonomousAgentLoop {
                                     verification_started_at = None;
                                     current_backoff = self.config.polling_interval_secs;
                                 }
+                                // Revision requested: status reset to "claimed" with
+                                // revision_count > 0 and revision_feedback populated
+                                "claimed" => {
+                                    let revision_count = relay_data
+                                        .and_then(|d| d.get("revision_count"))
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0)
+                                        as u16;
+                                    let feedback = relay_data
+                                        .and_then(|d| d.get("revision_feedback"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+
+                                    if revision_count > 0 && !feedback.is_empty() {
+                                        if revision_count > 3 {
+                                            warn!(
+                                                agent_id,
+                                                bounty_id = %bounty_id,
+                                                revision_count,
+                                                "Max revisions exceeded, giving up"
+                                            );
+                                            self.telemetry.write().await.bounties_failed += 1;
+                                            *self.state.write().await = LoopState::Idle;
+                                        } else {
+                                            info!(
+                                                agent_id,
+                                                bounty_id = %bounty_id,
+                                                revision_count,
+                                                "QA revision requested, reworking"
+                                            );
+                                            *self.state.write().await = LoopState::Reworking {
+                                                bounty_id,
+                                                reward_tokens,
+                                                revision_count,
+                                                feedback,
+                                            };
+                                        }
+                                        verification_started_at = None;
+                                        current_backoff = self.config.polling_interval_secs;
+                                    } else {
+                                        // Claimed but no revision feedback — still waiting
+                                        debug!(
+                                            agent_id,
+                                            bounty_id = %bounty_id,
+                                            "Status is claimed, still waiting for verification"
+                                        );
+                                        current_backoff = self.config.polling_interval_secs;
+                                    }
+                                }
                                 _ => {
                                     // Still pending, keep waiting
                                     debug!(
@@ -843,6 +1098,121 @@ impl AutonomousAgentLoop {
                             current_backoff = self.config.polling_interval_secs;
                         }
                     }
+                }
+
+                LoopState::Reworking {
+                    ref bounty_id,
+                    reward_tokens,
+                    revision_count,
+                    ref feedback,
+                } => {
+                    let bounty_id = bounty_id.clone();
+                    let feedback = feedback.clone();
+
+                    let (provider_type, api_base, model_id) = resolve_execution_provider(
+                        &self.app_config,
+                        &self.config.agent_config,
+                        reward_tokens,
+                    );
+
+                    info!(
+                        agent_id,
+                        bounty_id = %bounty_id,
+                        revision_count,
+                        provider = %provider_type,
+                        "Reworking bounty with QA feedback"
+                    );
+
+                    // Execute rework with feedback injected into prompt
+                    let rework_output = self
+                        .execute_bounty_rework(
+                            &bounty_id,
+                            &provider_type,
+                            &api_base,
+                            &model_id,
+                            revision_count,
+                            &feedback,
+                        )
+                        .await;
+
+                    let (output_status, execution_log) = match &rework_output {
+                        Ok(output) => ("completed", output.clone()),
+                        Err(e) => ("partial", format!("Rework error: {e}")),
+                    };
+
+                    let proof = parse_structured_proof(&execution_log);
+                    let pr_url = proof
+                        .get("pr_url")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    let mut submit_params = json!({
+                        "bounty_id": bounty_id,
+                        "agent_id": agent_id,
+                        "output": {
+                            "status": output_status,
+                            "agent": self.config.agent_config.name,
+                            "provider": provider_type,
+                            "model": model_id,
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "pr_url": pr_url,
+                            "revision_attempt": revision_count,
+                        },
+                        "execution_log": execution_log,
+                        "proof": proof,
+                    });
+                    if let Some(url) = &pr_url {
+                        submit_params["pr_url"] = json!(url);
+                    }
+
+                    match submit_tool.execute(submit_params).await {
+                        Ok(result) => {
+                            let status = result
+                                .data
+                                .as_ref()
+                                .and_then(|d| d.get("status"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("pending_review");
+
+                            if status == "approved" {
+                                let tokens = result
+                                    .data
+                                    .as_ref()
+                                    .and_then(|d| d.get("relay_response"))
+                                    .and_then(|d| d.get("reward_tokens"))
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(0);
+                                self.telemetry.write().await.bounties_completed += 1;
+                                self.telemetry.write().await.tokens_earned += tokens;
+                                info!(
+                                    agent_id,
+                                    bounty_id = %bounty_id,
+                                    tokens,
+                                    revision_count,
+                                    "Bounty approved after rework"
+                                );
+                                *self.state.write().await = LoopState::Idle;
+                            } else {
+                                *self.state.write().await = LoopState::AwaitingVerification {
+                                    bounty_id,
+                                    reward_tokens,
+                                };
+                                verification_started_at = Some(std::time::Instant::now());
+                            }
+                        }
+                        Err(e) => {
+                            error!(
+                                agent_id,
+                                error = %e,
+                                bounty_id = %bounty_id,
+                                "Failed to submit rework proof"
+                            );
+                            self.telemetry.write().await.bounties_failed += 1;
+                            *self.state.write().await = LoopState::Idle;
+                            verification_started_at = None;
+                        }
+                    }
+                    current_backoff = self.config.polling_interval_secs;
                 }
 
                 LoopState::Assessing => {
@@ -925,10 +1295,12 @@ mod tests {
     fn loop_state_awaiting_verification_includes_bounty_id() {
         let state = LoopState::AwaitingVerification {
             bounty_id: "AMOS-RES-007".into(),
+            reward_tokens: 500,
         };
         let json = serde_json::to_string(&state).unwrap();
         assert!(json.contains("awaiting_verification"));
         assert!(json.contains("AMOS-RES-007"));
+        assert!(json.contains("500"));
     }
 
     #[test]
@@ -942,6 +1314,13 @@ mod tests {
             },
             LoopState::AwaitingVerification {
                 bounty_id: "b2".into(),
+                reward_tokens: 200,
+            },
+            LoopState::Reworking {
+                bounty_id: "b3".into(),
+                reward_tokens: 300,
+                revision_count: 2,
+                feedback: "Fix clippy warnings".into(),
             },
             LoopState::Stopping,
         ];
@@ -1299,6 +1678,130 @@ mod tests {
         };
         let json = serde_json::to_string(&state).unwrap();
         assert!(json.contains("750"));
+        let deserialized: LoopState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, state);
+    }
+
+    // ── Reworking state ────────────────────────────────────────────────
+
+    #[test]
+    fn reworking_state_serde_roundtrip() {
+        let state = LoopState::Reworking {
+            bounty_id: "AMOS-TEST-002".into(),
+            reward_tokens: 500,
+            revision_count: 1,
+            feedback: "Fix unused variable in src/foo.rs:42".into(),
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("reworking"));
+        assert!(json.contains("AMOS-TEST-002"));
+        assert!(json.contains("Fix unused variable"));
+        let deserialized: LoopState = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, state);
+    }
+
+    #[test]
+    fn reworking_state_carries_all_fields() {
+        let state = LoopState::Reworking {
+            bounty_id: "B-R1".into(),
+            reward_tokens: 1000,
+            revision_count: 3,
+            feedback: "cargo audit found RUSTSEC-2024-0001".into(),
+        };
+        if let LoopState::Reworking {
+            bounty_id,
+            reward_tokens,
+            revision_count,
+            feedback,
+        } = state
+        {
+            assert_eq!(bounty_id, "B-R1");
+            assert_eq!(reward_tokens, 1000);
+            assert_eq!(revision_count, 3);
+            assert!(feedback.contains("RUSTSEC"));
+        } else {
+            panic!("Expected Reworking variant");
+        }
+    }
+
+    // ── PR URL extraction ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_proof_extracts_pr_url_section() {
+        let output = "**APPROACH**\nDid the thing\n\n**PR_URL**\nhttps://github.com/org/repo/pull/42\n\n**GIT_SHA**\nabc123\n";
+        let proof = parse_structured_proof(output);
+        assert_eq!(
+            proof.get("pr_url").and_then(|v| v.as_str()),
+            Some("https://github.com/org/repo/pull/42")
+        );
+        assert_eq!(
+            proof.get("git_sha").and_then(|v| v.as_str()),
+            Some("abc123")
+        );
+    }
+
+    #[test]
+    fn parse_proof_extracts_inline_pr_url() {
+        let output = "I opened a PR.\nPR_URL: https://github.com/org/repo/pull/99\nDone.";
+        let proof = parse_structured_proof(output);
+        assert_eq!(
+            proof.get("pr_url").and_then(|v| v.as_str()),
+            Some("https://github.com/org/repo/pull/99")
+        );
+    }
+
+    #[test]
+    fn parse_proof_extracts_github_pr_url_from_text() {
+        let output = "Opened https://github.com/amos-labs/amos-automate/pull/7 for review.";
+        let proof = parse_structured_proof(output);
+        assert_eq!(
+            proof.get("pr_url").and_then(|v| v.as_str()),
+            Some("https://github.com/amos-labs/amos-automate/pull/7")
+        );
+    }
+
+    #[test]
+    fn parse_proof_extracts_deliverable_urls() {
+        let output = "**DELIVERABLE_URLS**\nhttps://twitter.com/amos/status/123\n\n**APPROACH**\nPosted content.";
+        let proof = parse_structured_proof(output);
+        assert!(proof.get("deliverable_urls").is_some());
+    }
+
+    #[test]
+    fn extract_url_after_label_works() {
+        assert_eq!(
+            extract_url_after_label("PR_URL: https://example.com/pull/1 done", "PR_URL:"),
+            Some("https://example.com/pull/1".to_string())
+        );
+        assert_eq!(extract_url_after_label("no url here", "PR_URL:"), None);
+    }
+
+    #[test]
+    fn extract_github_pr_url_strips_trailing_punctuation() {
+        assert_eq!(
+            extract_github_pr_url("See https://github.com/org/repo/pull/5)."),
+            Some("https://github.com/org/repo/pull/5".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_github_pr_url_none_for_non_pr() {
+        assert_eq!(
+            extract_github_pr_url("See https://github.com/org/repo/issues/5"),
+            None
+        );
+    }
+
+    // ── AwaitingVerification carries reward_tokens ─────────────────────
+
+    #[test]
+    fn awaiting_verification_carries_reward_tokens() {
+        let state = LoopState::AwaitingVerification {
+            bounty_id: "B-AV".into(),
+            reward_tokens: 999,
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("999"));
         let deserialized: LoopState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, state);
     }

@@ -31,6 +31,8 @@ pub fn routes() -> Router<RelayState> {
         .route("/{id}/verify", post(verify_submission))
         .route("/{id}/approve", post(approve_submission))
         .route("/{id}/reject", post(reject_submission))
+        .route("/{id}/request_revision", post(request_revision))
+        .route("/{id}/pushback", post(pushback))
         .route("/{id}/settle", post(retry_settlement))
 }
 
@@ -46,6 +48,8 @@ pub struct CreateBountyRequest {
     pub deadline: DateTime<Utc>,
     pub required_capabilities: Vec<String>,
     pub poster_wallet: String,
+    /// Bounty category: infrastructure, growth, research, content (default: infrastructure)
+    pub category: Option<String>,
 }
 
 /// Max lengths for input validation (prevents oversized payloads hitting the DB)
@@ -54,8 +58,14 @@ const MAX_DESCRIPTION_LEN: usize = 50_000;
 const MAX_CAPABILITY_LEN: usize = 100;
 const MAX_CAPABILITIES_COUNT: usize = 20;
 const MAX_REJECTION_REASON_LEN: usize = 5_000;
+const MAX_REVISION_FEEDBACK_LEN: usize = 10_000;
 const MAX_RESULT_JSON_LEN: usize = 1_000_000; // 1MB
 const MAX_REWARD_TOKENS: u64 = 16_000; // Daily emission cap — no single bounty exceeds a full day
+const MAX_REVISIONS: i16 = 3;
+/// Valid bounty categories
+const VALID_CATEGORIES: &[&str] = &["infrastructure", "growth", "research", "content"];
+/// Minimum trust level for QA/verification actions (verify, approve, reject, request_revision)
+const QA_TRUST_LEVEL: i16 = 5;
 
 #[derive(Debug, Deserialize)]
 pub struct ListBountiesQuery {
@@ -102,6 +112,18 @@ pub struct RejectSubmissionRequest {
     pub reason: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RequestRevisionRequest {
+    pub reviewer_wallet: String,
+    pub feedback: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PushbackRequest {
+    pub reviewer_wallet: String,
+    pub reason: String,
+}
+
 // BountyStatus is re-exported from amos_core::types
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -129,6 +151,12 @@ pub struct BountyResponse {
     pub claimed_by_wallet: Option<String>,
     pub settlement_tx: Option<String>,
     pub settlement_status: Option<String>,
+    pub revision_count: i16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_feedback: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<String>,
+    pub category: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// Estimated AMOS payout based on current daily pool state.
@@ -150,6 +178,7 @@ const BOUNTY_SELECT: &str = r#"
     verified_at, verified_by_wallet, verification_evidence,
     quality_score, approved_at, rejected_at, rejection_reason,
     settlement_tx, settlement_status,
+    revision_count, revision_feedback, pr_url, category,
     created_at, updated_at
 "#;
 
@@ -183,10 +212,67 @@ fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::E
         rejection_reason: row.try_get("rejection_reason")?,
         settlement_tx: row.try_get("settlement_tx")?,
         settlement_status: row.try_get("settlement_status")?,
+        revision_count: row.try_get("revision_count")?,
+        revision_feedback: row.try_get("revision_feedback")?,
+        pr_url: row.try_get("pr_url")?,
+        category: row
+            .try_get::<String, _>("category")
+            .unwrap_or_else(|_| "infrastructure".to_string()),
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
         estimated_payout_amos: None, // Enriched in list_bounties when Solana is configured
     })
+}
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+/// Check that a wallet belongs to an active agent with trust level >= required.
+/// Returns the trust level and council_member flag, or an error status.
+async fn require_trust(
+    db: &sqlx::PgPool,
+    wallet: &str,
+    min_trust: i16,
+    require_council: bool,
+    action: &str,
+    bounty_id: Uuid,
+) -> Result<(i16, bool), StatusCode> {
+    let row: Option<(i16, bool)> = sqlx::query_as(
+        "SELECT trust_level, council_member FROM relay_agents WHERE wallet_address = $1 AND status = 'active'",
+    )
+    .bind(wallet)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to look up reviewer trust level: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    match row {
+        None => {
+            warn!(
+                "Wallet {} is not a registered agent — cannot {} bounty {}",
+                wallet, action, bounty_id
+            );
+            Err(StatusCode::FORBIDDEN)
+        }
+        Some((level, _)) if level < min_trust => {
+            warn!(
+                "Wallet {} has trust level {} (need >= {}) — cannot {} bounty {}",
+                wallet, level, min_trust, action, bounty_id
+            );
+            Err(StatusCode::FORBIDDEN)
+        }
+        Some((_, is_council)) if require_council && !is_council => {
+            warn!(
+                "Wallet {} is not a council member — cannot {} bounty {}",
+                wallet, action, bounty_id
+            );
+            Err(StatusCode::FORBIDDEN)
+        }
+        Some((level, is_council)) => Ok((level, is_council)),
+    }
 }
 
 // =============================================================================
@@ -234,6 +320,13 @@ async fn create_bounty(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    // Validate category
+    let category = req.category.as_deref().unwrap_or("infrastructure");
+    if !VALID_CATEGORIES.contains(&category) {
+        warn!("Invalid bounty category: {}", category);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let bounty_id = Uuid::new_v4();
     let now = Utc::now();
 
@@ -241,10 +334,10 @@ async fn create_bounty(
     let row = sqlx::query(&format!(
         "INSERT INTO relay_bounties (
                 id, title, description, reward_tokens, deadline_at,
-                required_capabilities, poster_wallet, status,
+                required_capabilities, poster_wallet, status, category,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING {BOUNTY_SELECT}"
     ))
     .bind(bounty_id)
@@ -255,6 +348,7 @@ async fn create_bounty(
     .bind(&caps_json)
     .bind(&req.poster_wallet)
     .bind(BountyStatus::Open.as_str())
+    .bind(category)
     .bind(now)
     .bind(now)
     .fetch_one(&state.db)
@@ -439,13 +533,26 @@ async fn submit_work(
 
     let now = Utc::now();
 
+    // Extract pr_url from result JSON if present
+    let pr_url = req
+        .result
+        .get("pr_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     // If wallet_address provided at submit time and not yet stored, update it
     let wallet_clause = if req.wallet_address.is_some() {
         ", claimed_by_wallet = COALESCE(claimed_by_wallet, $9)"
     } else {
         ""
     };
-    let sql = format!("UPDATE relay_bounties SET status = $1, submitted_at = $2, result = $3, quality_evidence = $4, updated_at = $5{wallet_clause} WHERE id = $6 AND status = $7 AND claimed_by_agent_id = $8 RETURNING {BOUNTY_SELECT}");
+    // pr_url is always the last bind ($9 or $10 depending on wallet)
+    let pr_bind_idx = if req.wallet_address.is_some() {
+        "$10"
+    } else {
+        "$9"
+    };
+    let sql = format!("UPDATE relay_bounties SET status = $1, submitted_at = $2, result = $3, quality_evidence = $4, updated_at = $5, pr_url = COALESCE({pr_bind_idx}, pr_url){wallet_clause} WHERE id = $6 AND status = $7 AND claimed_by_agent_id = $8 RETURNING {BOUNTY_SELECT}");
     let mut query = sqlx::query(&sql)
         .bind(BountyStatus::Submitted.as_str())
         .bind(now)
@@ -458,6 +565,7 @@ async fn submit_work(
     if let Some(ref wallet) = req.wallet_address {
         query = query.bind(wallet);
     }
+    query = query.bind(&pr_url);
     let row = query
         .fetch_optional(&state.db)
         .await
@@ -487,6 +595,17 @@ async fn verify_submission(
         warn!("Invalid verifier wallet: {}", req.verifier_wallet);
         return Err(StatusCode::BAD_REQUEST);
     }
+
+    // Verifier must be trust >= 5 (QA agent or council)
+    require_trust(
+        &state.db,
+        &req.verifier_wallet,
+        QA_TRUST_LEVEL,
+        false,
+        "verify",
+        id,
+    )
+    .await?;
 
     // Evidence must not be empty
     if req.evidence.is_null()
@@ -616,35 +735,16 @@ async fn approve_submission(
         }
     }
 
-    // 3. Reviewer must be a registered agent with trust level >= 3
-    let reviewer_trust: Option<i16> = sqlx::query_scalar(
-        "SELECT trust_level FROM relay_agents WHERE wallet_address = $1 AND status = 'active'",
+    // 3. Reviewer must be trust >= 5 and council member
+    require_trust(
+        &state.db,
+        &req.reviewer_wallet,
+        QA_TRUST_LEVEL,
+        true,
+        "approve",
+        id,
     )
-    .bind(&req.reviewer_wallet)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        warn!("Failed to look up reviewer trust level: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    match reviewer_trust {
-        None => {
-            warn!(
-                "Reviewer {} is not a registered agent — cannot approve bounty {}",
-                req.reviewer_wallet, id
-            );
-            return Err(StatusCode::FORBIDDEN);
-        }
-        Some(level) if level < 3 => {
-            warn!(
-                "Reviewer {} has trust level {} (need >= 3) — cannot approve bounty {}",
-                req.reviewer_wallet, level, id
-            );
-            return Err(StatusCode::FORBIDDEN);
-        }
-        _ => {} // trust level >= 3, proceed
-    }
+    .await?;
 
     // Calculate protocol fee
     let reward_tokens: i64 = current_bounty.get("reward_tokens");
@@ -950,35 +1050,16 @@ async fn reject_submission(
         }
     }
 
-    // Reviewer must be a registered agent with trust level >= 3
-    let reviewer_trust: Option<i16> = sqlx::query_scalar(
-        "SELECT trust_level FROM relay_agents WHERE wallet_address = $1 AND status = 'active'",
+    // Reviewer must be trust >= 5
+    require_trust(
+        &state.db,
+        &req.reviewer_wallet,
+        QA_TRUST_LEVEL,
+        false,
+        "reject",
+        id,
     )
-    .bind(&req.reviewer_wallet)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        warn!("Failed to look up reviewer trust level: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    match reviewer_trust {
-        None => {
-            warn!(
-                "Reviewer {} is not a registered agent — cannot reject bounty {}",
-                req.reviewer_wallet, id
-            );
-            return Err(StatusCode::FORBIDDEN);
-        }
-        Some(level) if level < 3 => {
-            warn!(
-                "Reviewer {} has trust level {} (need >= 3) — cannot reject bounty {}",
-                req.reviewer_wallet, level, id
-            );
-            return Err(StatusCode::FORBIDDEN);
-        }
-        _ => {}
-    }
+    .await?;
 
     let now = Utc::now();
 
@@ -1003,6 +1084,199 @@ async fn reject_submission(
     info!("Bounty {} rejected by reviewer {}", id, req.reviewer_wallet);
 
     Ok(Json(bounty))
+}
+
+/// Request revision on a submitted bounty — kicks it back to claimed with feedback.
+///
+/// The agent can then rework and resubmit. Each revision carries a minor reputation
+/// cost (-5 quality score) to prevent agents from farming the QA bot for free code review.
+/// Max 3 revisions before hard rejection is required.
+async fn request_revision(
+    State(state): State<RelayState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<RequestRevisionRequest>,
+) -> Result<Json<BountyResponse>, StatusCode> {
+    if !crate::validate_wallet_address(&req.reviewer_wallet) {
+        warn!("Invalid reviewer wallet in revision request");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.feedback.is_empty() || req.feedback.len() > MAX_REVISION_FEEDBACK_LEN {
+        warn!(
+            "Revision feedback invalid length: {} (max {})",
+            req.feedback.len(),
+            MAX_REVISION_FEEDBACK_LEN
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Reviewer must be trust >= 5
+    require_trust(
+        &state.db,
+        &req.reviewer_wallet,
+        QA_TRUST_LEVEL,
+        false,
+        "request_revision",
+        id,
+    )
+    .await?;
+
+    // Fetch current bounty to check state and separation of duties
+    let bounty_check = sqlx::query(
+        "SELECT poster_wallet, claimed_by_wallet, revision_count FROM relay_bounties WHERE id = $1 AND status = $2",
+    )
+    .bind(id)
+    .bind(BountyStatus::Submitted.as_str())
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to fetch bounty for revision check {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Separation of duties: poster/claimer cannot request revision on own bounty
+    let poster_wallet: Option<String> = bounty_check.get("poster_wallet");
+    if let Some(ref poster) = poster_wallet {
+        if poster == &req.reviewer_wallet {
+            warn!(
+                "Self-revision blocked: poster {} on bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+    let claimed_by_wallet: Option<String> = bounty_check.get("claimed_by_wallet");
+    if let Some(ref claimer) = claimed_by_wallet {
+        if claimer == &req.reviewer_wallet {
+            warn!(
+                "Self-revision blocked: claimer {} on bounty {}",
+                req.reviewer_wallet, id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
+    // Check revision limit
+    let revision_count: i16 = bounty_check.get("revision_count");
+    if revision_count >= MAX_REVISIONS {
+        warn!(
+            "Bounty {} has reached max revisions ({}), use /reject instead",
+            id, MAX_REVISIONS
+        );
+        return Err(StatusCode::CONFLICT);
+    }
+
+    let now = Utc::now();
+
+    // Reset to claimed with feedback — agent can rework and resubmit
+    let row = sqlx::query(&format!(
+        "UPDATE relay_bounties SET \
+         status = $1, \
+         revision_count = revision_count + 1, \
+         revision_feedback = $2, \
+         submitted_at = NULL, \
+         verified_at = NULL, \
+         verified_by_wallet = NULL, \
+         verification_evidence = NULL, \
+         updated_at = $3 \
+         WHERE id = $4 AND status = $5 \
+         RETURNING {BOUNTY_SELECT}"
+    ))
+    .bind(BountyStatus::Claimed.as_str())
+    .bind(&req.feedback)
+    .bind(now)
+    .bind(id)
+    .bind(BountyStatus::Submitted.as_str())
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to request revision for bounty {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::CONFLICT)?;
+    let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    info!(
+        "Bounty {} revision requested by {} (revision #{})",
+        id,
+        req.reviewer_wallet,
+        revision_count + 1
+    );
+
+    Ok(Json(bounty))
+}
+
+/// Record a pushback on an approved bounty (e.g., PR closed without merging).
+///
+/// This does NOT reverse payment — the agent was already paid. Instead it records
+/// a reputation hit: -30 quality score. Repeated pushbacks degrade agent trust level.
+async fn pushback(
+    State(state): State<RelayState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<PushbackRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !crate::validate_wallet_address(&req.reviewer_wallet) {
+        warn!("Invalid reviewer wallet in pushback");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Must be council member
+    require_trust(
+        &state.db,
+        &req.reviewer_wallet,
+        QA_TRUST_LEVEL,
+        true,
+        "pushback",
+        id,
+    )
+    .await?;
+
+    // Bounty must be approved (already settled)
+    let bounty = sqlx::query(
+        "SELECT id, quality_score, claimed_by_agent_id FROM relay_bounties WHERE id = $1 AND status = $2",
+    )
+    .bind(id)
+    .bind(BountyStatus::Approved.as_str())
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to fetch bounty for pushback {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let current_score: Option<i16> = bounty.get("quality_score");
+    let new_score = (current_score.unwrap_or(85) - 30).max(0);
+
+    let now = Utc::now();
+    sqlx::query("UPDATE relay_bounties SET quality_score = $1, updated_at = $2 WHERE id = $3")
+        .bind(new_score)
+        .bind(now)
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            warn!("Failed to record pushback for bounty {}: {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let agent_id: Option<Uuid> = bounty.get("claimed_by_agent_id");
+    info!(
+        "Pushback on bounty {} by {}: quality {} → {}, reason: {}",
+        id,
+        req.reviewer_wallet,
+        current_score.unwrap_or(85),
+        new_score,
+        req.reason
+    );
+
+    Ok(Json(serde_json::json!({
+        "bounty_id": id,
+        "previous_quality_score": current_score.unwrap_or(85),
+        "new_quality_score": new_score,
+        "agent_id": agent_id,
+        "pushback_reason": req.reason,
+    })))
 }
 
 /// Retry settlement for an approved bounty whose on-chain settlement failed.
