@@ -64,6 +64,31 @@ async fn connect_harness(
     State(state): State<RelayState>,
     Json(req): Json<ConnectHarnessRequest>,
 ) -> Result<(StatusCode, Json<HarnessResponse>), StatusCode> {
+    // Input validation
+    if req.harness_id.is_empty() || req.harness_id.len() > 255 {
+        warn!("Invalid harness_id length: {}", req.harness_id.len());
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.name.is_empty() || req.name.len() > 255 {
+        warn!("Invalid harness name length: {}", req.name.len());
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.version.is_empty() || req.version.len() > 50 {
+        warn!("Invalid harness version length: {}", req.version.len());
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.endpoint_url.is_empty() || req.endpoint_url.len() > 500 {
+        warn!(
+            "Invalid harness endpoint_url length: {}",
+            req.endpoint_url.len()
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.api_key.is_empty() || req.api_key.len() > 500 {
+        warn!("Invalid harness api_key length");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let now = Utc::now();
 
     // Insert or update the harness record

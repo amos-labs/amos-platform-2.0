@@ -1,6 +1,7 @@
 //! HTTP server configuration and routing.
 
 use crate::{middleware::api_key_auth, routes, state::RelayState, Result, VERSION};
+use axum::extract::DefaultBodyLimit;
 use axum::{
     extract::State,
     http::{header, Method, StatusCode},
@@ -62,6 +63,8 @@ pub fn build_http_router(state: RelayState) -> Router {
                         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]),
                 ),
         )
+        // Global body size limit: 2MB prevents oversized payloads from consuming memory
+        .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .with_state(state)
 }
 

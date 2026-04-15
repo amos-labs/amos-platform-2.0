@@ -149,6 +149,18 @@ async fn compute_collection_aggregate(
     let value_field = config["value_field"]
         .as_str()
         .ok_or_else(|| AmosError::Validation("metric_config.value_field is required".into()))?;
+    // Validate value_field to prevent SQL injection via JSONB accessor
+    if value_field.is_empty()
+        || value_field.len() > 64
+        || !value_field
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err(AmosError::Validation(format!(
+            "Invalid value_field: must be 1-64 alphanumeric/underscore chars, got '{}'",
+            value_field
+        )));
+    }
     let attribution_field = config["attribution_field"]
         .as_str()
         .unwrap_or("created_by_agent_id");
@@ -281,11 +293,35 @@ async fn compute_profit(
 
 /// Execute a raw SQL query stored in `metric_query`. The query **must**
 /// return exactly one row with a single numeric column.
+///
+/// Safety: Only SELECT queries are allowed; DML/DDL is rejected to prevent
+/// stored SQL injection via the fitness_functions table.
 async fn compute_custom(db: &PgPool, function: &FitnessFunction) -> Result<f64> {
     let sql = function
         .metric_query
         .as_deref()
         .ok_or_else(|| AmosError::Validation("Custom metric requires metric_query".into()))?;
+
+    // Guard against SQL injection from stored metric_query values:
+    // Only allow SELECT statements; reject any DML/DDL keywords.
+    let normalized = sql.trim().to_uppercase();
+    if !normalized.starts_with("SELECT") {
+        return Err(AmosError::Validation(
+            "Custom metric_query must be a SELECT statement".into(),
+        ));
+    }
+    let forbidden = [
+        "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "GRANT", "REVOKE",
+        "COPY", "EXECUTE", "DO ",
+    ];
+    for keyword in &forbidden {
+        if normalized.contains(keyword) {
+            return Err(AmosError::Validation(format!(
+                "Custom metric_query contains forbidden keyword: {}",
+                keyword.trim()
+            )));
+        }
+    }
 
     let row = sqlx::query(sql).fetch_one(db).await?;
 

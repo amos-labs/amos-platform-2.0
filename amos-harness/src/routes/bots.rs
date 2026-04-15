@@ -246,9 +246,13 @@ async fn eap_register(
     // External agents registering via this endpoint start at level 1.
     let sidecar_secret = std::env::var("AMOS_SIDECAR_SECRET").unwrap_or_default();
     let provided_secret = req.sidecar_secret.as_deref().unwrap_or("");
-    let is_sidecar = !sidecar_secret.is_empty()
-        && !provided_secret.is_empty()
-        && sidecar_secret == provided_secret;
+    // Constant-time comparison via SHA-256 to prevent timing attacks on brute-force
+    let is_sidecar = !sidecar_secret.is_empty() && !provided_secret.is_empty() && {
+        use sha2::{Digest, Sha256};
+        let expected = Sha256::digest(sidecar_secret.as_bytes());
+        let actual = Sha256::digest(provided_secret.as_bytes());
+        expected == actual
+    };
     let trust_level: i16 = if is_sidecar { 5 } else { 1 };
 
     let agent_id: String = sqlx::query_scalar(
@@ -297,6 +301,10 @@ async fn eap_heartbeat(Path(_id): Path<String>) -> StatusCode {
 ///
 /// Enforces trust-level gating: agents must have sufficient trust level
 /// to access tools in higher permission tiers.
+///
+/// Security: The agent MUST be registered in external_agents. Unknown agents
+/// are rejected (401) rather than defaulting to trust level 1, preventing
+/// unauthenticated tool execution from the public route group.
 async fn eap_tool_execute(
     State(state): State<Arc<AppState>>,
     Path(agent_id): Path<String>,
@@ -308,16 +316,22 @@ async fn eap_tool_execute(
 
     // Look up agent trust level from external_agents table by ID only.
     // Name-based lookup is not allowed to prevent impersonation attacks.
-    // Unknown agents default to minimum trust level 1.
-    let agent_trust: u8 = {
-        sqlx::query_scalar::<_, i16>("SELECT trust_level FROM external_agents WHERE id::text = $1")
-            .bind(&agent_id)
-            .fetch_optional(&state.db_pool)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or(1) // Unknown agent = minimum access
-    } as u8;
+    // SECURITY: Reject unknown agents instead of defaulting to trust level 1.
+    // This endpoint is in the public route group (for sidecar access), so
+    // we must ensure only registered agents can execute tools.
+    let agent_trust: u8 = match sqlx::query_scalar::<_, i16>(
+        "SELECT trust_level FROM external_agents WHERE id::text = $1 AND status = 'active'",
+    )
+    .bind(&agent_id)
+    .fetch_optional(&state.db_pool)
+    .await
+    {
+        Ok(Some(level)) => level as u8,
+        _ => {
+            tracing::warn!(agent = %agent_id, "Tool execution rejected: unregistered agent");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
 
     // Execute with trust-level enforcement — the registry checks the agent's
     // trust level against the tool's category requirement.

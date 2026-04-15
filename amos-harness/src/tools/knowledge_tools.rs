@@ -339,7 +339,7 @@ impl Tool for KnowledgeSearchTool {
         }
 
         // Fallback: text search using ILIKE (same pattern as SearchMemoryTool)
-        let search_pattern = format!("%{}%", query);
+        let search_pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
         let rows = if let Some(cat) = category {
             sqlx::query(
                 r#"

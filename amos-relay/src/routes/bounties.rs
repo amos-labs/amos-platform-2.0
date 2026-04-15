@@ -49,6 +49,7 @@ const MAX_CAPABILITY_LEN: usize = 100;
 const MAX_CAPABILITIES_COUNT: usize = 20;
 const MAX_REJECTION_REASON_LEN: usize = 5_000;
 const MAX_RESULT_JSON_LEN: usize = 1_000_000; // 1MB
+const MAX_REWARD_TOKENS: u64 = 16_000; // Daily emission cap — no single bounty exceeds a full day
 
 #[derive(Debug, Deserialize)]
 pub struct ListBountiesQuery {
@@ -196,6 +197,13 @@ async fn create_bounty(
     }
     if !crate::validate_wallet_address(&req.poster_wallet) {
         warn!("Invalid poster wallet address: {}", req.poster_wallet);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.reward_tokens == 0 || req.reward_tokens > MAX_REWARD_TOKENS {
+        warn!(
+            "Invalid reward_tokens: {} (must be 1..={})",
+            req.reward_tokens, MAX_REWARD_TOKENS
+        );
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -424,6 +432,13 @@ async fn approve_submission(
             req.reviewer_wallet
         );
         return Err(StatusCode::BAD_REQUEST);
+    }
+    // Validate quality score range if provided
+    if let Some(score) = req.quality_score {
+        if score > 100 {
+            warn!("Quality score out of range: {} (must be 0-100)", score);
+            return Err(StatusCode::BAD_REQUEST);
+        }
     }
 
     let now = Utc::now();

@@ -274,7 +274,7 @@ impl Tool for SearchMemoryTool {
         }
 
         // Fallback: text search using ILIKE
-        let search_pattern = format!("%{}%", query);
+        let search_pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
         let rows = if let Some(cat) = category {
             sqlx::query(
                 r#"

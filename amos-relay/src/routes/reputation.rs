@@ -151,6 +151,45 @@ async fn report_outcome(
     State(state): State<RelayState>,
     Json(req): Json<ReportOutcomeRequest>,
 ) -> Result<(StatusCode, Json<OutcomeReportResponse>), StatusCode> {
+    // Input validation
+    if req.harness_id.is_empty() || req.harness_id.len() > 255 {
+        warn!(
+            "Invalid harness_id length in outcome report: {}",
+            req.harness_id.len()
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.task_id.is_empty() || req.task_id.len() > 255 {
+        warn!(
+            "Invalid task_id length in outcome report: {}",
+            req.task_id.len()
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if let Some(score) = req.quality_score {
+        if score > 100 {
+            warn!("Quality score out of range: {} (must be 0-100)", score);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
+    // Anti-farming: verify the agent exists and the harness is registered
+    let agent_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM relay_agents WHERE id = $1 AND status = 'active')",
+    )
+    .bind(req.agent_id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(false);
+
+    if !agent_exists {
+        warn!(
+            "Reputation report rejected: agent {} not found or inactive",
+            req.agent_id
+        );
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     let report_id = Uuid::new_v4();
     let now = Utc::now();
 

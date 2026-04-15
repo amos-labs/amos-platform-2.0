@@ -247,12 +247,23 @@ async fn get_agent(
     Ok(Json(agent))
 }
 
+/// Valid agent status values.
+const VALID_AGENT_STATUSES: &[&str] = &["active", "inactive", "suspended"];
+
 /// Agent heartbeat to indicate it's still active.
 async fn agent_heartbeat(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
     Json(req): Json<HeartbeatRequest>,
 ) -> Result<Json<AgentResponse>, StatusCode> {
+    // Validate status if provided
+    if let Some(ref status) = req.status {
+        if !VALID_AGENT_STATUSES.contains(&status.as_str()) {
+            warn!("Invalid agent status in heartbeat: {}", status);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
     let now = Utc::now();
 
     let row = if let Some(ref status) = req.status {
