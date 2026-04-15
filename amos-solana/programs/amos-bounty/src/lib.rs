@@ -350,6 +350,15 @@ pub mod amos_bounty {
         instructions::trust::handler_upgrade_trust(ctx, agent_id)
     }
 
+    /// Bootstrap an agent's trust level (ORACLE-ONLY, fresh agents only)
+    pub fn bootstrap_agent_trust(
+        ctx: Context<BootstrapAgentTrust>,
+        agent_id: [u8; 32],
+        trust_level: u8,
+    ) -> Result<()> {
+        instructions::trust::handler_bootstrap_trust(ctx, agent_id, trust_level)
+    }
+
     // ========================================================================
     // Bounty Board — Claim, Timeout, and Lifecycle Instructions
     // ========================================================================

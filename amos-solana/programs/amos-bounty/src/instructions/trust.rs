@@ -314,6 +314,85 @@ pub fn handler_upgrade_trust(ctx: Context<UpgradeTrustLevel>, agent_id: [u8; 32]
 }
 
 // ============================================================================
+// Bootstrap Agent Trust (Oracle-Only)
+// ============================================================================
+
+/// Bootstrap an agent's trust level directly. Oracle-only, one-time operation.
+///
+/// This allows the operator to set trust level for system accounts (operator
+/// wallet, QA reviewer) before the on-chain threshold system takes effect.
+///
+/// # Constraints
+/// - Only the oracle authority can call this
+/// - Agent must have 0 completions (fresh registration, prevents gaming)
+/// - Trust level must be valid (1-5)
+///
+/// # When to Use
+/// - Bootstrap operator wallet at trust 5 before system goes live
+/// - Bootstrap QA reviewer wallet at trust 5
+/// - NOT for regular agents (they must earn trust organically)
+#[derive(Accounts)]
+#[instruction(agent_id: [u8; 32], trust_level: u8)]
+pub struct BootstrapAgentTrust<'info> {
+    #[account(
+        seeds = [BOUNTY_CONFIG_SEED],
+        bump = config.bump,
+        has_one = oracle_authority @ BountyError::Unauthorized
+    )]
+    pub config: Account<'info, BountyConfig>,
+
+    #[account(
+        mut,
+        seeds = [AGENT_TRUST_SEED, &agent_id],
+        bump = agent_trust.bump
+    )]
+    pub agent_trust: Account<'info, AgentTrustRecord>,
+
+    pub oracle_authority: Signer<'info>,
+}
+
+pub fn handler_bootstrap_trust(
+    ctx: Context<BootstrapAgentTrust>,
+    agent_id: [u8; 32],
+    trust_level: u8,
+) -> Result<()> {
+    let agent_trust = &mut ctx.accounts.agent_trust;
+    let clock = Clock::get()?;
+
+    // Only allow bootstrap on fresh agents (no completions yet)
+    require!(
+        agent_trust.total_completions == 0,
+        BountyError::TrustUpgradeNotAvailable
+    );
+
+    // Validate trust level range
+    require!(
+        trust_level >= 1 && trust_level <= 5,
+        BountyError::InvalidTrustLevel
+    );
+
+    let previous_level = agent_trust.trust_level;
+    agent_trust.trust_level = trust_level;
+    agent_trust.last_upgrade = clock.unix_timestamp;
+
+    msg!("Agent trust bootstrapped by oracle");
+    msg!("Agent ID: {:?}", agent_id);
+    msg!("Previous level: {}", previous_level);
+    msg!("New level: {}", trust_level);
+
+    emit!(TrustLevelUpgraded {
+        agent_id,
+        previous_level,
+        new_level: trust_level,
+        completions: agent_trust.total_completions,
+        reputation: agent_trust.reputation_score,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+// ============================================================================
 // Events
 // ============================================================================
 
