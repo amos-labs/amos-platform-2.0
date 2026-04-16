@@ -374,7 +374,10 @@ pub async fn create_server(
     let app = Router::new()
         .merge(api_routes)
         .fallback_service(serve_dir)
-        .layer(middleware_stack);
+        .layer(middleware_stack)
+        .layer(axum::middleware::from_fn(
+            crate::middleware::security_headers,
+        ));
 
     Ok(app)
 }
