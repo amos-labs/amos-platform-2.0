@@ -10,7 +10,7 @@ use amos_core::types::BountyStatus;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
 };
@@ -23,6 +23,72 @@ use sqlx::Row;
 use std::str::FromStr;
 use tracing::{info, warn};
 use uuid::Uuid;
+
+// =============================================================================
+// API ERROR TYPE — Returns JSON error bodies with helpful messages
+// =============================================================================
+
+/// API error that returns a JSON body with a human-readable message.
+///
+/// Usage: `return Err(ApiError::forbidden("The poster cannot approve their own bounty. ..."))`
+struct ApiError {
+    status: StatusCode,
+    message: String,
+}
+
+impl ApiError {
+    fn new(status: StatusCode, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            message: message.into(),
+        }
+    }
+
+    fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, message)
+    }
+
+    fn bad_request(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, message)
+    }
+
+    fn conflict(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, message)
+    }
+
+    fn precondition_required(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::PRECONDITION_REQUIRED, message)
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, message)
+    }
+
+    fn internal(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, message)
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let body = serde_json::json!({
+            "error": self.message,
+            "status": self.status.as_u16(),
+        });
+        (self.status, Json(body)).into_response()
+    }
+}
+
+/// Allow bare StatusCode to convert to ApiError (backwards compat for .map_err patterns)
+impl From<StatusCode> for ApiError {
+    fn from(status: StatusCode) -> Self {
+        let message = status
+            .canonical_reason()
+            .unwrap_or("Unknown error")
+            .to_string();
+        Self { status, message }
+    }
+}
 
 /// Build bounty routes.
 pub fn routes() -> Router<RelayState> {
@@ -263,7 +329,7 @@ async fn require_trust(
     require_council: bool,
     action: &str,
     bounty_id: Uuid,
-) -> Result<(i16, bool), StatusCode> {
+) -> Result<(i16, bool), ApiError> {
     let row: Option<(i16, bool)> = sqlx::query_as(
         "SELECT trust_level, council_member FROM relay_agents WHERE wallet_address = $1 AND status = 'active'",
     )
@@ -272,7 +338,7 @@ async fn require_trust(
     .await
     .map_err(|e| {
         warn!("Failed to look up reviewer trust level: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::internal("Internal error looking up reviewer trust level")
     })?;
 
     match row {
@@ -281,21 +347,30 @@ async fn require_trust(
                 "Wallet {} is not a registered agent — cannot {} bounty {}",
                 wallet, action, bounty_id
             );
-            Err(StatusCode::FORBIDDEN)
+            Err(ApiError::forbidden(format!(
+                "Wallet {} is not a registered agent. Register at POST /api/v1/agents/register first.",
+                wallet
+            )))
         }
         Some((level, _)) if level < min_trust => {
             warn!(
                 "Wallet {} has trust level {} (need >= {}) — cannot {} bounty {}",
                 wallet, level, min_trust, action, bounty_id
             );
-            Err(StatusCode::FORBIDDEN)
+            Err(ApiError::forbidden(format!(
+                "Trust level {} is too low to {} this bounty. Minimum required: {}. Complete more bounties to increase your trust level.",
+                level, action, min_trust
+            )))
         }
         Some((_, is_council)) if require_council && !is_council => {
             warn!(
                 "Wallet {} is not a council member — cannot {} bounty {}",
                 wallet, action, bounty_id
             );
-            Err(StatusCode::FORBIDDEN)
+            Err(ApiError::forbidden(format!(
+                "Only council members can {} bounties. Wallet {} is not a council member.",
+                action, wallet
+            )))
         }
         Some((level, is_council)) => Ok((level, is_council)),
     }
@@ -778,10 +853,10 @@ async fn verify_submission(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
     Json(req): Json<VerifySubmissionRequest>,
-) -> Result<Json<BountyResponse>, StatusCode> {
+) -> Result<Json<BountyResponse>, ApiError> {
     if !crate::validate_wallet_address(&req.verifier_wallet) {
         warn!("Invalid verifier wallet: {}", req.verifier_wallet);
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request("Invalid verifier_wallet address format. Must be a valid Solana public key (base58)."));
     }
 
     // Verifier must be trust >= 5 (QA agent or council)
@@ -800,7 +875,7 @@ async fn verify_submission(
         || (req.evidence.is_object() && req.evidence.as_object().unwrap().is_empty())
     {
         warn!("Verification evidence is empty for bounty {}", id);
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request("Verification evidence is required. Provide proof that the work is live (e.g., git SHA, CI pass, test results)."));
     }
 
     let now = Utc::now();
@@ -849,20 +924,22 @@ async fn approve_submission(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
     Json(req): Json<ApproveSubmissionRequest>,
-) -> Result<Json<BountyResponse>, StatusCode> {
+) -> Result<Json<BountyResponse>, ApiError> {
     // Validate reviewer wallet format
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!(
             "Invalid reviewer wallet in approval: {}",
             req.reviewer_wallet
         );
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request("Invalid reviewer_wallet address format."));
     }
     // Validate quality score range if provided
     if let Some(score) = req.quality_score {
         if score > 100 {
             warn!("Quality score out of range: {} (must be 0-100)", score);
-            return Err(StatusCode::BAD_REQUEST);
+            return Err(ApiError::bad_request(
+                "quality_score must be 0-100 (integer percentage).",
+            ));
         }
     }
 
@@ -882,9 +959,14 @@ async fn approve_submission(
     .await
     .map_err(|e| {
         warn!("Failed to fetch bounty {}: {}", id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::internal("Failed to fetch bounty.")
     })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    .ok_or_else(|| {
+        ApiError::not_found(format!(
+            "Bounty {} not found or not in 'submitted' status. Only submitted bounties can be approved.",
+            id
+        ))
+    })?;
 
     // --- Verification gate: deliverable must be verified before approval ---
     let verified_at: Option<DateTime<Utc>> = current_bounty.get("verified_at");
@@ -894,7 +976,11 @@ async fn approve_submission(
              Call POST /{}/verify first with evidence that the deliverable is pushed and tested.",
             id, id
         );
-        return Err(StatusCode::PRECONDITION_REQUIRED);
+        return Err(ApiError::precondition_required(format!(
+            "Bounty must be verified before approval. Call POST /api/v1/bounties/{}/verify first \
+             with evidence that the deliverable is pushed and tested.",
+            id
+        )));
     }
 
     // --- Separation of duties: prevent self-approval ---
@@ -907,7 +993,9 @@ async fn approve_submission(
                 "Self-approval blocked: poster {} tried to approve bounty {}",
                 req.reviewer_wallet, id
             );
-            return Err(StatusCode::FORBIDDEN);
+            return Err(ApiError::forbidden(
+                "The bounty poster cannot approve their own bounty. A different reviewer with trust level >= 5 must approve it.",
+            ));
         }
     }
 
@@ -919,7 +1007,9 @@ async fn approve_submission(
                 "Self-approval blocked: claimer {} tried to approve bounty {}",
                 req.reviewer_wallet, id
             );
-            return Err(StatusCode::FORBIDDEN);
+            return Err(ApiError::forbidden(
+                "The bounty claimer cannot approve their own submission. A different reviewer with trust level >= 5 must approve it.",
+            ));
         }
     }
 
@@ -1177,14 +1267,18 @@ async fn reject_submission(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
     Json(req): Json<RejectSubmissionRequest>,
-) -> Result<Json<BountyResponse>, StatusCode> {
+) -> Result<Json<BountyResponse>, ApiError> {
     if req.reason.len() > MAX_REJECTION_REASON_LEN {
         warn!("Rejection reason too long: {} chars", req.reason.len());
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request(format!(
+            "Rejection reason too long ({} chars). Maximum: {} chars.",
+            req.reason.len(),
+            MAX_REJECTION_REASON_LEN
+        )));
     }
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in rejection");
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request("Invalid reviewer_wallet address format."));
     }
 
     // --- Separation of duties: same rules as approve ---
@@ -1199,9 +1293,14 @@ async fn reject_submission(
     .await
     .map_err(|e| {
         warn!("Failed to fetch bounty for rejection check {}: {}", id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::internal("Failed to fetch bounty.")
     })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    .ok_or_else(|| {
+        ApiError::not_found(format!(
+            "Bounty {} not found or not in 'submitted' status. Only submitted bounties can be rejected.",
+            id
+        ))
+    })?;
 
     // Poster cannot reject their own bounty (could be used to grief claimers)
     let poster_wallet: Option<String> = bounty_check.get("poster_wallet");
@@ -1211,7 +1310,9 @@ async fn reject_submission(
                 "Self-rejection blocked: poster {} tried to reject bounty {}",
                 req.reviewer_wallet, id
             );
-            return Err(StatusCode::FORBIDDEN);
+            return Err(ApiError::forbidden(
+                "The bounty poster cannot reject their own bounty. A different reviewer with trust level >= 5 must reject it.",
+            ));
         }
     }
 
@@ -1223,7 +1324,9 @@ async fn reject_submission(
                 "Self-rejection blocked: claimer {} tried to reject bounty {}",
                 req.reviewer_wallet, id
             );
-            return Err(StatusCode::FORBIDDEN);
+            return Err(ApiError::forbidden(
+                "The bounty claimer cannot reject their own submission. A different reviewer with trust level >= 5 must reject it.",
+            ));
         }
     }
 
@@ -1272,10 +1375,10 @@ async fn request_revision(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
     Json(req): Json<RequestRevisionRequest>,
-) -> Result<Json<BountyResponse>, StatusCode> {
+) -> Result<Json<BountyResponse>, ApiError> {
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in revision request");
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request("Invalid reviewer_wallet address format."));
     }
     if req.feedback.is_empty() || req.feedback.len() > MAX_REVISION_FEEDBACK_LEN {
         warn!(
@@ -1283,7 +1386,10 @@ async fn request_revision(
             req.feedback.len(),
             MAX_REVISION_FEEDBACK_LEN
         );
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request(format!(
+            "Revision feedback must be 1-{} characters.",
+            MAX_REVISION_FEEDBACK_LEN
+        )));
     }
 
     // Reviewer must be trust >= 5
@@ -1307,9 +1413,14 @@ async fn request_revision(
     .await
     .map_err(|e| {
         warn!("Failed to fetch bounty for revision check {}: {}", id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::internal("Failed to fetch bounty.")
     })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    .ok_or_else(|| {
+        ApiError::not_found(format!(
+            "Bounty {} not found or not in 'submitted' status.",
+            id
+        ))
+    })?;
 
     // Separation of duties: poster/claimer cannot request revision on own bounty
     let poster_wallet: Option<String> = bounty_check.get("poster_wallet");
@@ -1319,7 +1430,9 @@ async fn request_revision(
                 "Self-revision blocked: poster {} on bounty {}",
                 req.reviewer_wallet, id
             );
-            return Err(StatusCode::FORBIDDEN);
+            return Err(ApiError::forbidden(
+                "The bounty poster cannot request a revision on their own bounty.",
+            ));
         }
     }
     let claimed_by_wallet: Option<String> = bounty_check.get("claimed_by_wallet");
@@ -1329,7 +1442,9 @@ async fn request_revision(
                 "Self-revision blocked: claimer {} on bounty {}",
                 req.reviewer_wallet, id
             );
-            return Err(StatusCode::FORBIDDEN);
+            return Err(ApiError::forbidden(
+                "The bounty claimer cannot request a revision on their own submission.",
+            ));
         }
     }
 
@@ -1340,7 +1455,10 @@ async fn request_revision(
             "Bounty {} has reached max revisions ({}), use /reject instead",
             id, MAX_REVISIONS
         );
-        return Err(StatusCode::CONFLICT);
+        return Err(ApiError::conflict(format!(
+            "Bounty has reached the maximum of {} revisions. Use POST /api/v1/bounties/{}/reject instead.",
+            MAX_REVISIONS, id
+        )));
     }
 
     let now = Utc::now();
@@ -1391,10 +1509,10 @@ async fn pushback(
     State(state): State<RelayState>,
     Path(id): Path<Uuid>,
     Json(req): Json<PushbackRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in pushback");
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request("Invalid reviewer_wallet address format. Must be a valid Solana public key (base58)."));
     }
 
     // Must be council member
