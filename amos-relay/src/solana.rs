@@ -755,6 +755,65 @@ impl SolanaClient {
 
     // ── On-Chain Agent Registration ────────────────────────────────────
 
+    /// Bootstrap an agent's trust level on-chain via `bootstrap_agent_trust`.
+    ///
+    /// Only works on agents with 0 completions (fresh registrations).
+    /// Used to pre-register operator and QA reviewer wallets at trust 5.
+    pub async fn bootstrap_agent_trust(
+        &self,
+        wallet_address: &str,
+        trust_level: u8,
+    ) -> Result<String> {
+        let oracle = self.oracle_keypair.as_ref().ok_or_else(|| {
+            AmosError::Internal(
+                "Oracle keypair not configured — cannot bootstrap agent trust".into(),
+            )
+        })?;
+
+        let wallet_pubkey = Pubkey::from_str(wallet_address)
+            .map_err(|e| AmosError::Internal(format!("Invalid wallet address: {}", e)))?;
+        let agent_id = wallet_pubkey.to_bytes();
+
+        let program_id = self.bounty_program_id;
+        let oracle_pubkey = oracle.pubkey();
+
+        let (config_pda, _) = Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        let (trust_pda, _) =
+            Pubkey::find_program_address(&[AGENT_TRUST_SEED, &agent_id], &program_id);
+
+        let data = build_bootstrap_agent_trust_data(&agent_id, trust_level);
+
+        let ix = Instruction {
+            program_id,
+            accounts: vec![
+                AccountMeta::new_readonly(config_pda, false),
+                AccountMeta::new(trust_pda, false),
+                AccountMeta::new_readonly(oracle_pubkey, true), // oracle_authority (signer)
+            ],
+            data,
+        };
+
+        let rpc = self.rpc.clone();
+        let oracle_bytes: Vec<u8> = oracle.to_bytes().to_vec();
+
+        let tx_sig = tokio::task::spawn_blocking(move || {
+            let oracle_kp = Keypair::try_from(oracle_bytes.as_slice()).map_err(|e| {
+                AmosError::Internal(format!("Failed to reconstruct keypair: {}", e))
+            })?;
+            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2)
+        })
+        .await
+        .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
+
+        info!(
+            wallet = %wallet_address,
+            trust_level,
+            tx = %tx_sig,
+            "Agent trust bootstrapped on-chain"
+        );
+        Ok(tx_sig)
+    }
+
     /// Register an agent's trust record on-chain via `register_agent_trust`.
     ///
     /// Uses the wallet pubkey bytes as `agent_id` so the PDA is deterministically
@@ -884,6 +943,17 @@ fn anchor_discriminator(name: &str) -> [u8; 8] {
     let mut disc = [0u8; 8];
     disc.copy_from_slice(&hash[..8]);
     disc
+}
+
+/// Build the instruction data for `bootstrap_agent_trust`.
+/// Layout: 8-byte discriminator + agent_id ([u8; 32]) + trust_level (u8) = 41 bytes.
+fn build_bootstrap_agent_trust_data(agent_id: &[u8; 32], trust_level: u8) -> Vec<u8> {
+    let disc = anchor_discriminator("bootstrap_agent_trust");
+    let mut data = Vec::with_capacity(8 + 32 + 1);
+    data.extend_from_slice(&disc);
+    data.extend_from_slice(agent_id);
+    data.push(trust_level);
+    data
 }
 
 /// Build the instruction data for `register_agent_trust`.
@@ -1505,6 +1575,41 @@ mod tests {
         let data1 = build_post_bounty_listing_data(&id1, 0, 100, 1, 1, 24, 1000);
         let data2 = build_post_bounty_listing_data(&id2, 1, 200, 3, 5, 48, 2000);
         assert_ne!(data1, data2);
+    }
+
+    // ── Bootstrap agent trust ─────────────────────────────────────────
+
+    #[test]
+    fn test_bootstrap_agent_trust_data_length() {
+        let agent_id = [42u8; 32];
+        let data = build_bootstrap_agent_trust_data(&agent_id, 5);
+        assert_eq!(data.len(), 41); // 8 disc + 32 agent_id + 1 trust_level
+    }
+
+    #[test]
+    fn test_bootstrap_agent_trust_data_layout() {
+        let agent_id = [7u8; 32];
+        let data = build_bootstrap_agent_trust_data(&agent_id, 3);
+
+        // Discriminator at 0..8
+        let expected_disc = anchor_discriminator("bootstrap_agent_trust");
+        assert_eq!(&data[0..8], &expected_disc);
+
+        // agent_id at 8..40
+        assert_eq!(&data[8..40], &agent_id);
+
+        // trust_level at 40
+        assert_eq!(data[40], 3);
+    }
+
+    #[test]
+    fn test_bootstrap_agent_trust_data_different_levels() {
+        let agent_id = [1u8; 32];
+        let data1 = build_bootstrap_agent_trust_data(&agent_id, 1);
+        let data5 = build_bootstrap_agent_trust_data(&agent_id, 5);
+        assert_ne!(data1, data5);
+        assert_eq!(data1[40], 1);
+        assert_eq!(data5[40], 5);
     }
 
     // ── Burn fees ──────────────────────────────────────────────────────

@@ -22,6 +22,18 @@ const RETRY_INTERVAL: Duration = Duration::from_secs(120);
 /// Maximum number of retry attempts per bounty before giving up.
 const MAX_RETRIES: i32 = 5;
 
+/// Map relay bounty category to on-chain contribution_type.
+fn category_to_contribution_type(category: &str) -> u8 {
+    match category {
+        "infrastructure" => 7,
+        "growth" => 8,
+        "research" => 3,
+        "content" => 9,
+        "discovery" => 11,
+        _ => 1, // default: feature
+    }
+}
+
 /// Run the settlement retry loop. Intended to be spawned as a background task.
 pub async fn run_settlement_retry_loop(state: RelayState) {
     // Wait a bit before first run to let the server fully start
@@ -51,7 +63,7 @@ async fn retry_failed_settlements(state: &RelayState) -> Result<(), String> {
     let rows = sqlx::query(
         r#"
         SELECT id, reward_tokens, claimed_by_wallet, claimed_by_agent_id,
-               result, quality_score,
+               result, quality_score, category,
                COALESCE(settlement_retry_count, 0) as retry_count
         FROM relay_bounties
         WHERE status = 'approved'
@@ -185,7 +197,10 @@ async fn retry_failed_settlements(state: &RelayState) -> Result<(), String> {
             reviewer_wallet,
             base_points,
             quality_score: quality_score.unwrap_or(70) as u8,
-            contribution_type: 1,
+            contribution_type: category_to_contribution_type(
+                &row.try_get::<String, _>("category")
+                    .unwrap_or_else(|_| "infrastructure".to_string()),
+            ),
             is_agent: true,
             agent_id: agent_id_bytes,
             evidence_hash,

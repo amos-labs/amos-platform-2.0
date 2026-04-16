@@ -376,6 +376,19 @@ async fn require_trust(
     }
 }
 
+/// Map relay bounty category to on-chain contribution_type.
+/// Must match the constants in amos-solana/programs/amos-bounty/src/constants.rs.
+fn category_to_contribution_type(category: &str) -> u8 {
+    match category {
+        "infrastructure" => 7,
+        "growth" => 8,
+        "research" => 3,
+        "content" => 9,
+        "discovery" => 11,
+        _ => 1, // default: feature
+    }
+}
+
 // =============================================================================
 // HANDLERS
 // =============================================================================
@@ -502,14 +515,7 @@ async fn create_bounty(
         let bid = bounty_id;
         let reward = reward_tokens;
         let deadline_ts = req.deadline.timestamp();
-        // Map relay category → on-chain contribution_type
-        let contribution_type: u8 = match category {
-            "infrastructure" => 7,
-            "growth" => 8,
-            "research" => 3,
-            "content" => 9,
-            _ => 1, // default: feature
-        };
+        let contribution_type = category_to_contribution_type(category);
         tokio::spawn(async move {
             let bounty_id_hash = {
                 let mut hasher = Sha256::new();
@@ -856,7 +862,9 @@ async fn verify_submission(
 ) -> Result<Json<BountyResponse>, ApiError> {
     if !crate::validate_wallet_address(&req.verifier_wallet) {
         warn!("Invalid verifier wallet: {}", req.verifier_wallet);
-        return Err(ApiError::bad_request("Invalid verifier_wallet address format. Must be a valid Solana public key (base58)."));
+        return Err(ApiError::bad_request(
+            "Invalid verifier_wallet address format. Must be a valid Solana public key (base58).",
+        ));
     }
 
     // Verifier must be trust >= 5 (QA agent or council)
@@ -931,7 +939,9 @@ async fn approve_submission(
             "Invalid reviewer wallet in approval: {}",
             req.reviewer_wallet
         );
-        return Err(ApiError::bad_request("Invalid reviewer_wallet address format."));
+        return Err(ApiError::bad_request(
+            "Invalid reviewer_wallet address format.",
+        ));
     }
     // Validate quality score range if provided
     if let Some(score) = req.quality_score {
@@ -1188,7 +1198,11 @@ async fn approve_submission(
                     reviewer_wallet: req.reviewer_wallet.clone(),
                     base_points,
                     quality_score: req.quality_score.unwrap_or(70),
-                    contribution_type: 1, // default: feature
+                    contribution_type: category_to_contribution_type(
+                        &current_bounty
+                            .try_get::<String, _>("category")
+                            .unwrap_or_else(|_| "infrastructure".to_string()),
+                    ),
                     is_agent: true,
                     agent_id: agent_id_bytes,
                     evidence_hash,
@@ -1278,7 +1292,9 @@ async fn reject_submission(
     }
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in rejection");
-        return Err(ApiError::bad_request("Invalid reviewer_wallet address format."));
+        return Err(ApiError::bad_request(
+            "Invalid reviewer_wallet address format.",
+        ));
     }
 
     // --- Separation of duties: same rules as approve ---
@@ -1378,7 +1394,9 @@ async fn request_revision(
 ) -> Result<Json<BountyResponse>, ApiError> {
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in revision request");
-        return Err(ApiError::bad_request("Invalid reviewer_wallet address format."));
+        return Err(ApiError::bad_request(
+            "Invalid reviewer_wallet address format.",
+        ));
     }
     if req.feedback.is_empty() || req.feedback.len() > MAX_REVISION_FEEDBACK_LEN {
         warn!(
@@ -1512,7 +1530,9 @@ async fn pushback(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if !crate::validate_wallet_address(&req.reviewer_wallet) {
         warn!("Invalid reviewer wallet in pushback");
-        return Err(ApiError::bad_request("Invalid reviewer_wallet address format. Must be a valid Solana public key (base58)."));
+        return Err(ApiError::bad_request(
+            "Invalid reviewer_wallet address format. Must be a valid Solana public key (base58).",
+        ));
     }
 
     // Must be council member
@@ -1664,21 +1684,11 @@ async fn retry_settlement(
         reviewer_wallet
     };
 
-    // Hash bounty ID and agent ID
+    // Use wallet pubkey bytes as agent_id (portable across relays)
     let bounty_id_str = id.to_string();
-    let agent_id_bytes = {
-        let mut hasher = Sha256::new();
-        hasher.update(
-            claimed_by_agent_id
-                .map(|a| a.to_string())
-                .unwrap_or_default()
-                .as_bytes(),
-        );
-        let result = hasher.finalize();
-        let mut out = [0u8; 32];
-        out.copy_from_slice(&result);
-        out
-    };
+    let agent_id_bytes: [u8; 32] = Pubkey::from_str(&wallet)
+        .map(|pk| pk.to_bytes())
+        .unwrap_or([0u8; 32]);
 
     let result_json: Option<JsonValue> = current_bounty.get("result");
     let evidence_hash = {
@@ -1738,7 +1748,11 @@ async fn retry_settlement(
         reviewer_wallet,
         base_points,
         quality_score: quality_score.unwrap_or(70) as u8,
-        contribution_type: 1,
+        contribution_type: category_to_contribution_type(
+            &current_bounty
+                .try_get::<String, _>("category")
+                .unwrap_or_else(|_| "infrastructure".to_string()),
+        ),
         is_agent: true,
         agent_id: agent_id_bytes,
         evidence_hash,
