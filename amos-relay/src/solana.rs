@@ -568,17 +568,12 @@ impl SolanaClient {
                     Ok(account) => {
                         let data = account.data;
                         if data.len() < 112 {
-                            return Err(AmosError::Internal(
-                                "Config account too small".into(),
-                            ));
+                            return Err(AmosError::Internal("Config account too small".into()));
                         }
                         // Layout: 8 disc + 32 oracle + 32 mint + 32 treasury + 8 start_time
-                        let ts =
-                            i64::from_le_bytes(data[104..112].try_into().map_err(|_| {
-                                AmosError::Internal(
-                                    "Config start_time slice conversion failed".into(),
-                                )
-                            })?);
+                        let ts = i64::from_le_bytes(data[104..112].try_into().map_err(|_| {
+                            AmosError::Internal("Config start_time slice conversion failed".into())
+                        })?);
                         let now = chrono::Utc::now().timestamp();
                         return Ok::<(i64, i64), AmosError>((ts, now));
                     }
@@ -629,9 +624,7 @@ impl SolanaClient {
                         //   technical_tokens_distributed: u64 (8)
                         //   technical_points: u64 (8)
                         if data.len() < 8 + 4 + 8 + 8 + 8 + 4 + 1 + 1 + 8 + 8 + 8 + 8 {
-                            return Err(AmosError::Internal(
-                                "DailyPool account too small".into(),
-                            ));
+                            return Err(AmosError::Internal("DailyPool account too small".into()));
                         }
                         let off = 8; // skip discriminator
                         let daily_emission =
