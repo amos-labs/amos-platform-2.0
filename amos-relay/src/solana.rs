@@ -562,19 +562,38 @@ impl SolanaClient {
 
         let rpc = self.rpc.clone();
         let (start_time, now) = tokio::task::spawn_blocking(move || {
-            let account = rpc
-                .get_account(&config_pda)
-                .map_err(|e| AmosError::SolanaRpc(format!("Failed to fetch config: {}", e)))?;
-            let data = account.data;
-            if data.len() < 112 {
-                return Err(AmosError::Internal("Config account too small".into()));
+            let mut last_err = None;
+            for attempt in 0..3 {
+                match rpc.get_account(&config_pda) {
+                    Ok(account) => {
+                        let data = account.data;
+                        if data.len() < 112 {
+                            return Err(AmosError::Internal(
+                                "Config account too small".into(),
+                            ));
+                        }
+                        // Layout: 8 disc + 32 oracle + 32 mint + 32 treasury + 8 start_time
+                        let ts =
+                            i64::from_le_bytes(data[104..112].try_into().map_err(|_| {
+                                AmosError::Internal(
+                                    "Config start_time slice conversion failed".into(),
+                                )
+                            })?);
+                        let now = chrono::Utc::now().timestamp();
+                        return Ok::<(i64, i64), AmosError>((ts, now));
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                        if attempt < 2 {
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                        }
+                    }
+                }
             }
-            // Layout: 8 disc + 32 oracle + 32 mint + 32 treasury + 8 start_time
-            let ts = i64::from_le_bytes(data[104..112].try_into().map_err(|_| {
-                AmosError::Internal("Config start_time slice conversion failed".into())
-            })?);
-            let now = chrono::Utc::now().timestamp();
-            Ok::<(i64, i64), AmosError>((ts, now))
+            Err(AmosError::SolanaRpc(format!(
+                "Failed to fetch config after 3 attempts: {}",
+                last_err.unwrap()
+            )))
         })
         .await
         .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
@@ -592,56 +611,64 @@ impl SolanaClient {
 
         let rpc = self.rpc.clone();
         let result = tokio::task::spawn_blocking(move || {
-            match rpc.get_account(&daily_pool_pda) {
-                Ok(account) => {
-                    let data = account.data;
-                    // DailyPool layout (after 8-byte Anchor discriminator):
-                    //   day_index: u32 (4)
-                    //   daily_emission: u64 (8)
-                    //   tokens_distributed: u64 (8)
-                    //   total_points: u64 (8)
-                    //   proof_count: u32 (4)
-                    //   finalized: bool (1)
-                    //   bump: u8 (1)
-                    //   growth_tokens_distributed: u64 (8)
-                    //   growth_points: u64 (8)
-                    //   technical_tokens_distributed: u64 (8)
-                    //   technical_points: u64 (8)
-                    if data.len() < 8 + 4 + 8 + 8 + 8 + 4 + 1 + 1 + 8 + 8 + 8 + 8 {
-                        return Err(AmosError::Internal("DailyPool account too small".into()));
-                    }
-                    let off = 8; // skip discriminator
-                    let daily_emission =
-                        u64::from_le_bytes(data[off + 4..off + 12].try_into().unwrap());
-                    let tokens_distributed =
-                        u64::from_le_bytes(data[off + 12..off + 20].try_into().unwrap());
-                    let total_points =
-                        u64::from_le_bytes(data[off + 20..off + 28].try_into().unwrap());
-                    let proof_count =
-                        u32::from_le_bytes(data[off + 28..off + 32].try_into().unwrap());
+            let mut last_err = None;
+            for attempt in 0..3 {
+                match rpc.get_account(&daily_pool_pda) {
+                    Ok(account) => {
+                        let data = account.data;
+                        // DailyPool layout (after 8-byte Anchor discriminator):
+                        //   day_index: u32 (4)
+                        //   daily_emission: u64 (8)
+                        //   tokens_distributed: u64 (8)
+                        //   total_points: u64 (8)
+                        //   proof_count: u32 (4)
+                        //   finalized: bool (1)
+                        //   bump: u8 (1)
+                        //   growth_tokens_distributed: u64 (8)
+                        //   growth_points: u64 (8)
+                        //   technical_tokens_distributed: u64 (8)
+                        //   technical_points: u64 (8)
+                        if data.len() < 8 + 4 + 8 + 8 + 8 + 4 + 1 + 1 + 8 + 8 + 8 + 8 {
+                            return Err(AmosError::Internal(
+                                "DailyPool account too small".into(),
+                            ));
+                        }
+                        let off = 8; // skip discriminator
+                        let daily_emission =
+                            u64::from_le_bytes(data[off + 4..off + 12].try_into().unwrap());
+                        let tokens_distributed =
+                            u64::from_le_bytes(data[off + 12..off + 20].try_into().unwrap());
+                        let total_points =
+                            u64::from_le_bytes(data[off + 20..off + 28].try_into().unwrap());
+                        let proof_count =
+                            u32::from_le_bytes(data[off + 28..off + 32].try_into().unwrap());
 
-                    Ok(Some(DailyPoolState {
-                        day_index,
-                        daily_emission,
-                        tokens_distributed,
-                        total_points,
-                        proof_count,
-                    }))
-                }
-                Err(e) => {
-                    let err_str = e.to_string();
-                    if err_str.contains("AccountNotFound")
-                        || err_str.contains("could not find account")
-                    {
-                        Ok(None) // Pool not created yet today
-                    } else {
-                        Err(AmosError::SolanaRpc(format!(
-                            "Failed to fetch daily pool: {}",
-                            e
-                        )))
+                        return Ok(Some(DailyPoolState {
+                            day_index,
+                            daily_emission,
+                            tokens_distributed,
+                            total_points,
+                            proof_count,
+                        }));
+                    }
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.contains("AccountNotFound")
+                            || err_str.contains("could not find account")
+                        {
+                            return Ok(None); // Pool not created yet today
+                        }
+                        last_err = Some(e);
+                        if attempt < 2 {
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                        }
                     }
                 }
             }
+            Err(AmosError::SolanaRpc(format!(
+                "Failed to fetch daily pool after 3 attempts: {}",
+                last_err.unwrap()
+            )))
         })
         .await
         .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
