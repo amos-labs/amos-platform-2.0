@@ -334,6 +334,8 @@ impl ToolRegistry {
 
         // Register system tools
         registry.register(Arc::new(system_tools::ReadFileTool::new()));
+        registry.register(Arc::new(system_tools::WriteFileTool::new()));
+        registry.register(Arc::new(system_tools::EditFileTool::new()));
         registry.register(Arc::new(system_tools::BashTool::new(
             pending_confirmations.clone(),
         )));

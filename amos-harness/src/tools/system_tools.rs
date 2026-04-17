@@ -97,6 +97,233 @@ impl Tool for ReadFileTool {
     }
 }
 
+/// Write content to a file on the filesystem (create or overwrite).
+pub struct WriteFileTool;
+
+impl Default for WriteFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WriteFileTool {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl Tool for WriteFileTool {
+    fn name(&self) -> &str {
+        "write_file"
+    }
+
+    fn description(&self) -> &str {
+        "Write content to a file, creating it if it doesn't exist or overwriting if it does. Use edit_file instead when you only need to change part of an existing file."
+    }
+
+    fn parameters_schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to write"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write to the file"
+                }
+            },
+            "required": ["path", "content"]
+        })
+    }
+
+    async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
+        let path = params["path"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("path is required".to_string()))?;
+
+        let content = params["content"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("content is required".to_string()))?;
+
+        // Security: block sensitive paths
+        let blocked_prefixes = ["/proc", "/sys", "/etc/shadow", "/etc/passwd"];
+        if blocked_prefixes.iter().any(|p| path.starts_with(p)) {
+            return Ok(ToolResult::error(
+                "Access denied: Cannot write to system paths".to_string(),
+            ));
+        }
+
+        // Create parent directories if needed
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            fs::create_dir_all(parent).await.map_err(|e| {
+                amos_core::AmosError::Internal(format!("Failed to create directories: {}", e))
+            })?;
+        }
+
+        fs::write(path, content).await.map_err(|e| {
+            amos_core::AmosError::Internal(format!("Failed to write file: {}", e))
+        })?;
+
+        Ok(ToolResult::success(json!({
+            "path": path,
+            "size": content.len(),
+            "message": format!("Wrote {} bytes to {}", content.len(), path)
+        })))
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::System
+    }
+}
+
+/// Surgically edit a file using search-and-replace patches.
+/// Avoids full-file rewrites that introduce unintended changes.
+pub struct EditFileTool;
+
+impl Default for EditFileTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EditFileTool {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl Tool for EditFileTool {
+    fn name(&self) -> &str {
+        "edit_file"
+    }
+
+    fn description(&self) -> &str {
+        "Edit a file by replacing specific sections. Provide the exact existing text to find and the new text to replace it with. Only the matched section changes — everything else stays untouched. Use this instead of write_file when modifying existing files to avoid unintended changes."
+    }
+
+    fn parameters_schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to edit"
+                },
+                "patches": {
+                    "type": "array",
+                    "description": "Array of patches to apply",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "old": {
+                                "type": "string",
+                                "description": "The exact existing text to find (must match exactly)"
+                            },
+                            "new": {
+                                "type": "string",
+                                "description": "The replacement text"
+                            }
+                        },
+                        "required": ["old", "new"]
+                    }
+                }
+            },
+            "required": ["path", "patches"]
+        })
+    }
+
+    async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
+        let path = params["path"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("path is required".to_string()))?;
+
+        let patches = params["patches"]
+            .as_array()
+            .ok_or_else(|| amos_core::AmosError::Validation("patches must be an array".to_string()))?;
+
+        if patches.is_empty() {
+            return Err(amos_core::AmosError::Validation(
+                "patches array is empty".to_string(),
+            ));
+        }
+
+        // Security: block sensitive paths
+        let blocked_prefixes = ["/proc", "/sys", "/etc/shadow", "/etc/passwd"];
+        if blocked_prefixes.iter().any(|p| path.starts_with(p)) {
+            return Ok(ToolResult::error(
+                "Access denied: Cannot edit system paths".to_string(),
+            ));
+        }
+
+        // Read the current file content
+        let mut content = fs::read_to_string(path).await.map_err(|e| {
+            amos_core::AmosError::Internal(format!("Failed to read file: {}", e))
+        })?;
+
+        let mut applied = Vec::new();
+        let mut errors = Vec::new();
+
+        for (i, patch) in patches.iter().enumerate() {
+            let old = match patch["old"].as_str() {
+                Some(s) => s,
+                None => {
+                    errors.push(format!("patch[{}]: 'old' is required", i));
+                    continue;
+                }
+            };
+            let new = match patch["new"].as_str() {
+                Some(s) => s,
+                None => {
+                    errors.push(format!("patch[{}]: 'new' is required", i));
+                    continue;
+                }
+            };
+
+            if content.contains(old) {
+                content = content.replacen(old, new, 1);
+                applied.push(format!("patch[{}] applied", i));
+            } else {
+                errors.push(format!(
+                    "patch[{}]: '{}' not found in file (no match)",
+                    i,
+                    if old.len() > 60 {
+                        format!("{}...", &old[..60])
+                    } else {
+                        old.to_string()
+                    }
+                ));
+            }
+        }
+
+        if applied.is_empty() {
+            return Ok(ToolResult::error(format!(
+                "No patches applied — none of the old text fragments were found: {}",
+                errors.join("; ")
+            )));
+        }
+
+        // Write back the patched content
+        fs::write(path, &content).await.map_err(|e| {
+            amos_core::AmosError::Internal(format!("Failed to write file: {}", e))
+        })?;
+
+        Ok(ToolResult::success(json!({
+            "path": path,
+            "applied": applied,
+            "errors": errors,
+            "message": format!("{} patch(es) applied, {} error(s)", applied.len(), errors.len())
+        })))
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::System
+    }
+}
+
 /// Execute a bash command.
 ///
 /// Security model: the container is the sandbox, not the command blocklist.
