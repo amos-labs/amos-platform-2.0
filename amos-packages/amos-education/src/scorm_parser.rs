@@ -214,11 +214,14 @@ pub fn parse_manifest(xml_bytes: &[u8]) -> Result<ScormManifest, String> {
                     "title" if depth == title_depth && in_item => {
                         current_item_title = current_text.clone();
                     }
-                    "title" if depth == title_depth && in_organizations && !in_item => {
+                    "title"
+                        if depth == title_depth
+                            && in_organizations
+                            && !in_item
+                            && manifest.title.is_empty() =>
+                    {
                         // Organization-level title = course title
-                        if manifest.title.is_empty() {
-                            manifest.title = current_text.clone();
-                        }
+                        manifest.title = current_text.clone();
                     }
                     "item" if in_organizations => {
                         if !current_item_ref.is_empty() {
