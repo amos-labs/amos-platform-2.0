@@ -3,18 +3,82 @@
 //! Runs on a fixed interval, finds approved bounties with settlement_status='failed',
 //! and retries the Solana transaction. Uses exponential backoff per bounty via a
 //! retry_count column, giving up after MAX_RETRIES.
+//!
+//! # Idempotency contract
+//!
+//! Every code path that calls [`SolanaClient::process_bounty_payout`] MUST
+//! first call [`check_and_reconcile_if_settled`]. That helper queries
+//! on-chain state (the `bounty_proof` PDA): if the bounty has already been
+//! settled, it updates the local DB and returns `true`, signaling the
+//! caller to skip the payout.
+//!
+//! This protects against the failure mode where a Solana transaction
+//! succeeds on-chain but the relay crashes before recording it in the DB.
+//! Without the guard, the retry loop would re-submit, either wasting SOL
+//! (if the on-chain program rejects the duplicate) or — in the worst case,
+//! if the program were to accept duplicates — double-paying the bounty.
 
 use crate::{
-    solana::{compute_dynamic_max_reward, fallback_max_reward, SettlementParams},
+    solana::{compute_dynamic_max_reward, fallback_max_reward, SettlementParams, SolanaClient},
     state::RelayState,
 };
 use sha2::{Digest, Sha256};
 use solana_sdk::pubkey::Pubkey;
-use sqlx::Row;
+use sqlx::{PgPool, Row};
 use std::str::FromStr;
 use std::time::Duration;
 use tracing::{info, warn};
 use uuid::Uuid;
+
+/// Check on-chain whether a bounty has already been settled, and if so
+/// reconcile the local DB state before the caller attempts a payout.
+///
+/// Returns `true` if the bounty was already settled on-chain — caller
+/// should skip `process_bounty_payout`. Returns `false` if the bounty is
+/// safe to settle normally.
+///
+/// On success, this function updates `relay_bounties.settlement_status` to
+/// `'settled'` and `protocol_fee_ledger.settled_on_chain` to true. The
+/// `settlement_tx` column is left as-is (NULL if no prior attempt recorded
+/// one), since the on-chain PDA does not carry the tx signature —
+/// reconciled settlements can be recognized by the combination of
+/// `settlement_status='settled'` and `settlement_tx IS NULL`.
+///
+/// On RPC error during the pre-flight check, this function returns
+/// `Err(...)` without modifying state. Callers should treat this as a
+/// retryable failure.
+pub async fn check_and_reconcile_if_settled(
+    db: &PgPool,
+    solana: &SolanaClient,
+    bounty_id: Uuid,
+) -> Result<bool, String> {
+    let bounty_id_str = bounty_id.to_string();
+    match solana.is_bounty_settled(&bounty_id_str).await {
+        Ok(true) => {
+            let _ = sqlx::query(
+                "UPDATE relay_bounties SET settlement_status = 'settled' WHERE id = $1 AND settlement_status != 'settled'",
+            )
+            .bind(bounty_id)
+            .execute(db)
+            .await;
+
+            let _ = sqlx::query(
+                "UPDATE protocol_fee_ledger SET settled_on_chain = true WHERE bounty_id = $1 AND settled_on_chain = false",
+            )
+            .bind(bounty_id)
+            .execute(db)
+            .await;
+
+            info!(
+                bounty_id = %bounty_id,
+                "Reconciled: bounty already settled on-chain (PDA exists) — skipping payout"
+            );
+            Ok(true)
+        }
+        Ok(false) => Ok(false),
+        Err(e) => Err(format!("Pre-flight settlement check failed: {}", e)),
+    }
+}
 
 /// How often to scan for failed settlements.
 const RETRY_INTERVAL: Duration = Duration::from_secs(120);
@@ -208,6 +272,18 @@ async fn retry_failed_settlements(state: &RelayState) -> Result<(), String> {
         };
 
         info!(bounty_id = %id, retry = retry_count + 1, "Retrying settlement");
+
+        // Idempotency pre-flight: if the bounty is already settled on-chain,
+        // reconcile the DB state and skip the payout. Handles the
+        // crash-between-tx-confirm-and-DB-write failure mode.
+        match check_and_reconcile_if_settled(&state.db, solana, id).await {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(e) => {
+                warn!(bounty_id = %id, error = %e, "Pre-flight check failed; will retry next cycle");
+                continue;
+            }
+        }
 
         // Increment retry count first
         let _ = sqlx::query(

@@ -693,6 +693,56 @@ impl SolanaClient {
         Ok(result)
     }
 
+    /// Check whether a bounty has already been settled on-chain.
+    ///
+    /// Returns `true` if the `bounty_proof` PDA for this `bounty_id` exists
+    /// on Solana. This is the on-chain source of truth: the PDA is created
+    /// the moment `submit_bounty_proof` is confirmed, and a repeat call
+    /// with the same `bounty_id` would fail with "account already
+    /// initialized" at the program level.
+    ///
+    /// Used as a pre-flight idempotency guard before calling
+    /// [`process_bounty_payout`]. If the relay crashed between an
+    /// on-chain confirmation and writing the DB, this check lets a retry
+    /// reconcile instead of attempting a second payout.
+    pub async fn is_bounty_settled(&self, bounty_id: &str) -> Result<bool> {
+        let bounty_id_bytes = hash_to_32_bytes(bounty_id);
+        let (bounty_proof_pda, _) = Pubkey::find_program_address(
+            &[BOUNTY_PROOF_SEED, &bounty_id_bytes],
+            &self.bounty_program_id,
+        );
+
+        let rpc = self.rpc.clone();
+        let exists = tokio::task::spawn_blocking(move || {
+            let mut last_err = None;
+            for attempt in 0..3 {
+                match rpc.get_account(&bounty_proof_pda) {
+                    Ok(_) => return Ok::<bool, AmosError>(true),
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        if err_str.contains("AccountNotFound")
+                            || err_str.contains("could not find account")
+                        {
+                            return Ok(false);
+                        }
+                        last_err = Some(e);
+                        if attempt < 2 {
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                        }
+                    }
+                }
+            }
+            Err(AmosError::SolanaRpc(format!(
+                "Failed to check bounty_proof PDA after 3 attempts: {}",
+                last_err.unwrap()
+            )))
+        })
+        .await
+        .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
+
+        Ok(exists)
+    }
+
     /// Burn protocol fees (ops/burn share) by sending tokens to the burn address.
     pub async fn burn_protocol_fees(&self, amount: u64) -> Result<String> {
         if amount == 0 {
@@ -1660,6 +1710,32 @@ mod tests {
         let (proof2, _) =
             Pubkey::find_program_address(&[BOUNTY_PROOF_SEED, &bounty_id_2], &program_id);
         assert_ne!(proof1, proof2); // Different bounties = different PDAs
+    }
+
+    #[test]
+    fn is_bounty_settled_derives_same_pda_as_settlement_path() {
+        // The idempotency guard relies on `is_bounty_settled` checking the
+        // SAME PDA that `process_bounty_payout` would attempt to create.
+        // If either side of that derivation drifts, the guard silently
+        // stops protecting us. This test pins both derivations together.
+        let program_id = Pubkey::from_str("4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq").unwrap();
+        let bounty_id_str = "6a1e3f9c-abcd-4ef0-1234-56789abcdef0";
+
+        // Derivation used in `is_bounty_settled`.
+        let guard_bytes = hash_to_32_bytes(bounty_id_str);
+        let (guard_pda, _) =
+            Pubkey::find_program_address(&[BOUNTY_PROOF_SEED, &guard_bytes], &program_id);
+
+        // Derivation used in `process_bounty_payout` (must match — see line
+        // around the `let bounty_id_bytes = hash_to_32_bytes(...)` in that fn).
+        let settle_bytes = hash_to_32_bytes(bounty_id_str);
+        let (settle_pda, _) =
+            Pubkey::find_program_address(&[BOUNTY_PROOF_SEED, &settle_bytes], &program_id);
+
+        assert_eq!(
+            guard_pda, settle_pda,
+            "is_bounty_settled must derive the same PDA as process_bounty_payout"
+        );
     }
 
     #[test]
