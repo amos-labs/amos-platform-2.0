@@ -10,6 +10,7 @@ use crate::{
     integrations::{etl::EtlPipeline, executor::ApiExecutor},
     openclaw::{fleet::FleetManager, AgentManager},
     orchestrator::HarnessOrchestrator,
+    ses::SesClient,
     storage::StorageClient,
     task_queue::TaskQueue,
     tools::ToolRegistry,
@@ -154,6 +155,9 @@ pub struct AppState {
 
     /// Pending destructive commands awaiting user confirmation before execution.
     pub pending_confirmations: Arc<PendingConfirmations>,
+
+    /// AWS SES email client. `None` if `AMOS__EMAIL__FROM_ADDRESS` is not configured.
+    pub email_client: Option<Arc<SesClient>>,
 }
 
 impl AppState {

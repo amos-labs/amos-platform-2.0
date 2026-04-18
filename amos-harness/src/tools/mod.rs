@@ -6,12 +6,14 @@ pub mod app_tools;
 pub mod automation_tools;
 pub mod bounty_agent_tools;
 pub mod canvas_tools;
+pub mod communication_tools;
 pub mod credential_tools;
 pub mod document_tools;
 pub mod image_gen_tools;
 pub mod integration_tools;
 pub mod knowledge_tools;
 pub mod memory_tools;
+pub mod oauth_tools;
 pub mod openclaw_tools;
 // orchestration_tools removed — external agent work delegation is now handled
 // by task_tools (create_bounty, get_task_result) and openclaw_tools (agent management).
@@ -287,6 +289,7 @@ impl ToolRegistry {
         bounty_cache: Arc<RwLock<Vec<RelayBounty>>>,
         storage: Arc<crate::storage::StorageClient>,
         pending_confirmations: Arc<crate::state::PendingConfirmations>,
+        email_client: Option<Arc<crate::ses::SesClient>>,
     ) -> Self {
         let mut registry = Self::new(db_pool.clone(), config.clone());
 
@@ -463,6 +466,27 @@ impl ToolRegistry {
         registry.register(Arc::new(integration_tools::SyncIntegrationTool::new(
             db_pool.clone(),
             etl_pipeline.clone(),
+        )));
+
+        // Unified communication tool — email (SES), WhatsApp (Twilio), Discord (webhook)
+        registry.register(Arc::new(communication_tools::SendMessageTool::new(
+            email_client.clone(),
+            config.clone(),
+        )));
+
+        // Register OAuth self-service tools
+        registry.register(Arc::new(oauth_tools::ListOAuthProvidersTool::new(
+            db_pool.clone(),
+        )));
+        registry.register(Arc::new(oauth_tools::InitiateOAuthConnectionTool::new(
+            db_pool.clone(),
+            config.clone(),
+        )));
+        registry.register(Arc::new(oauth_tools::ListConnectionsTool::new(
+            db_pool.clone(),
+        )));
+        registry.register(Arc::new(oauth_tools::RevokeConnectionTool::new(
+            db_pool.clone(),
         )));
 
         // Register bounty agent tools (autonomous bounty discovery and execution)

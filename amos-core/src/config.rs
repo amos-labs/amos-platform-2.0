@@ -52,6 +52,18 @@ pub struct AppConfig {
     /// Fleet settings (autonomous bounty agent management).
     #[serde(default)]
     pub fleet: FleetConfig,
+    /// Email delivery settings (AWS SES).
+    #[serde(default)]
+    pub email: EmailConfig,
+    /// Twilio credentials (WhatsApp messaging).
+    #[serde(default)]
+    pub twilio: TwilioConfig,
+    /// Discord default webhook URL.
+    #[serde(default)]
+    pub discord: DiscordConfig,
+    /// OAuth2 flow settings.
+    #[serde(default)]
+    pub oauth: OAuthConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -380,6 +392,85 @@ impl Default for EmbeddingConfig {
             api_key: None,
             model: default_embedding_model(),
             api_base: default_embedding_api_base(),
+        }
+    }
+}
+
+/// Email delivery settings (AWS SES v2).
+///
+/// If `from_address` is not set, email delivery is disabled and
+/// `SendNotification` actions with `channel: "email"` become a warning log.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct EmailConfig {
+    /// Verified SES sender address. Required to enable email delivery.
+    /// Env: `AMOS__EMAIL__FROM_ADDRESS`
+    #[serde(default)]
+    pub from_address: Option<String>,
+
+    /// Default reply-to address. Optional.
+    /// Env: `AMOS__EMAIL__REPLY_TO`
+    #[serde(default)]
+    pub reply_to: Option<String>,
+
+    /// AWS region for SES. Defaults to the main AWS_REGION.
+    /// Env: `AMOS__EMAIL__REGION`
+    #[serde(default)]
+    pub region: Option<String>,
+}
+
+/// Twilio credentials (used for WhatsApp messaging).
+///
+/// All three fields are required to enable WhatsApp delivery. If any are
+/// missing the `send_whatsapp` tool returns an error.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct TwilioConfig {
+    /// Twilio Account SID.
+    /// Env: `AMOS__TWILIO__ACCOUNT_SID`
+    #[serde(default)]
+    pub account_sid: Option<String>,
+
+    /// Twilio Auth Token.
+    /// Env: `AMOS__TWILIO__AUTH_TOKEN`
+    #[serde(default)]
+    pub auth_token: Option<SecretString>,
+
+    /// Twilio WhatsApp-enabled From number (e.g. "whatsapp:+14155238886").
+    /// Env: `AMOS__TWILIO__FROM_NUMBER`
+    #[serde(default)]
+    pub from_number: Option<String>,
+}
+
+/// Discord default webhook URL (optional — callers can also supply one per
+/// message). If set, `send_discord` uses this URL when no `webhook_url`
+/// parameter is provided.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct DiscordConfig {
+    /// Env: `AMOS__DISCORD__DEFAULT_WEBHOOK_URL`
+    #[serde(default)]
+    pub default_webhook_url: Option<String>,
+}
+
+/// OAuth2 flow configuration.
+///
+/// `redirect_base_url` is the public URL of this harness that upstream
+/// providers redirect back to after consent. Example:
+/// `https://harness.amoslabs.com` → callback will be
+/// `https://harness.amoslabs.com/api/v1/oauth/callback`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct OAuthConfig {
+    /// Env: `AMOS__OAUTH__REDIRECT_BASE_URL`
+    #[serde(default = "default_oauth_redirect_base")]
+    pub redirect_base_url: String,
+}
+
+fn default_oauth_redirect_base() -> String {
+    "http://localhost:3000".to_string()
+}
+
+impl Default for OAuthConfig {
+    fn default() -> Self {
+        Self {
+            redirect_base_url: default_oauth_redirect_base(),
         }
     }
 }

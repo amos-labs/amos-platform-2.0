@@ -48,11 +48,11 @@ pub enum StreamEvent {
 
 /// Resolved AWS credentials
 #[derive(Debug, Clone)]
-struct AwsCredentials {
-    access_key_id: String,
-    secret_access_key: String,
-    session_token: Option<String>,
-    region: String,
+pub(crate) struct AwsCredentials {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub session_token: Option<String>,
+    pub region: String,
 }
 
 /// AWS Bedrock client
@@ -71,7 +71,7 @@ pub struct BedrockClient {
 /// 3. AWS config/credentials files (~/.aws/credentials, ~/.aws/config)
 ///    - Respects AWS_PROFILE (defaults to "default")
 ///    - Respects AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE overrides
-fn load_aws_credentials(
+pub(crate) fn load_aws_credentials(
     region: Option<String>,
     access_key_id: Option<String>,
     secret_access_key: Option<String>,
@@ -110,7 +110,31 @@ fn load_aws_credentials(
         });
     }
 
-    // 3. AWS credentials file (~/.aws/credentials)
+    // 3. ECS container credentials (task role).
+    // ECS Fargate sets AWS_CONTAINER_CREDENTIALS_RELATIVE_URI automatically;
+    // the metadata endpoint at 169.254.170.2 returns temporary credentials
+    // tied to the task's IAM role (taskRoleArn).
+    if let Ok(relative_uri) = std::env::var("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") {
+        match load_ecs_container_credentials(&relative_uri) {
+            Ok((access_key, secret_key, session_token)) => {
+                debug!("Using AWS credentials from ECS task role");
+                return Ok(AwsCredentials {
+                    access_key_id: access_key,
+                    secret_access_key: secret_key,
+                    session_token,
+                    region: resolved_region,
+                });
+            }
+            Err(e) => {
+                warn!(
+                    "ECS container credentials fetch failed, falling through: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    // 4. AWS credentials file (~/.aws/credentials)
     if let Some(creds) = read_aws_credentials_file() {
         debug!("Using AWS credentials from ~/.aws/credentials");
         return Ok(AwsCredentials {
@@ -123,10 +147,49 @@ fn load_aws_credentials(
 
     Err(AmosError::Config(
         "AWS credentials not found. Checked: explicit params, environment variables \
-         (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY), and AWS credentials file (~/.aws/credentials). \
-         Please configure at least one credential source."
+         (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY), ECS container credentials \
+         (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI), and AWS credentials file \
+         (~/.aws/credentials). Please configure at least one credential source."
             .to_string(),
     ))
+}
+
+/// Load temporary credentials from the ECS container metadata endpoint.
+/// Returns (access_key_id, secret_access_key, session_token).
+fn load_ecs_container_credentials(relative_uri: &str) -> Result<(String, String, Option<String>)> {
+    let url = format!("http://169.254.170.2{}", relative_uri);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| AmosError::Internal(format!("HTTP client error: {}", e)))?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .map_err(|e| AmosError::Internal(format!("ECS metadata request failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(AmosError::Internal(format!(
+            "ECS metadata returned status {}",
+            resp.status()
+        )));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .map_err(|e| AmosError::Internal(format!("ECS metadata parse error: {}", e)))?;
+
+    let access_key = body["AccessKeyId"]
+        .as_str()
+        .ok_or_else(|| AmosError::Internal("Missing AccessKeyId in ECS metadata".to_string()))?
+        .to_string();
+    let secret_key = body["SecretAccessKey"]
+        .as_str()
+        .ok_or_else(|| AmosError::Internal("Missing SecretAccessKey in ECS metadata".to_string()))?
+        .to_string();
+    let session_token = body["Token"].as_str().map(|s| s.to_string());
+
+    Ok((access_key, secret_key, session_token))
 }
 
 /// Read a value from ~/.aws/config for the active profile
@@ -1039,7 +1102,7 @@ fn parse_event(
 }
 
 /// Calculate AWS SigV4 signature
-fn calculate_signature(
+pub(crate) fn calculate_signature(
     secret_key: &str,
     date_stamp: &str,
     region: &str,
@@ -1057,7 +1120,7 @@ fn calculate_signature(
 }
 
 /// HMAC-SHA256 helper
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let mut mac = HmacSha256::new_from_slice(key)
         .map_err(|e| AmosError::Internal(format!("HMAC error: {}", e)))?;
     mac.update(data);
