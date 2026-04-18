@@ -96,11 +96,32 @@ pub async fn create_server(
         .timeout(Duration::from_secs(30))
         .build()
         .unwrap();
-    let automation_engine = Arc::new(AutomationEngine::new(
-        db_pool.clone(),
-        task_queue.clone(),
-        automation_http_client,
-    ));
+
+    // Initialize SES email client if configured. Used by SendNotification
+    // automations (channel: "email") and by the send_email tool.
+    let email_client = match &config.email.from_address {
+        Some(from) if !from.trim().is_empty() => {
+            match crate::ses::SesClient::new(from.clone(), config.email.region.clone()) {
+                Ok(client) => {
+                    tracing::info!("SES email client initialized (from: {})", from);
+                    Some(Arc::new(client))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize SES client: {}. Email disabled.", e);
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::info!("Email disabled (AMOS__EMAIL__FROM_ADDRESS not set)");
+            None
+        }
+    };
+
+    let automation_engine = Arc::new(
+        AutomationEngine::new(db_pool.clone(), task_queue.clone(), automation_http_client)
+            .with_email_client(email_client.clone()),
+    );
 
     // Create relay sync client to get bounty cache for tools
     let relay_client = relay_sync::RelaySyncClient::new(&config.relay, &config.deployment);
@@ -125,6 +146,7 @@ pub async fn create_server(
         bounty_cache.clone(),
         storage.clone(),
         pending_confirmations.clone(),
+        email_client.clone(),
     );
 
     // Load configured packages and register their tools (AMOS_PACKAGES env var).
@@ -273,6 +295,7 @@ pub async fn create_server(
         fleet_manager,
         activity_counters,
         pending_confirmations,
+        email_client,
     });
 
     // Activate packages (bootstrap schemas, collect routes)

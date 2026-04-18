@@ -6,6 +6,7 @@ pub mod app_tools;
 pub mod automation_tools;
 pub mod bounty_agent_tools;
 pub mod canvas_tools;
+pub mod communication_tools;
 pub mod credential_tools;
 pub mod document_tools;
 pub mod image_gen_tools;
@@ -287,6 +288,7 @@ impl ToolRegistry {
         bounty_cache: Arc<RwLock<Vec<RelayBounty>>>,
         storage: Arc<crate::storage::StorageClient>,
         pending_confirmations: Arc<crate::state::PendingConfirmations>,
+        email_client: Option<Arc<crate::ses::SesClient>>,
     ) -> Self {
         let mut registry = Self::new(db_pool.clone(), config.clone());
 
@@ -463,6 +465,11 @@ impl ToolRegistry {
         registry.register(Arc::new(integration_tools::SyncIntegrationTool::new(
             db_pool.clone(),
             etl_pipeline.clone(),
+        )));
+
+        // Register communication tools (email via SES; WhatsApp/Discord coming next)
+        registry.register(Arc::new(communication_tools::SendEmailTool::new(
+            email_client.clone(),
         )));
 
         // Register bounty agent tools (autonomous bounty discovery and execution)

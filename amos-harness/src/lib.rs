@@ -60,6 +60,7 @@ pub mod revisions;
 pub mod routes;
 pub mod schema;
 pub mod server;
+pub mod ses;
 pub mod sessions;
 pub mod sites;
 pub mod state;

@@ -52,6 +52,9 @@ pub struct AppConfig {
     /// Fleet settings (autonomous bounty agent management).
     #[serde(default)]
     pub fleet: FleetConfig,
+    /// Email delivery settings (AWS SES).
+    #[serde(default)]
+    pub email: EmailConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -382,6 +385,28 @@ impl Default for EmbeddingConfig {
             api_base: default_embedding_api_base(),
         }
     }
+}
+
+/// Email delivery settings (AWS SES v2).
+///
+/// If `from_address` is not set, email delivery is disabled and
+/// `SendNotification` actions with `channel: "email"` become a warning log.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct EmailConfig {
+    /// Verified SES sender address. Required to enable email delivery.
+    /// Env: `AMOS__EMAIL__FROM_ADDRESS`
+    #[serde(default)]
+    pub from_address: Option<String>,
+
+    /// Default reply-to address. Optional.
+    /// Env: `AMOS__EMAIL__REPLY_TO`
+    #[serde(default)]
+    pub reply_to: Option<String>,
+
+    /// AWS region for SES. Defaults to the main AWS_REGION.
+    /// Env: `AMOS__EMAIL__REGION`
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 /// Fleet configuration for autonomous bounty agent management.

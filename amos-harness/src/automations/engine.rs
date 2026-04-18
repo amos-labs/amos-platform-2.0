@@ -2,6 +2,7 @@
 
 use super::{ActionType, Automation, AutomationRun, TriggerEvent, TriggerType};
 use crate::schema::SchemaEngine;
+use crate::ses::{EmailMessage, SesClient};
 use crate::task_queue::{CreateTaskParams, TaskCategory, TaskQueue};
 use amos_core::{AmosError, Result};
 use chrono::Utc;
@@ -17,6 +18,8 @@ pub struct AutomationEngine {
     db_pool: PgPool,
     task_queue: Arc<TaskQueue>,
     http_client: reqwest::Client,
+    /// Optional SES client for email-channel notifications.
+    email_client: Option<Arc<SesClient>>,
 }
 
 impl AutomationEngine {
@@ -25,7 +28,15 @@ impl AutomationEngine {
             db_pool,
             task_queue,
             http_client,
+            email_client: None,
         }
+    }
+
+    /// Attach an SES email client. When set, `SendNotification` actions with
+    /// `channel: "email"` are delivered via SES instead of being logged.
+    pub fn with_email_client(mut self, email_client: Option<Arc<SesClient>>) -> Self {
+        self.email_client = email_client;
+        self
     }
 
     /// Create an event channel and spawn a background task that drains it.
@@ -63,9 +74,11 @@ impl AutomationEngine {
             let db_pool = self.db_pool.clone();
             let task_queue = self.task_queue.clone();
             let http_client = self.http_client.clone();
+            let email_client = self.email_client.clone();
 
             tokio::spawn(async move {
-                let engine = AutomationEngine::new(db_pool, task_queue, http_client);
+                let engine = AutomationEngine::new(db_pool, task_queue, http_client)
+                    .with_email_client(email_client);
                 engine.execute_action(&automation, trigger_data).await;
             });
         }
@@ -464,32 +477,128 @@ impl AutomationEngine {
     async fn action_send_notification(
         &self,
         automation: &Automation,
-        _trigger_data: &JsonValue,
+        trigger_data: &JsonValue,
     ) -> Result<JsonValue> {
-        let message = automation
-            .action_config
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Automation triggered");
-
         let channel = automation
             .action_config
             .get("channel")
             .and_then(|v| v.as_str())
             .unwrap_or("canvas");
 
-        // Log the notification (can be polled by canvas/frontend)
+        let message = automation
+            .action_config
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Automation triggered");
+
+        match channel {
+            "email" => self.send_email_notification(automation, trigger_data).await,
+            _ => {
+                // Log the notification (can be polled by canvas/frontend)
+                tracing::info!(
+                    automation_id = %automation.id,
+                    channel,
+                    message,
+                    "Automation notification sent"
+                );
+
+                Ok(json!({
+                    "action": "send_notification",
+                    "channel": channel,
+                    "message": message,
+                }))
+            }
+        }
+    }
+
+    /// Deliver an email notification via SES.
+    ///
+    /// `action_config` fields:
+    /// - `to` (required): string or array of recipient addresses
+    /// - `subject` (required): subject line
+    /// - `message` or `text`: plain-text body
+    /// - `html`: HTML body (if present, overrides `message` for rich format)
+    /// - `cc`, `bcc`: optional
+    /// - `from`: optional override (must be SES-verified)
+    /// - `reply_to`: optional
+    async fn send_email_notification(
+        &self,
+        automation: &Automation,
+        _trigger_data: &JsonValue,
+    ) -> Result<JsonValue> {
+        let client = self.email_client.as_ref().ok_or_else(|| {
+            AmosError::Config(
+                "Email channel requires AMOS__EMAIL__FROM_ADDRESS to be configured".to_string(),
+            )
+        })?;
+
+        let cfg = &automation.action_config;
+
+        let to = extract_address_list(cfg.get("to"));
+        if to.is_empty() {
+            return Err(AmosError::Validation(
+                "Email automation requires 'to' field with at least one recipient".to_string(),
+            ));
+        }
+        let cc = extract_address_list(cfg.get("cc"));
+        let bcc = extract_address_list(cfg.get("bcc"));
+
+        let subject = cfg
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                AmosError::Validation("Email automation requires 'subject'".to_string())
+            })?
+            .to_string();
+
+        let text = cfg
+            .get("text")
+            .and_then(|v| v.as_str())
+            .or_else(|| cfg.get("message").and_then(|v| v.as_str()))
+            .map(|s| s.to_string());
+
+        let html = cfg
+            .get("html")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let from = cfg
+            .get("from")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let reply_to = cfg
+            .get("reply_to")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let msg = EmailMessage {
+            to: to.clone(),
+            cc,
+            bcc,
+            subject: subject.clone(),
+            text,
+            html,
+            from,
+            reply_to,
+        };
+
+        let result = client.send(msg).await?;
+
         tracing::info!(
             automation_id = %automation.id,
-            channel,
-            message,
-            "Automation notification sent"
+            message_id = %result.message_id,
+            to = ?to,
+            subject = %subject,
+            "Automation email sent"
         );
 
         Ok(json!({
             "action": "send_notification",
-            "channel": channel,
-            "message": message,
+            "channel": "email",
+            "to": to,
+            "subject": subject,
+            "message_id": result.message_id,
         }))
     }
 
@@ -869,6 +978,21 @@ fn evaluate_condition(condition: &JsonValue, data: &JsonValue) -> bool {
 
 /// Simple 5-field cron matcher: "minute hour dom month dow"
 /// Supports `*`, specific values, and comma-separated lists.
+/// Parse a JSON value into a list of email addresses. Accepts either a single
+/// string or an array of strings. Returns empty if the value is missing or
+/// the wrong shape.
+fn extract_address_list(value: Option<&JsonValue>) -> Vec<String> {
+    match value {
+        Some(JsonValue::String(s)) if !s.trim().is_empty() => vec![s.trim().to_string()],
+        Some(JsonValue::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn cron_matches(expr: &str, now: &chrono::DateTime<Utc>) -> bool {
     let fields: Vec<&str> = expr.split_whitespace().collect();
     if fields.len() != 5 {

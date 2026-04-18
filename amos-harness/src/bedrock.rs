@@ -48,11 +48,11 @@ pub enum StreamEvent {
 
 /// Resolved AWS credentials
 #[derive(Debug, Clone)]
-struct AwsCredentials {
-    access_key_id: String,
-    secret_access_key: String,
-    session_token: Option<String>,
-    region: String,
+pub(crate) struct AwsCredentials {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub session_token: Option<String>,
+    pub region: String,
 }
 
 /// AWS Bedrock client
@@ -71,7 +71,7 @@ pub struct BedrockClient {
 /// 3. AWS config/credentials files (~/.aws/credentials, ~/.aws/config)
 ///    - Respects AWS_PROFILE (defaults to "default")
 ///    - Respects AWS_SHARED_CREDENTIALS_FILE and AWS_CONFIG_FILE overrides
-fn load_aws_credentials(
+pub(crate) fn load_aws_credentials(
     region: Option<String>,
     access_key_id: Option<String>,
     secret_access_key: Option<String>,
@@ -1039,7 +1039,7 @@ fn parse_event(
 }
 
 /// Calculate AWS SigV4 signature
-fn calculate_signature(
+pub(crate) fn calculate_signature(
     secret_key: &str,
     date_stamp: &str,
     region: &str,
@@ -1057,7 +1057,7 @@ fn calculate_signature(
 }
 
 /// HMAC-SHA256 helper
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let mut mac = HmacSha256::new_from_slice(key)
         .map_err(|e| AmosError::Internal(format!("HMAC error: {}", e)))?;
     mac.update(data);
