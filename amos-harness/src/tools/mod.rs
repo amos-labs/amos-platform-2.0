@@ -467,9 +467,15 @@ impl ToolRegistry {
             etl_pipeline.clone(),
         )));
 
-        // Register communication tools (email via SES; WhatsApp/Discord coming next)
+        // Register communication tools (email via SES, WhatsApp via Twilio, Discord via webhook)
         registry.register(Arc::new(communication_tools::SendEmailTool::new(
             email_client.clone(),
+        )));
+        registry.register(Arc::new(communication_tools::SendWhatsappTool::new(
+            config.clone(),
+        )));
+        registry.register(Arc::new(communication_tools::SendDiscordTool::new(
+            config.clone(),
         )));
 
         // Register bounty agent tools (autonomous bounty discovery and execution)

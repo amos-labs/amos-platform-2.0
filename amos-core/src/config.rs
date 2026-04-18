@@ -55,6 +55,12 @@ pub struct AppConfig {
     /// Email delivery settings (AWS SES).
     #[serde(default)]
     pub email: EmailConfig,
+    /// Twilio credentials (WhatsApp messaging).
+    #[serde(default)]
+    pub twilio: TwilioConfig,
+    /// Discord default webhook URL.
+    #[serde(default)]
+    pub discord: DiscordConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -407,6 +413,38 @@ pub struct EmailConfig {
     /// Env: `AMOS__EMAIL__REGION`
     #[serde(default)]
     pub region: Option<String>,
+}
+
+/// Twilio credentials (used for WhatsApp messaging).
+///
+/// All three fields are required to enable WhatsApp delivery. If any are
+/// missing the `send_whatsapp` tool returns an error.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct TwilioConfig {
+    /// Twilio Account SID.
+    /// Env: `AMOS__TWILIO__ACCOUNT_SID`
+    #[serde(default)]
+    pub account_sid: Option<String>,
+
+    /// Twilio Auth Token.
+    /// Env: `AMOS__TWILIO__AUTH_TOKEN`
+    #[serde(default)]
+    pub auth_token: Option<SecretString>,
+
+    /// Twilio WhatsApp-enabled From number (e.g. "whatsapp:+14155238886").
+    /// Env: `AMOS__TWILIO__FROM_NUMBER`
+    #[serde(default)]
+    pub from_number: Option<String>,
+}
+
+/// Discord default webhook URL (optional — callers can also supply one per
+/// message). If set, `send_discord` uses this URL when no `webhook_url`
+/// parameter is provided.
+#[derive(Debug, Default, Deserialize, Clone)]
+pub struct DiscordConfig {
+    /// Env: `AMOS__DISCORD__DEFAULT_WEBHOOK_URL`
+    #[serde(default)]
+    pub default_webhook_url: Option<String>,
 }
 
 /// Fleet configuration for autonomous bounty agent management.

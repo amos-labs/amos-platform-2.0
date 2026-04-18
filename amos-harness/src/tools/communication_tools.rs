@@ -1,12 +1,15 @@
-//! Communication tools — email, WhatsApp, Discord.
+//! Communication tools — email (SES), WhatsApp (Twilio), Discord (webhooks).
 //!
-//! These wrap the transport clients (SES, Twilio, Discord webhooks) that the
-//! harness owns, so the agent can send messages without learning each API.
+//! These wrap the transport clients that the harness owns, so the agent can
+//! send messages without learning each API. All three are single-provider
+//! for now; BYOK (customer-supplied credentials) comes later via the
+//! credential vault.
 
 use super::{Tool, ToolCategory, ToolResult};
 use crate::ses::{EmailMessage, SesClient};
-use amos_core::Result;
+use amos_core::{AppConfig, Result};
 use async_trait::async_trait;
+use secrecy::ExposeSecret;
 use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 
@@ -159,6 +162,304 @@ impl Tool for SendEmailTool {
                 "subject": subject,
             }))),
             Err(e) => Ok(ToolResult::error(format!("Email send failed: {}", e))),
+        }
+    }
+}
+
+// ─── WhatsApp (Twilio) ──────────────────────────────────────────────────
+
+/// Send a WhatsApp message via the Twilio Messaging API.
+///
+/// Requires `AMOS__TWILIO__ACCOUNT_SID`, `AMOS__TWILIO__AUTH_TOKEN`, and
+/// `AMOS__TWILIO__FROM_NUMBER` to be configured.
+pub struct SendWhatsappTool {
+    config: Arc<AppConfig>,
+    http_client: reqwest::Client,
+}
+
+impl SendWhatsappTool {
+    pub fn new(config: Arc<AppConfig>) -> Self {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self {
+            config,
+            http_client,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for SendWhatsappTool {
+    fn name(&self) -> &str {
+        "send_whatsapp"
+    }
+
+    fn description(&self) -> &str {
+        "Send a WhatsApp message via Twilio. Requires the harness to be configured \
+         with Twilio credentials (AMOS__TWILIO__ACCOUNT_SID, AUTH_TOKEN, FROM_NUMBER). \
+         Use this to reach customers or yourself on WhatsApp from an automation or \
+         interactively from chat. The recipient must have opted in to receive messages \
+         from your Twilio WhatsApp number."
+    }
+
+    fn parameters_schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Recipient phone number in E.164 format (e.g. '+15551234567'). \
+                                    The 'whatsapp:' prefix is added automatically."
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Message body (UTF-8, up to 1600 characters)"
+                },
+                "from": {
+                    "type": "string",
+                    "description": "Optional override of the default From number. \
+                                    Use 'whatsapp:+E.164' format."
+                }
+            },
+            "required": ["to", "body"]
+        })
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Integration
+    }
+
+    async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
+        let cfg = &self.config.twilio;
+        let account_sid = match &cfg.account_sid {
+            Some(s) if !s.trim().is_empty() => s,
+            _ => {
+                return Ok(ToolResult::error(
+                    "Twilio not configured: set AMOS__TWILIO__ACCOUNT_SID".to_string(),
+                ))
+            }
+        };
+        let auth_token = match &cfg.auth_token {
+            Some(t) if !t.expose_secret().trim().is_empty() => t.expose_secret().to_string(),
+            _ => {
+                return Ok(ToolResult::error(
+                    "Twilio not configured: set AMOS__TWILIO__AUTH_TOKEN".to_string(),
+                ))
+            }
+        };
+
+        let from = params
+            .get("from")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| cfg.from_number.clone())
+            .ok_or_else(|| {
+                amos_core::AmosError::Config(
+                    "Twilio not configured: set AMOS__TWILIO__FROM_NUMBER or pass 'from'"
+                        .to_string(),
+                )
+            })?;
+        let from = if from.starts_with("whatsapp:") {
+            from
+        } else {
+            format!("whatsapp:{}", from)
+        };
+
+        let to_raw = match params.get("to").and_then(|v| v.as_str()) {
+            Some(s) if !s.trim().is_empty() => s.trim().to_string(),
+            _ => return Ok(ToolResult::error("`to` is required".to_string())),
+        };
+        let to = if to_raw.starts_with("whatsapp:") {
+            to_raw
+        } else {
+            format!("whatsapp:{}", to_raw)
+        };
+
+        let body = match params.get("body").and_then(|v| v.as_str()) {
+            Some(s) if !s.trim().is_empty() => s.to_string(),
+            _ => return Ok(ToolResult::error("`body` is required".to_string())),
+        };
+
+        let url = format!(
+            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+            account_sid
+        );
+
+        let form = [
+            ("From", from.as_str()),
+            ("To", to.as_str()),
+            ("Body", body.as_str()),
+        ];
+
+        let resp = self
+            .http_client
+            .post(&url)
+            .basic_auth(account_sid, Some(auth_token))
+            .form(&form)
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) => {
+                let status = r.status();
+                let body_text = r.text().await.unwrap_or_default();
+                if !status.is_success() {
+                    return Ok(ToolResult::error(format!(
+                        "Twilio HTTP {}: {}",
+                        status, body_text
+                    )));
+                }
+                let parsed: serde_json::Value = serde_json::from_str(&body_text)
+                    .unwrap_or_else(|_| serde_json::json!({ "raw": body_text }));
+                let sid = parsed
+                    .get("sid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                Ok(ToolResult::success(json!({
+                    "sent": true,
+                    "sid": sid,
+                    "to": to,
+                    "from": from,
+                })))
+            }
+            Err(e) => Ok(ToolResult::error(format!("Twilio request failed: {}", e))),
+        }
+    }
+}
+
+// ─── Discord (Webhook) ──────────────────────────────────────────────────
+
+/// Post a message to a Discord channel via webhook URL.
+///
+/// The webhook URL can come from `AMOS__DISCORD__DEFAULT_WEBHOOK_URL` or be
+/// passed per call. No authentication beyond the URL secret.
+pub struct SendDiscordTool {
+    config: Arc<AppConfig>,
+    http_client: reqwest::Client,
+}
+
+impl SendDiscordTool {
+    pub fn new(config: Arc<AppConfig>) -> Self {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self {
+            config,
+            http_client,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for SendDiscordTool {
+    fn name(&self) -> &str {
+        "send_discord"
+    }
+
+    fn description(&self) -> &str {
+        "Post a message to a Discord channel via webhook URL. Get a webhook URL from \
+         Discord channel settings → Integrations → Webhooks → New Webhook. Either set \
+         AMOS__DISCORD__DEFAULT_WEBHOOK_URL or pass `webhook_url` per call. Supports \
+         plain text plus optional username/avatar override and embeds."
+    }
+
+    fn parameters_schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Message text (up to 2000 characters)"
+                },
+                "webhook_url": {
+                    "type": "string",
+                    "description": "Discord webhook URL. Optional if AMOS__DISCORD__DEFAULT_WEBHOOK_URL is set."
+                },
+                "username": {
+                    "type": "string",
+                    "description": "Optional display name override"
+                },
+                "avatar_url": {
+                    "type": "string",
+                    "description": "Optional avatar URL override"
+                },
+                "embeds": {
+                    "type": "array",
+                    "description": "Optional Discord embed objects (see Discord API docs)",
+                    "items": { "type": "object" }
+                }
+            },
+            "required": ["content"]
+        })
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::Integration
+    }
+
+    async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
+        let url = params
+            .get("webhook_url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| self.config.discord.default_webhook_url.clone());
+
+        let url = match url {
+            Some(u) if !u.trim().is_empty() => u,
+            _ => {
+                return Ok(ToolResult::error(
+                    "No Discord webhook URL available. Set AMOS__DISCORD__DEFAULT_WEBHOOK_URL \
+                     or pass `webhook_url` in the tool params."
+                        .to_string(),
+                ));
+            }
+        };
+
+        let content = match params.get("content").and_then(|v| v.as_str()) {
+            Some(s) if !s.trim().is_empty() => s.to_string(),
+            _ => return Ok(ToolResult::error("`content` is required".to_string())),
+        };
+
+        let mut body = serde_json::Map::new();
+        body.insert("content".to_string(), json!(content));
+        if let Some(u) = params.get("username").and_then(|v| v.as_str()) {
+            body.insert("username".to_string(), json!(u));
+        }
+        if let Some(a) = params.get("avatar_url").and_then(|v| v.as_str()) {
+            body.insert("avatar_url".to_string(), json!(a));
+        }
+        if let Some(e) = params.get("embeds").cloned() {
+            body.insert("embeds".to_string(), e);
+        }
+
+        let resp = self
+            .http_client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) => {
+                let status = r.status();
+                if !status.is_success() {
+                    let body_text = r.text().await.unwrap_or_default();
+                    return Ok(ToolResult::error(format!(
+                        "Discord HTTP {}: {}",
+                        status, body_text
+                    )));
+                }
+                Ok(ToolResult::success(json!({
+                    "sent": true,
+                    "status": status.as_u16(),
+                })))
+            }
+            Err(e) => Ok(ToolResult::error(format!("Discord request failed: {}", e))),
         }
     }
 }
