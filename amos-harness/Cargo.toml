@@ -43,8 +43,10 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 redis = { workspace = true }
 
-# HTTP client (for Bedrock, OpenClaw, integrations)
-reqwest = { workspace = true }
+# HTTP client (for Bedrock, OpenClaw, integrations).
+# `blocking` feature needed for the one-shot ECS task-role credential fetch
+# at startup — that path runs before we're inside an async context.
+reqwest = { workspace = true, features = ["blocking"] }
 
 # Template engine (canvas rendering)
 tera = { workspace = true }
