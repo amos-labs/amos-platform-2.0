@@ -131,10 +131,9 @@ If you believe you have found a vulnerability in the AMOS platform:
    ("Security" tab → "Report a vulnerability") to file a private
    report. This gives us a coordinated channel and preserves a
    timestamp.
-2. If private advisories are unavailable, email the maintainers directly
-   at the address listed in the repository's `Cargo.toml` package
-   metadata (`reminvestor@gmail.com` for this fork) with subject line
-   starting `[AMOS SECURITY]`.
+2. If private advisories are unavailable, email the maintainers at the
+   contact address listed in the repository's `Cargo.toml` package
+   metadata with subject line starting `[AMOS SECURITY]`.
 
 We will acknowledge within 72 hours and aim to confirm, mitigate, and
 coordinate a public disclosure within 30 days of the initial report.

@@ -202,15 +202,22 @@ impl SolanaClient {
     ///   any world-writable ancestor), a startup warning is emitted. Loading
     ///   still proceeds — the warning is advisory.
     pub fn load_oracle_keypair(&mut self, keypair_path: &str) -> Result<()> {
+        use std::io::Read;
+
         let path = Path::new(keypair_path);
 
-        enforce_keypair_permissions(path)?;
+        // Open+fstat the file once and keep the handle for reading. This
+        // closes the TOCTOU window between the permission check and the
+        // read: an attacker who races a swap after the stat can't force us
+        // to read a different file.
+        let mut file = enforce_keypair_permissions(path)?;
 
         if let Some(msg) = classify_keypair_path(path) {
             warn!(path = %keypair_path, "{}", msg);
         }
 
-        let keypair_bytes = std::fs::read_to_string(keypair_path).map_err(|e| {
+        let mut keypair_bytes = String::new();
+        file.read_to_string(&mut keypair_bytes).map_err(|e| {
             AmosError::Internal(format!(
                 "Failed to read oracle keypair at '{}': {}",
                 keypair_path, e
@@ -1055,21 +1062,30 @@ fn build_submit_bounty_proof_data(
     data
 }
 
-/// Enforce that an oracle keypair file is owner-only readable on Unix.
+/// Open the oracle keypair file and enforce that it's owner-only readable
+/// on Unix. Returns the open `File` handle so the caller can read from the
+/// same fd the permissions were checked against — this closes the TOCTOU
+/// window that a two-step `metadata()` + `read_to_string()` would leave open.
 ///
 /// Returns an error if:
-/// * The file cannot be stat'd (does not exist, no permission, etc.) — the
-///   caller's subsequent `read_to_string` would also fail, but we fail early
-///   so callers don't parse half-validated state.
-/// * Any bit in `mode & 0o077` is set — i.e. the file is group- or
+/// * The file cannot be opened or stat'd (missing, no permission, etc.).
+/// * On Unix, any bit in `mode & 0o077` is set — i.e. the file is group- or
 ///   world-readable/writable/executable. Only `0600` (or stricter) is allowed.
 ///
-/// On non-Unix targets permission bits don't map onto POSIX mode, so this
-/// function only performs a liveness check (that the file exists).
-fn enforce_keypair_permissions(path: &Path) -> Result<()> {
-    let metadata = std::fs::metadata(path).map_err(|e| {
+/// On non-Unix targets POSIX mode bits don't apply; the function only
+/// performs the open (liveness) check.
+fn enforce_keypair_permissions(path: &Path) -> Result<std::fs::File> {
+    let file = std::fs::File::open(path).map_err(|e| {
         AmosError::Internal(format!(
             "Failed to read oracle keypair at '{}': {}",
+            path.display(),
+            e
+        ))
+    })?;
+
+    let metadata = file.metadata().map_err(|e| {
+        AmosError::Internal(format!(
+            "Failed to stat oracle keypair at '{}': {}",
             path.display(),
             e
         ))
@@ -1094,7 +1110,7 @@ fn enforce_keypair_permissions(path: &Path) -> Result<()> {
     #[cfg(not(unix))]
     let _ = metadata;
 
-    Ok(())
+    Ok(file)
 }
 
 /// Classify a keypair file location and return a human-readable warning
@@ -1114,9 +1130,15 @@ fn classify_keypair_path(path: &Path) -> Option<String> {
 /// directory as an explicit argument. Exposed for unit tests so they can
 /// exercise the home-dir branch without mutating process-wide `$HOME`.
 fn classify_keypair_path_with_home(path: &Path, home: Option<&Path>) -> Option<String> {
-    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let raw = path.to_path_buf();
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| raw.clone());
 
-    if abs.starts_with("/tmp") || abs.starts_with("/var/tmp") {
+    // Check both the raw path and the canonicalized path against the temp
+    // prefixes. macOS symlinks `/tmp` → `/private/tmp` and `/var` →
+    // `/private/var`, so `canonicalize("/tmp/foo")` on an existing file
+    // returns `/private/tmp/foo` and a `starts_with("/tmp")` comparison
+    // misses. Checking both forms catches the key in both cases.
+    if is_under_temp_dir(&raw) || is_under_temp_dir(&abs) {
         return Some(format!(
             "Oracle keypair at '{}' is stored under a world-traversable temp directory. \
              Move it to a dedicated secrets directory (e.g. /etc/amos/secrets) with 0700 on the parent dir.",
@@ -1125,7 +1147,7 @@ fn classify_keypair_path_with_home(path: &Path, home: Option<&Path>) -> Option<S
     }
 
     if let Some(home) = home {
-        if abs.starts_with(home) {
+        if raw.starts_with(home) || abs.starts_with(home) {
             return Some(format!(
                 "Oracle keypair at '{}' is stored inside the home directory ({}). \
                  Home dirs are typically backed up, synced, and shared across processes. \
@@ -1153,8 +1175,21 @@ fn classify_keypair_path_with_home(path: &Path, home: Option<&Path>) -> Option<S
     None
 }
 
+/// Returns `true` if `path` is under a known world-traversable temp
+/// directory. Covers both the logical names (`/tmp`, `/var/tmp`) and the
+/// macOS canonicalized forms (`/private/tmp`, `/private/var/tmp`).
+fn is_under_temp_dir(path: &Path) -> bool {
+    const TEMP_PREFIXES: &[&str] = &["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp"];
+    TEMP_PREFIXES.iter().any(|p| path.starts_with(p))
+}
+
+/// Look up the user's home directory. Prefers `$HOME` (Unix) and falls back
+/// to `%USERPROFILE%` (Windows) so the risky-path warning still fires on
+/// non-Unix hosts even though the permission check does not.
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
 #[cfg(unix)]
@@ -2021,6 +2056,21 @@ mod tests {
         let path = PathBuf::from("/var/tmp/amos-oracle.json");
         let warning = classify_keypair_path(&path);
         assert!(warning.is_some(), "/var/tmp path should warn");
+    }
+
+    #[test]
+    fn test_classify_path_macos_private_tmp_triggers_warning() {
+        // On macOS, canonicalize resolves /tmp → /private/tmp. Any keypair
+        // whose canonical path starts with /private/tmp (or /private/var/tmp)
+        // must still trip the temp-dir warning.
+        let canonical = PathBuf::from("/private/tmp/amos-oracle.json");
+        let warning = classify_keypair_path(&canonical);
+        assert!(warning.is_some(), "/private/tmp path should warn");
+        assert!(warning.unwrap().contains("temp directory"));
+
+        let canonical_var = PathBuf::from("/private/var/tmp/amos-oracle.json");
+        let warning_var = classify_keypair_path(&canonical_var);
+        assert!(warning_var.is_some(), "/private/var/tmp path should warn");
     }
 
     #[test]
