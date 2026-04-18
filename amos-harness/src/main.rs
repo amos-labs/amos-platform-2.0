@@ -22,21 +22,17 @@ async fn main() -> Result<()> {
     info!("Configuration loaded");
 
     // ── TLS enforcement for production ──────────────────────────────
-    let is_production = std::env::var("AMOS__ENV").unwrap_or_default() == "production";
-
-    {
-        let db_url = config.database.url.expose_secret();
-        if is_production
-            && !db_url.contains("sslmode=require")
-            && !db_url.contains("sslmode=verify")
-        {
-            tracing::warn!(
-                "Production database URL missing sslmode=require — connections may be unencrypted"
-            );
-        }
-        if is_production && !config.redis.url.starts_with("rediss://") {
-            tracing::warn!(
-                "Production Redis URL is not using TLS (rediss://) — connections may be unencrypted"
+    // In production (AMOS__ENV=production) the harness refuses to start if
+    // the database or Redis URLs are not configured for TLS. In development
+    // the same issues are surfaced as warnings so operators can fix them
+    // before promoting to production.
+    if AppConfig::is_production_env() {
+        config.validate_startup()?;
+    } else {
+        for issue in config.tls_issues() {
+            tracing::info!(
+                "{} (acceptable for dev; would block startup in production)",
+                issue
             );
         }
     }
