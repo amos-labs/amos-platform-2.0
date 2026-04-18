@@ -1,6 +1,7 @@
 //! HTTP routes and WebSocket handlers
 
 pub mod agent_proxy;
+pub mod automations;
 pub mod bots;
 pub mod bounties;
 pub mod canvas;
@@ -124,6 +125,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/sites", sites::routes(state.clone()))
         // Tool confirmation routes (destructive command approve/deny)
         .nest("/api/v1/tools", confirm::routes(state.clone()))
+        // Automation monitoring routes (failed runs, dead-letter queue)
+        .nest("/api/v1/automations", automations::routes(state.clone()))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::authenticate,

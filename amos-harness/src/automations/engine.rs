@@ -179,16 +179,34 @@ impl AutomationEngine {
                     error = %e,
                     "Automation execution failed"
                 );
+                let err_str = e.to_string();
                 let _ = self
                     .log_run(
                         automation.id,
                         &trigger_data,
                         "error",
                         None,
-                        Some(e.to_string()),
+                        Some(err_str.clone()),
                         duration_ms,
                     )
                     .await;
+
+                // Outbound webhook failures are retried with exponential backoff.
+                // Other action types (create_record, send_notification, etc.) are
+                // not retried — they either have no idempotency guarantees
+                // (email) or are local DB ops that should not fail transiently.
+                if matches!(automation.action_type, ActionType::CallWebhook) {
+                    if let Err(enqueue_err) = self
+                        .enqueue_retry(automation.id, "call_webhook", &trigger_data, &err_str, 1)
+                        .await
+                    {
+                        tracing::error!(
+                            automation_id = %automation.id,
+                            error = %enqueue_err,
+                            "Failed to enqueue webhook retry"
+                        );
+                    }
+                }
             }
         }
     }
@@ -335,12 +353,24 @@ impl AutomationEngine {
             .await
             .map_err(|e| AmosError::Internal(format!("Webhook request failed: {}", e)))?;
 
-        let status = response.status().as_u16();
+        let status = response.status();
+        let status_code = status.as_u16();
+
+        // Treat non-2xx as a retryable failure. The execute_action wrapper
+        // will enqueue this to the retry queue for exponential-backoff retries.
+        if !status.is_success() {
+            let body_preview = response.text().await.unwrap_or_default();
+            let truncated: String = body_preview.chars().take(500).collect();
+            return Err(AmosError::Internal(format!(
+                "Webhook returned HTTP {}: {}",
+                status_code, truncated
+            )));
+        }
 
         Ok(json!({
             "action": "call_webhook",
             "url": url,
-            "status": status,
+            "status": status_code,
         }))
     }
 
@@ -630,15 +660,236 @@ impl AutomationEngine {
         Ok(())
     }
 
+    // ─── Retry queue ────────────────────────────────────────────────────
+
+    /// Insert a new retry queue entry (attempt=1) or advance an existing one
+    /// toward the next attempt / dead_letter.
+    async fn enqueue_retry(
+        &self,
+        automation_id: Uuid,
+        action_type: &str,
+        trigger_data: &JsonValue,
+        error: &str,
+        attempt: i32,
+    ) -> Result<()> {
+        let next_delay = Self::retry_delay_for_attempt(attempt);
+        let next_at = Utc::now() + chrono::Duration::from_std(next_delay).unwrap_or_default();
+
+        sqlx::query(
+            r#"INSERT INTO automation_retry_queue
+                  (automation_id, action_type, trigger_data, attempt, next_attempt_at,
+                   last_error, status)
+               VALUES ($1, $2, $3, $4, $5, $6, 'pending')"#,
+        )
+        .bind(automation_id)
+        .bind(action_type)
+        .bind(trigger_data)
+        .bind(attempt)
+        .bind(next_at)
+        .bind(error)
+        .execute(&self.db_pool)
+        .await
+        .map_err(|e| AmosError::Internal(format!("Failed to enqueue retry: {}", e)))?;
+
+        tracing::info!(
+            automation_id = %automation_id,
+            attempt,
+            next_attempt_at = %next_at,
+            "Enqueued webhook retry"
+        );
+        Ok(())
+    }
+
+    /// Exponential backoff: attempt 1 → 30s, 2 → 2min, 3 → 10min, 4+ → capped at 30min.
+    fn retry_delay_for_attempt(attempt: i32) -> std::time::Duration {
+        let secs: u64 = match attempt {
+            1 => 30,
+            2 => 120,
+            3 => 600,
+            _ => 1800,
+        };
+        std::time::Duration::from_secs(secs)
+    }
+
+    /// Pull due retry entries and re-execute their actions. Called every 30s
+    /// by the background worker. Successful retries → status='succeeded';
+    /// failed retries under max_attempts reschedule; at max_attempts → 'dead_letter'.
+    async fn process_retry_queue(&self) {
+        // Atomically claim up to 10 due entries (single-instance for now —
+        // when we scale to multiple harness replicas we'd use FOR UPDATE SKIP LOCKED).
+        let rows = match sqlx::query(
+            r#"UPDATE automation_retry_queue
+                  SET status = 'in_progress', updated_at = NOW()
+                WHERE id IN (
+                    SELECT id FROM automation_retry_queue
+                    WHERE status = 'pending' AND next_attempt_at <= NOW()
+                    ORDER BY next_attempt_at ASC
+                    LIMIT 10
+                )
+                RETURNING id, automation_id, action_type, trigger_data, attempt, max_attempts"#,
+        )
+        .fetch_all(&self.db_pool)
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("Failed to claim retry queue entries: {}", e);
+                return;
+            }
+        };
+
+        for row in rows {
+            let retry_id: Uuid = row.get("id");
+            let automation_id: Uuid = row.get("automation_id");
+            let action_type: String = row.get("action_type");
+            let trigger_data: JsonValue = row.get("trigger_data");
+            let attempt: i32 = row.get("attempt");
+            let max_attempts: i32 = row.get("max_attempts");
+
+            // Reload the automation in case its config changed.
+            let automation = match self.get_automation(automation_id).await {
+                Ok(a) => a,
+                Err(e) => {
+                    // Automation was deleted or is unreachable — mark dead_letter.
+                    let _ = sqlx::query(
+                        "UPDATE automation_retry_queue SET status='dead_letter', last_error=$1,
+                            updated_at=NOW() WHERE id=$2",
+                    )
+                    .bind(format!("Automation unavailable: {}", e))
+                    .bind(retry_id)
+                    .execute(&self.db_pool)
+                    .await;
+                    continue;
+                }
+            };
+
+            if !automation.enabled {
+                // Disabled automations should not fire — drop the retry entry quietly.
+                let _ = sqlx::query(
+                    "UPDATE automation_retry_queue SET status='dead_letter',
+                        last_error='Automation disabled', updated_at=NOW() WHERE id=$1",
+                )
+                .bind(retry_id)
+                .execute(&self.db_pool)
+                .await;
+                continue;
+            }
+
+            // Re-execute the action. Only call_webhook is currently retry-eligible.
+            let result = if action_type == "call_webhook" {
+                self.action_call_webhook(&automation, &trigger_data).await
+            } else {
+                Err(AmosError::Internal(format!(
+                    "Unsupported retry action type: {}",
+                    action_type
+                )))
+            };
+
+            match result {
+                Ok(result_data) => {
+                    let _ = sqlx::query(
+                        "UPDATE automation_retry_queue SET status='succeeded',
+                            updated_at=NOW() WHERE id=$1",
+                    )
+                    .bind(retry_id)
+                    .execute(&self.db_pool)
+                    .await;
+                    let _ = self
+                        .log_run(
+                            automation_id,
+                            &trigger_data,
+                            "success",
+                            Some(result_data),
+                            None,
+                            0,
+                        )
+                        .await;
+                    tracing::info!(
+                        automation_id = %automation_id,
+                        attempt,
+                        "Webhook retry succeeded"
+                    );
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    let _ = self
+                        .log_run(
+                            automation_id,
+                            &trigger_data,
+                            "error",
+                            None,
+                            Some(err_str.clone()),
+                            0,
+                        )
+                        .await;
+
+                    let next_attempt = attempt + 1;
+                    if next_attempt > max_attempts {
+                        // Give up.
+                        let _ = sqlx::query(
+                            "UPDATE automation_retry_queue SET status='dead_letter',
+                                last_error=$1, updated_at=NOW() WHERE id=$2",
+                        )
+                        .bind(&err_str)
+                        .bind(retry_id)
+                        .execute(&self.db_pool)
+                        .await;
+                        tracing::error!(
+                            automation_id = %automation_id,
+                            attempt,
+                            "Webhook retry exhausted — moved to dead_letter"
+                        );
+                    } else {
+                        // Reschedule.
+                        let next_delay = Self::retry_delay_for_attempt(next_attempt);
+                        let next_at =
+                            Utc::now() + chrono::Duration::from_std(next_delay).unwrap_or_default();
+                        let _ = sqlx::query(
+                            "UPDATE automation_retry_queue
+                                SET status='pending', attempt=$1, next_attempt_at=$2,
+                                    last_error=$3, updated_at=NOW()
+                                WHERE id=$4",
+                        )
+                        .bind(next_attempt)
+                        .bind(next_at)
+                        .bind(&err_str)
+                        .bind(retry_id)
+                        .execute(&self.db_pool)
+                        .await;
+                        tracing::warn!(
+                            automation_id = %automation_id,
+                            attempt = next_attempt,
+                            next_attempt_at = %next_at,
+                            "Webhook retry failed — rescheduled"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // ─── Cron scheduling ────────────────────────────────────────────────
 
-    /// Spawn a background loop that checks cron-triggered automations every 60s.
+    /// Spawn background loops for cron-triggered automations (60s tick) and
+    /// the retry queue worker (30s tick).
     pub fn start(self: Arc<Self>) {
+        // Cron loop
+        let cron_engine = self.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {
                 interval.tick().await;
-                self.check_scheduled_automations().await;
+                cron_engine.check_scheduled_automations().await;
+            }
+        });
+
+        // Retry worker
+        let retry_engine = self.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                retry_engine.process_retry_queue().await;
             }
         });
     }
@@ -694,10 +945,12 @@ impl AutomationEngine {
                 let db_pool = self.db_pool.clone();
                 let task_queue = self.task_queue.clone();
                 let http_client = self.http_client.clone();
+                let email_client = self.email_client.clone();
                 let auto = automation.clone();
 
                 tokio::spawn(async move {
-                    let engine = AutomationEngine::new(db_pool, task_queue, http_client);
+                    let engine = AutomationEngine::new(db_pool, task_queue, http_client)
+                        .with_email_client(email_client);
                     engine.execute_action(&auto, trigger_data).await;
                 });
             }
@@ -1049,6 +1302,36 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
     use serde_json::json;
+
+    // ── Retry backoff ───────────────────────────────────────────────
+
+    #[test]
+    fn retry_delay_grows_by_attempt() {
+        assert_eq!(
+            AutomationEngine::retry_delay_for_attempt(1).as_secs(),
+            30,
+            "first retry: 30s"
+        );
+        assert_eq!(
+            AutomationEngine::retry_delay_for_attempt(2).as_secs(),
+            120,
+            "second retry: 2min"
+        );
+        assert_eq!(
+            AutomationEngine::retry_delay_for_attempt(3).as_secs(),
+            600,
+            "third retry: 10min"
+        );
+    }
+
+    #[test]
+    fn retry_delay_caps_at_30min() {
+        assert_eq!(
+            AutomationEngine::retry_delay_for_attempt(10).as_secs(),
+            1800,
+            "delay caps at 30min for high attempts"
+        );
+    }
 
     // ── Cron matching ───────────────────────────────────────────────
 
