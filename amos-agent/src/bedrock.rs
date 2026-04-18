@@ -255,11 +255,32 @@ impl BedrockProvider {
             }]);
         }
 
-        // Add tools if provided
+        // Add tools if provided.
+        //
+        // Bedrock's Converse API requires each tool to be wrapped in one of
+        // `toolSpec`, `systemTool`, `modelTool`, or `cachePoint`. The harness
+        // sends us raw tool schemas (`{name, description, inputSchema}`) that
+        // other providers (Anthropic, OpenAI) also accept directly, so we
+        // wrap here rather than forcing every caller to know Bedrock's shape.
+        //
+        // Tools already wrapped (e.g. the bedrock.rs unit test) are passed
+        // through unchanged so direct users of this function still work.
         if !tools.is_empty() {
-            body["toolConfig"] = serde_json::json!({
-                "tools": tools
-            });
+            let wrapped: Vec<serde_json::Value> = tools
+                .iter()
+                .map(|t| {
+                    if t.get("toolSpec").is_some()
+                        || t.get("systemTool").is_some()
+                        || t.get("modelTool").is_some()
+                        || t.get("cachePoint").is_some()
+                    {
+                        t.clone()
+                    } else {
+                        serde_json::json!({ "toolSpec": t })
+                    }
+                })
+                .collect();
+            body["toolConfig"] = serde_json::json!({ "tools": wrapped });
         }
 
         Ok(body)
