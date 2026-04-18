@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         config.validate_startup()?;
     } else {
         for issue in config.tls_issues() {
-            tracing::warn!(
+            tracing::info!(
                 "{} (acceptable for dev; would block startup in production)",
                 issue
             );
