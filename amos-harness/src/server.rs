@@ -266,6 +266,9 @@ pub async fn create_server(
     automation_engine.clone().start();
     tracing::info!("Automation engine started (cron scheduler active)");
 
+    // Start the OAuth token refresh worker (5-minute tick)
+    crate::oauth_refresh::start(db_pool.clone());
+
     // Create event channel for schema → automation decoupling
     let automation_event_tx = automation_engine.create_event_channel();
 

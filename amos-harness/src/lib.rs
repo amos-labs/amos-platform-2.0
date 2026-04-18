@@ -50,6 +50,7 @@ pub mod image_gen;
 pub mod integrations;
 pub mod memory;
 pub mod middleware;
+pub mod oauth_refresh;
 pub mod openclaw;
 pub mod orchestrator;
 pub mod packages;

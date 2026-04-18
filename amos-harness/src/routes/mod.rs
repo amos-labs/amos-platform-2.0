@@ -6,6 +6,7 @@ pub mod bots;
 pub mod bounties;
 pub mod canvas;
 pub mod confirm;
+pub mod connections;
 pub mod credentials;
 pub mod data;
 pub mod fleet;
@@ -132,6 +133,8 @@ pub fn build_routes(state: Arc<AppState>) -> Router {
         .nest("/api/v1/tools", confirm::routes(state.clone()))
         // Automation monitoring routes (failed runs, dead-letter queue)
         .nest("/api/v1/automations", automations::routes(state.clone()))
+        // Connections (integration credential management via the canvas)
+        .nest("/api/v1/connections", connections::routes(state.clone()))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::authenticate,
