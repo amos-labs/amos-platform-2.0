@@ -15,6 +15,7 @@ use solana_sdk::{
     system_program::ID as SYSTEM_PROGRAM_ID,
     transaction::Transaction,
 };
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -192,7 +193,23 @@ impl SolanaClient {
     }
 
     /// Load the oracle keypair from a JSON file (Solana CLI format).
+    ///
+    /// Enforces a minimum security posture (see `SECURITY.md` for the full model):
+    /// * On Unix, the file **must** have mode `0600` — any group/world bit
+    ///   causes a hard error (not a warning). An oracle signing key must not
+    ///   be readable by other users on the host.
+    /// * If the key lives in a risky path (home dir, `/tmp`, `/var/tmp`, or
+    ///   any world-writable ancestor), a startup warning is emitted. Loading
+    ///   still proceeds — the warning is advisory.
     pub fn load_oracle_keypair(&mut self, keypair_path: &str) -> Result<()> {
+        let path = Path::new(keypair_path);
+
+        enforce_keypair_permissions(path)?;
+
+        if let Some(msg) = classify_keypair_path(path) {
+            warn!(path = %keypair_path, "{}", msg);
+        }
+
         let keypair_bytes = std::fs::read_to_string(keypair_path).map_err(|e| {
             AmosError::Internal(format!(
                 "Failed to read oracle keypair at '{}': {}",
@@ -1038,6 +1055,123 @@ fn build_submit_bounty_proof_data(
     data
 }
 
+/// Enforce that an oracle keypair file is owner-only readable on Unix.
+///
+/// Returns an error if:
+/// * The file cannot be stat'd (does not exist, no permission, etc.) — the
+///   caller's subsequent `read_to_string` would also fail, but we fail early
+///   so callers don't parse half-validated state.
+/// * Any bit in `mode & 0o077` is set — i.e. the file is group- or
+///   world-readable/writable/executable. Only `0600` (or stricter) is allowed.
+///
+/// On non-Unix targets permission bits don't map onto POSIX mode, so this
+/// function only performs a liveness check (that the file exists).
+fn enforce_keypair_permissions(path: &Path) -> Result<()> {
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        AmosError::Internal(format!(
+            "Failed to read oracle keypair at '{}': {}",
+            path.display(),
+            e
+        ))
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(AmosError::Config(format!(
+                "Oracle keypair '{}' has insecure permissions {:#o}; required 0600 (owner read/write only). \
+                 Run: chmod 600 '{}'",
+                path.display(),
+                mode,
+                path.display()
+            )));
+        }
+    }
+
+    // Suppress unused-variable warning on non-unix targets.
+    #[cfg(not(unix))]
+    let _ = metadata;
+
+    Ok(())
+}
+
+/// Classify a keypair file location and return a human-readable warning
+/// message if the location is risky. `None` means the path is fine.
+///
+/// Risky locations:
+/// * Inside the user's home directory (`$HOME`) — shared across many processes,
+///   often synced to backups or cloud drives.
+/// * `/tmp` or `/var/tmp` — world-traversable, periodically swept.
+/// * Any ancestor directory with the world-writable bit set (`o+w`), which
+///   means a non-owner can replace the keypair file wholesale.
+fn classify_keypair_path(path: &Path) -> Option<String> {
+    classify_keypair_path_with_home(path, home_dir().as_deref())
+}
+
+/// Pure variant of [`classify_keypair_path`] that accepts the user's home
+/// directory as an explicit argument. Exposed for unit tests so they can
+/// exercise the home-dir branch without mutating process-wide `$HOME`.
+fn classify_keypair_path_with_home(path: &Path, home: Option<&Path>) -> Option<String> {
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
+    if abs.starts_with("/tmp") || abs.starts_with("/var/tmp") {
+        return Some(format!(
+            "Oracle keypair at '{}' is stored under a world-traversable temp directory. \
+             Move it to a dedicated secrets directory (e.g. /etc/amos/secrets) with 0700 on the parent dir.",
+            abs.display()
+        ));
+    }
+
+    if let Some(home) = home {
+        if abs.starts_with(home) {
+            return Some(format!(
+                "Oracle keypair at '{}' is stored inside the home directory ({}). \
+                 Home dirs are typically backed up, synced, and shared across processes. \
+                 Move the key to a dedicated secrets directory (e.g. /etc/amos/secrets).",
+                abs.display(),
+                home.display()
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        if let Some(dir) = world_writable_ancestor(&abs) {
+            return Some(format!(
+                "Oracle keypair at '{}' has a world-writable ancestor directory '{}'. \
+                 Any local user can replace the keypair file. \
+                 Tighten the directory with: chmod o-w '{}'.",
+                abs.display(),
+                dir.display(),
+                dir.display()
+            ));
+        }
+    }
+
+    None
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
+#[cfg(unix)]
+fn world_writable_ancestor(path: &Path) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if let Ok(md) = std::fs::metadata(dir) {
+            if md.permissions().mode() & 0o002 != 0 {
+                return Some(dir.to_path_buf());
+            }
+        }
+        current = dir.parent();
+    }
+    None
+}
+
 /// Hash a string (bounty UUID) to a fixed 32-byte array.
 fn hash_to_32_bytes(input: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -1684,6 +1818,7 @@ mod tests {
             serde_json::to_string(&keypair_bytes.to_vec()).unwrap(),
         )
         .unwrap();
+        set_mode_0600(&tmpfile);
 
         client
             .load_oracle_keypair(tmpfile.to_str().unwrap())
@@ -1727,6 +1862,7 @@ mod tests {
             serde_json::to_string(&keypair_bytes.to_vec()).unwrap(),
         )
         .unwrap();
+        set_mode_0600(&tmpfile);
 
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
@@ -1747,6 +1883,7 @@ mod tests {
     fn test_load_keypair_invalid_json() {
         let tmpfile = std::env::temp_dir().join("test_bad_keypair.json");
         std::fs::write(&tmpfile, "not valid json at all").unwrap();
+        set_mode_0600(&tmpfile);
 
         let mut client = SolanaClient::new(
             "https://api.devnet.solana.com",
@@ -1759,6 +1896,157 @@ mod tests {
             .is_err());
 
         let _ = std::fs::remove_file(tmpfile);
+    }
+
+    // ── Keypair permission & path hardening (SECURE-006) ──────────────
+
+    /// Helper: chmod a test file to 0600 on Unix; no-op elsewhere.
+    fn set_mode_0600(path: &Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o600);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
+        #[cfg(not(unix))]
+        let _ = path;
+    }
+
+    /// Helper: write a valid keypair JSON to `path` at a specific mode.
+    fn write_keypair_at_mode(path: &Path, mode: u32) {
+        let kp = Keypair::new();
+        let bytes = kp.to_bytes();
+        std::fs::write(path, serde_json::to_string(&bytes.to_vec()).unwrap()).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(mode);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
+        #[cfg(not(unix))]
+        let _ = mode;
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_load_keypair_permissions_0600_ok() {
+        let tmpfile = std::env::temp_dir().join("secure006_perm_0600.json");
+        write_keypair_at_mode(&tmpfile, 0o600);
+
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
+        )
+        .unwrap();
+
+        let res = client.load_oracle_keypair(tmpfile.to_str().unwrap());
+        assert!(res.is_ok(), "0600 should load: {res:?}");
+        assert!(client.oracle_keypair.is_some());
+
+        let _ = std::fs::remove_file(tmpfile);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_load_keypair_permissions_0644_rejected() {
+        let tmpfile = std::env::temp_dir().join("secure006_perm_0644.json");
+        write_keypair_at_mode(&tmpfile, 0o644);
+
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
+        )
+        .unwrap();
+
+        let res = client.load_oracle_keypair(tmpfile.to_str().unwrap());
+        assert!(res.is_err(), "0644 should be rejected");
+        let msg = res.unwrap_err().to_string();
+        assert!(
+            msg.contains("insecure permissions") && msg.contains("0600"),
+            "error should mention 0600 requirement, got: {msg}"
+        );
+        assert!(client.oracle_keypair.is_none());
+
+        let _ = std::fs::remove_file(tmpfile);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_load_keypair_group_readable_rejected() {
+        let tmpfile = std::env::temp_dir().join("secure006_perm_0640.json");
+        write_keypair_at_mode(&tmpfile, 0o640);
+
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
+        )
+        .unwrap();
+
+        let res = client.load_oracle_keypair(tmpfile.to_str().unwrap());
+        assert!(res.is_err(), "0640 (group readable) should be rejected");
+
+        let _ = std::fs::remove_file(tmpfile);
+    }
+
+    #[test]
+    fn test_load_keypair_nonexistent_file_clean_error() {
+        let mut client = SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
+        )
+        .unwrap();
+
+        let res = client.load_oracle_keypair("/nonexistent/path/keypair.json");
+        assert!(res.is_err());
+        let msg = res.unwrap_err().to_string();
+        assert!(
+            msg.contains("Failed to read oracle keypair"),
+            "should surface a clean read error, got: {msg}"
+        );
+        assert!(client.oracle_keypair.is_none());
+    }
+
+    #[test]
+    fn test_classify_path_tmp_triggers_warning() {
+        let path = PathBuf::from("/tmp/amos-oracle.json");
+        let warning = classify_keypair_path(&path);
+        assert!(warning.is_some(), "/tmp path should warn");
+        assert!(warning.unwrap().contains("temp directory"));
+    }
+
+    #[test]
+    fn test_classify_path_var_tmp_triggers_warning() {
+        let path = PathBuf::from("/var/tmp/amos-oracle.json");
+        let warning = classify_keypair_path(&path);
+        assert!(warning.is_some(), "/var/tmp path should warn");
+    }
+
+    #[test]
+    fn test_classify_path_home_triggers_warning() {
+        // Use the pure variant so this test doesn't race with any other
+        // test that reads $HOME when run in parallel.
+        let home = PathBuf::from("/home/alice");
+        let key = home.join("amos-founder.json");
+        let warning = classify_keypair_path_with_home(&key, Some(&home));
+
+        assert!(warning.is_some(), "home-dir path should warn");
+        assert!(warning.unwrap().contains("home directory"));
+    }
+
+    #[test]
+    fn test_classify_path_safe_location_no_warning() {
+        // A path under /etc (not /tmp, not under HOME, parent not
+        // world-writable) should produce no warning. We don't need the file
+        // to exist — the classifier falls back to the raw path when
+        // canonicalize fails.
+        let path = PathBuf::from("/etc/amos/secrets/oracle.json");
+        let warning = classify_keypair_path(&path);
+        assert!(
+            warning.is_none(),
+            "safe path should not warn, got: {warning:?}"
+        );
     }
 
     // ── Dynamic max_reward computation ────────────────────────────────
