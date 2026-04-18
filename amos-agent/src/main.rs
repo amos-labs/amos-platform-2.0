@@ -284,12 +284,10 @@ async fn main() -> anyhow::Result<()> {
                                     is_error,
                                     result_summary,
                                     metadata: _,
-                                } => {
-                                    if is_error {
-                                        let msg = result_summary
-                                            .unwrap_or_else(|| format!("{tool_name} failed"));
-                                        eprintln!("[error] {msg} ({duration_ms}ms)");
-                                    }
+                                } if is_error => {
+                                    let msg = result_summary
+                                        .unwrap_or_else(|| format!("{tool_name} failed"));
+                                    eprintln!("[error] {msg} ({duration_ms}ms)");
                                 }
                                 agent_loop::AgentEvent::Error { message } => {
                                     eprintln!("\n[ERROR] {message}");
