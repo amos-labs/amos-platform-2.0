@@ -2,7 +2,7 @@
 //!
 //! Uses the [`config`] crate to layer: defaults < config file < env vars.
 
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 /// Deployment mode: managed (AMOS cloud) or self-hosted (customer hardware).
@@ -507,6 +507,35 @@ impl Default for LocalModelConfig {
     }
 }
 
+/// Collect transport-layer encryption issues for the given connection URLs.
+///
+/// Pure function: no env reads, no state. Exposed as a free helper so the
+/// logic can be unit-tested without building a full [`AppConfig`].
+pub(crate) fn collect_tls_issues(db_url: &str, redis_url: &str) -> Vec<String> {
+    let mut issues: Vec<String> = Vec::new();
+
+    if !db_url.contains("sslmode=require")
+        && !db_url.contains("sslmode=verify-ca")
+        && !db_url.contains("sslmode=verify-full")
+    {
+        issues.push(
+            "AMOS__DATABASE__URL must enable TLS (sslmode=require, sslmode=verify-ca, \
+             or sslmode=verify-full). Append `?sslmode=require` to the connection string."
+                .into(),
+        );
+    }
+
+    if !redis_url.starts_with("rediss://") {
+        issues.push(
+            "AMOS__REDIS__URL must use the rediss:// scheme (TLS). Switch the URL from \
+             redis:// to rediss:// and confirm your Redis server has TLS enabled."
+                .into(),
+        );
+    }
+
+    issues
+}
+
 // ── Defaults ─────────────────────────────────────────────────────────────
 
 fn default_host() -> String {
@@ -709,6 +738,53 @@ impl AppConfig {
     pub fn has_custom_models(&self) -> bool {
         self.custom_models.enabled && !self.custom_models.providers.is_empty()
     }
+
+    /// Whether the current process is running in production mode.
+    ///
+    /// Matches `AMOS__ENV=production`, the convention used across harness
+    /// startup (`amos-harness/src/main.rs`), vault (`vault.rs`), and CORS
+    /// configuration (`amos-harness/src/server.rs`).
+    pub fn is_production_env() -> bool {
+        std::env::var("AMOS__ENV").unwrap_or_default() == "production"
+    }
+
+    /// Return a list of transport-layer encryption issues detected in the
+    /// current configuration. An empty vector means database and Redis URLs
+    /// both use TLS.
+    ///
+    /// Used by [`Self::validate_production_tls`] and as a signal for
+    /// development-mode warnings.
+    pub fn tls_issues(&self) -> Vec<String> {
+        collect_tls_issues(self.database.url.expose_secret(), &self.redis.url)
+    }
+
+    /// Enforce TLS-enabled database and Redis connections when running in
+    /// production mode (`AMOS__ENV=production`). Returns `Ok(())` outside
+    /// production.
+    ///
+    /// Callers should bubble this error up from startup so a misconfigured
+    /// production deploy fails fast rather than silently running with
+    /// plaintext traffic.
+    pub fn validate_production_tls(&self) -> crate::Result<()> {
+        if !Self::is_production_env() {
+            return Ok(());
+        }
+        let issues = self.tls_issues();
+        if issues.is_empty() {
+            return Ok(());
+        }
+        Err(crate::AmosError::Config(format!(
+            "TLS enforcement failed for production startup:\n  - {}",
+            issues.join("\n  - ")
+        )))
+    }
+
+    /// Run all startup validation checks that must block boot on failure.
+    /// Currently enforces production TLS; extend here as more startup
+    /// invariants are added.
+    pub fn validate_startup(&self) -> crate::Result<()> {
+        self.validate_production_tls()
+    }
 }
 
 #[cfg(test)]
@@ -778,5 +854,75 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.provider, "ollama");
         assert_eq!(config.api_base, "http://localhost:11434/v1");
+    }
+
+    // ── TLS enforcement (SECURE-003) ─────────────────────────────────
+
+    #[test]
+    fn tls_issues_empty_when_both_urls_use_tls() {
+        let issues = collect_tls_issues(
+            "postgres://u:p@h:5432/db?sslmode=require",
+            "rediss://h:6379",
+        );
+        assert!(issues.is_empty(), "expected no issues, got: {:?}", issues);
+    }
+
+    #[test]
+    fn tls_issues_accepts_sslmode_verify_ca() {
+        let issues = collect_tls_issues(
+            "postgres://u:p@h:5432/db?sslmode=verify-ca",
+            "rediss://h:6379",
+        );
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn tls_issues_accepts_sslmode_verify_full() {
+        let issues = collect_tls_issues(
+            "postgres://u:p@h:5432/db?sslmode=verify-full",
+            "rediss://h:6379",
+        );
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn tls_issues_flags_db_without_sslmode() {
+        let issues = collect_tls_issues("postgres://u:p@h:5432/db", "rediss://h:6379");
+        assert_eq!(issues.len(), 1);
+        assert!(
+            issues[0].contains("AMOS__DATABASE__URL"),
+            "unexpected message: {}",
+            issues[0]
+        );
+    }
+
+    #[test]
+    fn tls_issues_flags_redis_without_rediss_scheme() {
+        let issues =
+            collect_tls_issues("postgres://u:p@h:5432/db?sslmode=require", "redis://h:6379");
+        assert_eq!(issues.len(), 1);
+        assert!(
+            issues[0].contains("AMOS__REDIS__URL"),
+            "unexpected message: {}",
+            issues[0]
+        );
+    }
+
+    #[test]
+    fn tls_issues_flags_both_when_neither_uses_tls() {
+        let issues = collect_tls_issues("postgres://u:p@h:5432/db", "redis://h:6379");
+        assert_eq!(issues.len(), 2);
+    }
+
+    #[test]
+    fn tls_issues_rejects_sslmode_disable_even_as_substring() {
+        // "sslmode=disable" must NOT accidentally satisfy the check just
+        // because the string "sslmode" appears.
+        let issues = collect_tls_issues(
+            "postgres://u:p@h:5432/db?sslmode=disable",
+            "rediss://h:6379",
+        );
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("AMOS__DATABASE__URL"));
     }
 }
