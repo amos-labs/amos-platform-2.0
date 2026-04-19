@@ -178,14 +178,68 @@ function renderUpdateBanner(status) {
         banner.className = 'fixed top-0 left-0 right-0 z-40 flex items-center justify-center gap-3 px-4 py-2 bg-purple-600 text-white text-sm shadow-md';
         document.body.insertBefore(banner, document.body.firstChild);
     }
-    const updateUrl = status.platform_update_url || 'https://app.amoslabs.com/dashboard';
     const safeVersion = escapeHtml(status.latest_version || 'new version');
     banner.innerHTML =
         '<i data-lucide="arrow-up-circle" class="w-4 h-4"></i>' +
         '<span>A new AMOS Harness release is ready — <strong>' + safeVersion + '</strong></span>' +
-        '<a href="' + updateUrl + '" target="_blank" rel="noopener" class="underline font-semibold hover:text-purple-100">Update now</a>' +
+        '<button id="updateNowBtn" onclick="triggerSelfUpdate()" class="underline font-semibold hover:text-purple-100">Update now</button>' +
         '<button onclick="dismissUpdateBanner(\'' + safeVersion + '\')" class="ml-2 opacity-75 hover:opacity-100" title="Hide until next release"><i data-lucide="x" class="w-4 h-4"></i></button>';
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function triggerSelfUpdate() {
+    const btn = document.getElementById('updateNowBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Updating…';
+    }
+    try {
+        const resp = await fetch('/api/v1/harness/update', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok || !body.success) {
+            const msg = body.error || ('HTTP ' + resp.status);
+            alert('Update failed: ' + msg);
+            if (btn) { btn.disabled = false; btn.textContent = 'Update now'; }
+            return;
+        }
+        const banner = document.getElementById('updateBanner');
+        if (banner) {
+            banner.innerHTML =
+                '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i>' +
+                '<span>Update started. The harness will restart in a few seconds — the page may briefly go offline. Reloading automatically when it\'s back.</span>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        // Wait for the new task to come up, then reload.
+        setTimeout(pollForHarnessReady, 30000);
+    } catch (e) {
+        alert('Update failed: ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Update now'; }
+    }
+}
+
+async function pollForHarnessReady() {
+    // After kicking off an update, poll /health every 5s. When it responds
+    // (the new task is up), reload the page.
+    for (let i = 0; i < 24; i++) {
+        try {
+            const r = await fetch('/health', { cache: 'no-store' });
+            if (r.ok) {
+                window.location.reload();
+                return;
+            }
+        } catch (_) { /* expected while restarting */ }
+        await new Promise(res => setTimeout(res, 5000));
+    }
+    // If we never came back, tell the user to reload manually.
+    const banner = document.getElementById('updateBanner');
+    if (banner) {
+        banner.innerHTML =
+            '<span>Update is taking longer than expected. Refresh the page in a minute — if the banner still shows, the update may need a platform-side check.</span>';
+    }
 }
 
 function dismissUpdateBanner(version) {

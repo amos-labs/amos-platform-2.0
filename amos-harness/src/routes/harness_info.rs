@@ -5,7 +5,12 @@
 
 use crate::orchestrator::provisioning_tools::{find_catalog_entry, SPECIALIST_CATALOG};
 use crate::state::AppState;
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::Serialize;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -26,6 +31,91 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/info", get(get_harness_info))
         .route("/specialists", get(get_specialists))
         .route("/update-status", get(get_update_status))
+        .route("/update", post(trigger_update))
+}
+
+#[derive(Serialize)]
+struct TriggerUpdateResponse {
+    success: bool,
+    new_version: Option<String>,
+    error: Option<String>,
+}
+
+/// Kick off a self-update by calling the platform's
+/// `POST /api/v1/sync/update-self` endpoint on the user's behalf. The
+/// in-harness "Update now" banner button hits this so customers never
+/// have to leave the harness to take a release.
+///
+/// The platform handles everything: stops the old task, registers a new
+/// task def with the latest release image tags, starts the new task, and
+/// re-registers the ALB target. This endpoint returns as soon as the
+/// platform has kicked the process off — the harness itself will be
+/// restarted within seconds, which terminates this very request.
+async fn trigger_update(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<TriggerUpdateResponse>, StatusCode> {
+    let harness_id = match std::env::var("AMOS_HARNESS_ID") {
+        Ok(id) => id,
+        Err(_) => {
+            return Ok(Json(TriggerUpdateResponse {
+                success: false,
+                new_version: None,
+                error: Some(
+                    "AMOS_HARNESS_ID env var not set — self-update requires a managed harness"
+                        .to_string(),
+                ),
+            }))
+        }
+    };
+
+    let platform_url = state.config.platform.url.trim_end_matches('/');
+    if platform_url.is_empty() {
+        return Ok(Json(TriggerUpdateResponse {
+            success: false,
+            new_version: None,
+            error: Some("Platform URL not configured".to_string()),
+        }));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let resp = client
+        .post(format!("{}/api/v1/sync/update-self", platform_url))
+        .json(&serde_json::json!({ "harness_id": harness_id }))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("Self-update request to platform failed: {}", e);
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.unwrap_or_else(|_| serde_json::json!({}));
+
+    if !status.is_success() {
+        return Ok(Json(TriggerUpdateResponse {
+            success: false,
+            new_version: None,
+            error: Some(
+                body.get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Platform returned an error")
+                    .to_string(),
+            ),
+        }));
+    }
+
+    Ok(Json(TriggerUpdateResponse {
+        success: true,
+        new_version: body
+            .get("new_version")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        error: None,
+    }))
 }
 
 #[derive(Serialize)]
