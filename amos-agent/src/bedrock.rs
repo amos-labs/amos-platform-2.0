@@ -257,29 +257,26 @@ impl BedrockProvider {
 
         // Add tools if provided.
         //
-        // Bedrock's Converse API requires each tool to be wrapped in one of
-        // `toolSpec`, `systemTool`, `modelTool`, or `cachePoint`. The harness
-        // sends us raw tool schemas (`{name, description, inputSchema}`) that
-        // other providers (Anthropic, OpenAI) also accept directly, so we
-        // wrap here rather than forcing every caller to know Bedrock's shape.
+        // Bedrock's Converse API is strict about shape:
+        //   1. Each tool must be wrapped in one of `toolSpec`, `systemTool`,
+        //      `modelTool`, or `cachePoint`.
+        //   2. The `toolSpec.inputSchema` must itself be `{"json": <schema>}`
+        //      — a raw schema without the `json` envelope is rejected as
+        //      "inputSchema is empty".
         //
-        // Tools already wrapped (e.g. the bedrock.rs unit test) are passed
-        // through unchanged so direct users of this function still work.
+        // Callers feed us tools in two shapes:
+        //   - Agent-local tools (think, remember, plan, web_search, ...):
+        //     `{name, description, inputSchema: <schema>}` — no json envelope.
+        //   - Harness tools: `{name, description, inputSchema: {json: <schema>}}`
+        //     — already enveloped by `get_tool_schemas` on the harness side.
+        //
+        // Other providers (Anthropic, OpenAI, Vertex) accept the raw form, so
+        // we normalize here rather than force every caller to know Bedrock's
+        // quirks. Tools already in toolSpec form pass through unchanged
+        // (preserves the existing unit test).
         if !tools.is_empty() {
-            let wrapped: Vec<serde_json::Value> = tools
-                .iter()
-                .map(|t| {
-                    if t.get("toolSpec").is_some()
-                        || t.get("systemTool").is_some()
-                        || t.get("modelTool").is_some()
-                        || t.get("cachePoint").is_some()
-                    {
-                        t.clone()
-                    } else {
-                        serde_json::json!({ "toolSpec": t })
-                    }
-                })
-                .collect();
+            let wrapped: Vec<serde_json::Value> =
+                tools.iter().map(normalize_tool_for_bedrock).collect();
             body["toolConfig"] = serde_json::json!({ "tools": wrapped });
         }
 
@@ -660,6 +657,48 @@ impl ModelProvider for BedrockProvider {
 
 // Helper functions
 
+/// Normalize a tool definition into Bedrock Converse's required shape.
+///
+/// Bedrock wants `{toolSpec: {name, description, inputSchema: {json: <schema>}}}`.
+/// We accept three input shapes and coerce to that:
+///   1. Already wrapped in `toolSpec`/`systemTool`/`modelTool`/`cachePoint`
+///      — passed through unchanged.
+///   2. Raw harness form — `{name, description, inputSchema: {json: ...}}` —
+///      only needs the outer `toolSpec` wrapper.
+///   3. Raw agent-local form — `{name, description, inputSchema: <schema>}` —
+///      needs both the `toolSpec` wrapper AND an inner `{json: ...}` envelope
+///      around the schema.
+fn normalize_tool_for_bedrock(t: &serde_json::Value) -> serde_json::Value {
+    if t.get("toolSpec").is_some()
+        || t.get("systemTool").is_some()
+        || t.get("modelTool").is_some()
+        || t.get("cachePoint").is_some()
+    {
+        return t.clone();
+    }
+
+    let mut obj = t.as_object().cloned().unwrap_or_default();
+
+    // If inputSchema is present but missing the `json` envelope, add it.
+    if let Some(input_schema) = obj.get("inputSchema").cloned() {
+        if input_schema.get("json").is_none() {
+            obj.insert(
+                "inputSchema".to_string(),
+                serde_json::json!({ "json": input_schema }),
+            );
+        }
+    } else {
+        // Schema missing entirely — Bedrock rejects empty, so default to
+        // a valid "any object" schema.
+        obj.insert(
+            "inputSchema".to_string(),
+            serde_json::json!({ "json": { "type": "object" } }),
+        );
+    }
+
+    serde_json::json!({ "toolSpec": obj })
+}
+
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let mut mac = HmacSha256::new_from_slice(key)
         .map_err(|e| AmosError::Internal(format!("HMAC error: {}", e)))?;
@@ -933,6 +972,67 @@ mod tests {
         let result = hmac_sha256(b"key", b"data").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result.len(), 32); // SHA256 produces 32 bytes
+    }
+
+    // ── Tool normalization (Bedrock Converse shape quirks) ──────────
+
+    #[test]
+    fn normalize_passthrough_when_already_toolspec() {
+        let input = serde_json::json!({
+            "toolSpec": { "name": "x", "description": "y", "inputSchema": {"json": {"type": "object"}} }
+        });
+        let out = normalize_tool_for_bedrock(&input);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn normalize_adds_toolspec_and_json_envelope_for_agent_local_shape() {
+        // Agent-local tools: `{name, description, inputSchema: <schema>}`
+        let input = serde_json::json!({
+            "name": "think",
+            "description": "internal reasoning",
+            "inputSchema": { "type": "object", "properties": { "thought": { "type": "string" } } }
+        });
+        let out = normalize_tool_for_bedrock(&input);
+        let spec = out.get("toolSpec").expect("outer toolSpec wrapper");
+        let input_schema = spec.get("inputSchema").expect("inputSchema present");
+        let json_env = input_schema
+            .get("json")
+            .expect("inputSchema.json envelope present");
+        assert_eq!(json_env.get("type"), Some(&serde_json::json!("object")));
+    }
+
+    #[test]
+    fn normalize_adds_toolspec_only_when_harness_shape_already_has_json() {
+        // Harness tools: `{name, description, inputSchema: {json: <schema>}}`
+        let input = serde_json::json!({
+            "name": "harness_foo",
+            "description": "a harness tool",
+            "inputSchema": { "json": { "type": "object" } }
+        });
+        let out = normalize_tool_for_bedrock(&input);
+        let spec = out.get("toolSpec").expect("outer toolSpec wrapper");
+        // Should NOT have double-wrapped json
+        let json_env = spec
+            .get("inputSchema")
+            .and_then(|s| s.get("json"))
+            .expect("inputSchema.json envelope present");
+        assert!(json_env.get("json").is_none(), "must not double-wrap json");
+    }
+
+    #[test]
+    fn normalize_supplies_default_schema_when_missing() {
+        let input = serde_json::json!({
+            "name": "weirdtool",
+            "description": "no schema"
+        });
+        let out = normalize_tool_for_bedrock(&input);
+        let spec = out.get("toolSpec").expect("outer toolSpec wrapper");
+        let json_env = spec
+            .get("inputSchema")
+            .and_then(|s| s.get("json"))
+            .expect("inputSchema.json envelope present");
+        assert_eq!(json_env.get("type"), Some(&serde_json::json!("object")));
     }
 
     #[tokio::test]
