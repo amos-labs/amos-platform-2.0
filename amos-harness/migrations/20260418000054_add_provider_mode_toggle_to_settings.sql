@@ -10,6 +10,10 @@
 -- fix in routes/llm_providers.rs). This migration adds the explicit UI
 -- toggle so customers can switch back to shared Bedrock, or see at a
 -- glance which mode they're in.
+--
+-- NB: postgres rejects multiple assignments to the same column in one
+-- UPDATE. The two JS edits are chained as nested REPLACE() calls on a
+-- single `js_content = ...` assignment instead.
 
 UPDATE canvases SET
     html_content = REPLACE(
@@ -43,11 +47,12 @@ UPDATE canvases SET
     </div>'
     ),
     js_content = REPLACE(
-        js_content,
-        'document.addEventListener("DOMContentLoaded", function() {
+        REPLACE(
+            js_content,
+            'document.addEventListener("DOMContentLoaded", function() {
     loadProviders();
 });',
-        'document.addEventListener("DOMContentLoaded", function() {
+            'document.addEventListener("DOMContentLoaded", function() {
     loadSettings();
     loadProviders();
 });
@@ -102,9 +107,7 @@ function updateModeStatus(mode) {
     }
     if (typeof lucide !== "undefined") lucide.createIcons();
 }'
-    ),
-    js_content = REPLACE(
-        js_content,
+        ),
         'function renderProviders() {',
         'function renderProviders() {
     // Re-sync mode status now that providers list is up to date.
