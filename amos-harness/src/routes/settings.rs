@@ -87,7 +87,7 @@ const AVAILABLE_MODELS: &[ModelInfo] = &[
         output_price_per_mtok: 77.25,
     },
     ModelInfo {
-        id: "us.anthropic.claude-opus-4-7-v1",
+        id: "us.anthropic.claude-opus-4-7",
         display_name: "Claude Opus 4.7",
         tier: "powerful",
         // Base: $5.00 / $25.00 → with markup: $5.15 / $25.75
