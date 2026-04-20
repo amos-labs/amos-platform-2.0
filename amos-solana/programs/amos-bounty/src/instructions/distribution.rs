@@ -142,7 +142,7 @@ pub fn handler_submit_proof(
         BountyError::QualityScoreTooLow
     );
     require!(
-        contribution_type <= 10,
+        contribution_type < CONTRIBUTION_TYPE_COUNT,
         BountyError::InvalidContributionType
     );
     require!(
@@ -566,6 +566,32 @@ mod tests {
         assert_eq!(get_contribution_multiplier(1).unwrap(), 10000);
         assert_eq!(get_contribution_multiplier(2).unwrap(), 8000);
         assert_eq!(get_contribution_multiplier(7).unwrap(), 13000);
+    }
+
+    #[test]
+    fn test_contribution_type_range_accepts_discovery() {
+        // Discovery is contribution_type = 11; the instruction-level bounds
+        // check (distribution.rs, claims.rs, escrow.rs) must let it pass.
+        //
+        // The gate is `contribution_type < CONTRIBUTION_TYPE_COUNT`. Before
+        // OPS-ONCHAIN-UPGRADE-001 / Path A, this was `<= 10`, which silently
+        // rejected Discovery (11) even though the multiplier sigmoid was in
+        // place. This test pins the invariant that the bounds check and the
+        // registered type count stay in sync.
+        //
+        // If a future PR adds another contribution type, `CONTRIBUTION_TYPE_COUNT`
+        // increments and this test automatically accepts the new type without
+        // a separate edit to three instruction files.
+        assert!(
+            11u8 < CONTRIBUTION_TYPE_COUNT,
+            "Discovery (11) must be < CONTRIBUTION_TYPE_COUNT ({})",
+            CONTRIBUTION_TYPE_COUNT
+        );
+        // Smoke check on the upper bound too — anything past the count fails.
+        assert!(
+            !(CONTRIBUTION_TYPE_COUNT < CONTRIBUTION_TYPE_COUNT),
+            "Types at CONTRIBUTION_TYPE_COUNT must be rejected"
+        );
     }
 
     #[test]

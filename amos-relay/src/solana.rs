@@ -1031,7 +1031,7 @@ fn send_with_retry(
 
 /// Compute the Anchor instruction discriminator for a function name.
 /// Format: sha256("global:<function_name>")[0..8]
-fn anchor_discriminator(name: &str) -> [u8; 8] {
+pub fn anchor_discriminator(name: &str) -> [u8; 8] {
     let mut hasher = Sha256::new();
     hasher.update(format!("global:{}", name).as_bytes());
     let hash = hasher.finalize();

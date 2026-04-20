@@ -226,7 +226,7 @@ pub fn handler_post_bounty_listing(
 
     // Validate contribution type
     require!(
-        contribution_type <= 10,
+        contribution_type < CONTRIBUTION_TYPE_COUNT,
         BountyError::InvalidContributionType
     );
 
