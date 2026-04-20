@@ -279,11 +279,29 @@ impl CanvasResponse {
         }
     }
 
-    /// Create a freeform canvas response with iframe
+    /// Create a freeform canvas response with iframe.
+    ///
+    /// SECURE-005: `canvas.html_content` is user-/agent-authored and is
+    /// emitted into the body of the iframe document. It is sanitized here
+    /// with the same allowlist used by `app_tools` custom views so
+    /// inline event handlers, `<script>` tags, `javascript:` URLs, and
+    /// other XSS vectors are stripped before reaching the browser.
+    ///
+    /// `js` is intentionally NOT sanitized — author-supplied JS is
+    /// expected to run in the sandboxed iframe (see the `sandbox=` attr
+    /// on `canvasFrame` in `static/index.html`) and is constrained by the
+    /// Content-Security-Policy header emitted on `/c/*` paths.
+    ///
+    /// `css` is passed through unchanged; the sanitizer's allowlist does
+    /// not cover stylesheets, but the iframe sandbox prevents CSS from
+    /// reaching the parent document and the CSP blocks external
+    /// resource loads outside the approved CDNs.
     pub fn freeform(canvas: &Canvas) -> Self {
-        let html = canvas.html_content.as_deref().unwrap_or("");
+        let html_raw = canvas.html_content.as_deref().unwrap_or("");
         let js = canvas.js_content.as_deref().unwrap_or("");
         let css = canvas.css_content.as_deref().unwrap_or("");
+
+        let html = crate::html_sanitizer::sanitize_html(html_raw);
 
         // Create an iframe-based freeform canvas
         let content = format!(
@@ -318,5 +336,149 @@ impl CanvasResponse {
                 metadata: canvas.metadata.clone(),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a minimal Canvas struct with the given html/js/css for
+    /// exercising `CanvasResponse::freeform`. Populates all required
+    /// fields with sensible defaults.
+    fn make_canvas(html: &str, js: &str, css: &str) -> Canvas {
+        Canvas {
+            id: Uuid::nil(),
+            slug: "test-canvas".to_string(),
+            name: "Test Canvas".to_string(),
+            description: None,
+            html_content: Some(html.to_string()),
+            js_content: Some(js.to_string()),
+            css_content: Some(css.to_string()),
+            canvas_type: CanvasType::Freeform,
+            data_sources: None,
+            actions: None,
+            layout_config: None,
+            version: 1,
+            is_public: false,
+            public_slug: None,
+            is_system: false,
+            nav_icon: None,
+            nav_order: 0,
+            metadata: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    // ── SECURE-005: freeform canvas HTML sanitization ────────────────
+    //
+    // The `CanvasResponse::freeform` constructor emits a full HTML
+    // document that gets loaded into the canvas iframe. User-/agent-
+    // authored HTML flows in via `canvas.html_content` and must be
+    // passed through the allowlist sanitizer before being inlined into
+    // the iframe body — otherwise `<script>` / inline event handlers /
+    // `javascript:` URLs land directly in the rendered document.
+
+    #[test]
+    fn test_freeform_strips_script_tag_from_html() {
+        let canvas = make_canvas("<p>hi</p><script>steal()</script>", "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        // The body's user-HTML section should no longer contain a raw
+        // <script>steal()</script>. Note: the iframe shell itself emits
+        // its own <script>{js}</script> for author JS, which is an empty
+        // string here, so any <script> hit must come from the sanitized
+        // html — which should have none.
+        assert!(
+            !resp.content.contains("<script>steal()</script>"),
+            "script tag in user html leaked into iframe body: {}",
+            resp.content
+        );
+        assert!(
+            !resp.content.contains("steal()"),
+            "script body leaked: {}",
+            resp.content
+        );
+        assert!(resp.content.contains("<p>hi</p>"), "safe HTML stripped");
+    }
+
+    #[test]
+    fn test_freeform_strips_inline_event_handler() {
+        let canvas = make_canvas(r#"<img src="x" onerror="alert(1)">"#, "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        assert!(!resp.content.contains("onerror"), "onerror leaked");
+        assert!(!resp.content.contains("alert(1)"), "payload leaked");
+    }
+
+    #[test]
+    fn test_freeform_strips_javascript_url() {
+        let canvas = make_canvas(r#"<a href="javascript:alert(1)">click</a>"#, "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        assert!(
+            !resp.content.contains("javascript:"),
+            "javascript: URL leaked: {}",
+            resp.content
+        );
+    }
+
+    #[test]
+    fn test_freeform_strips_iframe_in_html() {
+        let canvas = make_canvas(
+            r#"<p>ok</p><iframe src="https://evil.example"></iframe>"#,
+            "",
+            "",
+        );
+        let resp = CanvasResponse::freeform(&canvas);
+        // The outer iframe shell (`<html><head>...</head><body>...`) is
+        // fine; an attacker-injected nested iframe inside user HTML is
+        // what we need to strip.
+        assert!(
+            !resp
+                .content
+                .contains(r#"<iframe src="https://evil.example"#),
+            "nested iframe leaked: {}",
+            resp.content
+        );
+    }
+
+    #[test]
+    fn test_freeform_preserves_author_js() {
+        // The author's `js_content` is intentionally NOT sanitized —
+        // it's expected to run inside the sandboxed iframe.
+        let canvas = make_canvas("<p>ok</p>", "console.log('author code');", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        assert!(
+            resp.content.contains("console.log('author code')"),
+            "author js stripped: {}",
+            resp.content
+        );
+    }
+
+    #[test]
+    fn test_freeform_preserves_safe_html() {
+        let canvas = make_canvas("<h1>Hello</h1><p><strong>world</strong></p>", "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        assert!(resp.content.contains("<h1>Hello</h1>"));
+        assert!(resp.content.contains("<strong>world</strong>"));
+    }
+
+    #[test]
+    fn test_freeform_handles_empty_html() {
+        let canvas = make_canvas("", "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        // Should still produce a valid document skeleton
+        assert!(resp.content.contains("<!DOCTYPE html>"));
+        assert!(resp.content.contains("<body>"));
+    }
+
+    #[test]
+    fn test_freeform_handles_missing_html_content() {
+        let mut canvas = make_canvas("", "", "");
+        canvas.html_content = None;
+        canvas.js_content = None;
+        canvas.css_content = None;
+        // Must not panic on absent content
+        let resp = CanvasResponse::freeform(&canvas);
+        assert!(resp.content.contains("<!DOCTYPE html>"));
     }
 }
