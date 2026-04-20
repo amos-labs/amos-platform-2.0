@@ -1,10 +1,50 @@
 //! Canvas data types
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use chrono::{DateTime, Utc};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use sqlx::FromRow;
 use uuid::Uuid;
+
+/// Generate a cryptographically random CSP nonce (22-char base64url).
+///
+/// 128 bits of randomness — OWASP's recommended minimum for CSP nonces.
+/// Base64url encoding keeps the value safe to drop into both the CSP
+/// header and HTML attributes without escaping.
+pub(crate) fn generate_csp_nonce() -> String {
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// Build the canvas-iframe CSP string for use inside a
+/// `<meta http-equiv="Content-Security-Policy" content="...">` tag.
+///
+/// The meta-tag CSP is the authoritative policy for canvas documents:
+/// - Blocks all inline scripts except those carrying the generated nonce,
+///   which disables `'unsafe-inline'` for attacker-injected scripts.
+/// - Allows the Bootstrap / Lucide / Chart.js CDNs used by
+///   `buildCanvasDocument` in `static/js/app.js`.
+/// - Restricts `connect-src`, `object-src`, `base-uri`, `form-action`,
+///   and `frame-ancestors` to the same values the middleware CSP uses
+///   on `/c/*` paths, so both defenses are consistent.
+pub(crate) fn canvas_meta_csp(nonce: &str) -> String {
+    format!(
+        "default-src 'self'; \
+         script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://unpkg.com; \
+         style-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; \
+         img-src 'self' data: https:; \
+         font-src 'self' data: https://cdn.jsdelivr.net; \
+         connect-src 'self'; \
+         object-src 'none'; \
+         base-uri 'self'; \
+         form-action 'self'; \
+         frame-ancestors 'self'"
+    )
+}
 
 /// Canvas type enumeration
 ///
@@ -281,43 +321,52 @@ impl CanvasResponse {
 
     /// Create a freeform canvas response with iframe.
     ///
-    /// SECURE-005: `canvas.html_content` is user-/agent-authored and is
-    /// emitted into the body of the iframe document. It is sanitized here
-    /// with the same allowlist used by `app_tools` custom views so
-    /// inline event handlers, `<script>` tags, `javascript:` URLs, and
-    /// other XSS vectors are stripped before reaching the browser.
+    /// SECURE-005: three layers of defense against XSS in user-/agent-
+    /// authored canvas content:
     ///
-    /// `js` is intentionally NOT sanitized — author-supplied JS is
-    /// expected to run in the sandboxed iframe (see the `sandbox=` attr
-    /// on `canvasFrame` in `static/index.html`) and is constrained by the
-    /// Content-Security-Policy header emitted on `/c/*` paths.
+    /// 1. `canvas.html_content` is passed through [`crate::html_sanitizer`]
+    ///    before being emitted into the iframe body. Inline event
+    ///    handlers, `<script>` tags, `javascript:` URLs, and other XSS
+    ///    vectors are stripped.
     ///
-    /// `css` is passed through unchanged; the sanitizer's allowlist does
-    /// not cover stylesheets, but the iframe sandbox prevents CSS from
-    /// reaching the parent document and the CSP blocks external
-    /// resource loads outside the approved CDNs.
+    /// 2. A per-response CSP nonce is generated via [`generate_csp_nonce`]
+    ///    and applied to the `<meta http-equiv="Content-Security-Policy">`
+    ///    tag plus every inline `<style>` / `<script>` tag emitted below.
+    ///    Any attacker-injected inline tag that survives sanitization
+    ///    will not carry the nonce and will be blocked by CSP.
+    ///
+    /// 3. `canvas.js_content` is emitted inside a `<script nonce=...>`
+    ///    block. It is NOT sanitized — author-supplied JS is expected
+    ///    to run, contained by the iframe sandbox (`sandbox=` on
+    ///    `canvasFrame`) and the nonce-scoped CSP.
+    ///
+    /// `canvas.css_content` is wrapped in `<style nonce=...>` so it
+    /// passes the style-src CSP directive; ammonia's allowlist does
+    /// not cover stylesheets but the iframe sandbox prevents CSS from
+    /// reaching the parent document.
     pub fn freeform(canvas: &Canvas) -> Self {
         let html_raw = canvas.html_content.as_deref().unwrap_or("");
         let js = canvas.js_content.as_deref().unwrap_or("");
         let css = canvas.css_content.as_deref().unwrap_or("");
 
         let html = crate::html_sanitizer::sanitize_html(html_raw);
+        let nonce = generate_csp_nonce();
+        let csp = canvas_meta_csp(&nonce);
 
-        // Create an iframe-based freeform canvas
         let content = format!(
             r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>{}</style>
+    <meta http-equiv="Content-Security-Policy" content="{csp}">
+    <style nonce="{nonce}">{css}</style>
 </head>
 <body>
-    {}
-    <script>{}</script>
+    {html}
+    <script nonce="{nonce}">{js}</script>
 </body>
 </html>"#,
-            css, html, js
         );
 
         Self {
@@ -480,5 +529,140 @@ mod tests {
         // Must not panic on absent content
         let resp = CanvasResponse::freeform(&canvas);
         assert!(resp.content.contains("<!DOCTYPE html>"));
+    }
+
+    // ── SECURE-005 nonces ─────────────────────────────────────────────
+
+    /// Extract the first `nonce="..."` attribute value from the emitted
+    /// freeform document. The document always opens with a `<meta>` CSP
+    /// tag whose `content=...` attribute contains `'nonce-<value>'`
+    /// before any `nonce="<value>"` tag attribute, so we skip past that
+    /// first occurrence and grab the `<style nonce="...">` nonce.
+    fn extract_nonce(content: &str) -> Option<String> {
+        let marker = r#"nonce=""#;
+        let start = content.find(marker)? + marker.len();
+        let end = content[start..].find('"')? + start;
+        Some(content[start..end].to_string())
+    }
+
+    #[test]
+    fn test_generate_csp_nonce_is_unique() {
+        // 128 bits of randomness — collision across two calls is
+        // astronomically unlikely. If this ever fails, rand is broken.
+        let a = generate_csp_nonce();
+        let b = generate_csp_nonce();
+        assert_ne!(a, b, "two consecutive nonces collided: {} == {}", a, b);
+    }
+
+    #[test]
+    fn test_generate_csp_nonce_is_base64url() {
+        let nonce = generate_csp_nonce();
+        assert_eq!(
+            nonce.len(),
+            22,
+            "128-bit base64url (no padding) = 22 chars, got {}",
+            nonce.len()
+        );
+        assert!(
+            nonce
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            "nonce contains non-url-safe chars: {}",
+            nonce
+        );
+        // base64url explicitly disallows + / = padding
+        assert!(!nonce.contains('+'));
+        assert!(!nonce.contains('/'));
+        assert!(!nonce.contains('='));
+    }
+
+    #[test]
+    fn test_freeform_emits_meta_csp() {
+        let canvas = make_canvas("<p>ok</p>", "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        assert!(
+            resp.content
+                .contains(r#"<meta http-equiv="Content-Security-Policy""#),
+            "meta CSP tag missing: {}",
+            resp.content
+        );
+    }
+
+    #[test]
+    fn test_freeform_applies_same_nonce_to_style_and_script() {
+        let canvas = make_canvas("<p>ok</p>", "console.log(1)", "body{color:red}");
+        let resp = CanvasResponse::freeform(&canvas);
+        let nonce = extract_nonce(&resp.content).expect("nonce missing");
+        // Both the <style> (for css) and the <script> (for js) must
+        // carry the same nonce so the meta CSP permits them.
+        assert!(
+            resp.content
+                .contains(&format!(r#"<style nonce="{}">"#, nonce)),
+            "style nonce missing: {}",
+            resp.content
+        );
+        assert!(
+            resp.content
+                .contains(&format!(r#"<script nonce="{}">"#, nonce)),
+            "script nonce missing: {}",
+            resp.content
+        );
+        // And the CSP directive itself must authorise that exact nonce
+        assert!(
+            resp.content.contains(&format!("'nonce-{}'", nonce)),
+            "CSP directive missing 'nonce-{}': {}",
+            nonce,
+            resp.content
+        );
+    }
+
+    #[test]
+    fn test_freeform_nonce_is_unique_per_call() {
+        // Two invocations of `freeform` with identical input should
+        // produce different nonces — this is what makes nonce-based CSP
+        // resistant to replay of captured payloads.
+        let canvas = make_canvas("<p>ok</p>", "", "");
+        let a = CanvasResponse::freeform(&canvas);
+        let b = CanvasResponse::freeform(&canvas);
+        let na = extract_nonce(&a.content).unwrap();
+        let nb = extract_nonce(&b.content).unwrap();
+        assert_ne!(na, nb, "nonce reused across calls: {}", na);
+    }
+
+    #[test]
+    fn test_freeform_csp_directive_blocks_unsafe_inline() {
+        // The in-document CSP must NOT include `'unsafe-inline'` (that's
+        // the whole point of using nonces). Regression guard.
+        let canvas = make_canvas("<p>ok</p>", "", "");
+        let resp = CanvasResponse::freeform(&canvas);
+        let marker = r#"Content-Security-Policy" content=""#;
+        let start = resp.content.find(marker).unwrap() + marker.len();
+        let end = resp.content[start..].find('"').unwrap() + start;
+        let csp = &resp.content[start..end];
+        assert!(
+            !csp.contains("'unsafe-inline'"),
+            "freeform meta CSP must not include 'unsafe-inline': {}",
+            csp
+        );
+        assert!(
+            !csp.contains("'unsafe-eval'"),
+            "freeform meta CSP must not include 'unsafe-eval': {}",
+            csp
+        );
+        assert!(csp.contains("object-src 'none'"));
+        assert!(csp.contains("frame-ancestors 'self'"));
+    }
+
+    #[test]
+    fn test_canvas_meta_csp_includes_nonce_in_script_and_style() {
+        let csp = canvas_meta_csp("abc123");
+        assert!(csp.contains("'nonce-abc123'"), "nonce missing: {}", csp);
+        let script_idx = csp.find("script-src").expect("no script-src");
+        let style_idx = csp.find("style-src").expect("no style-src");
+        let script_end = csp[script_idx..].find(';').unwrap() + script_idx;
+        // style-src is followed by ';' before any later directive
+        let style_end = csp[style_idx..].find(';').unwrap() + style_idx;
+        assert!(csp[script_idx..script_end].contains("'nonce-abc123'"));
+        assert!(csp[style_idx..style_end].contains("'nonce-abc123'"));
     }
 }

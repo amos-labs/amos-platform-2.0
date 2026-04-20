@@ -13,33 +13,42 @@
 
 use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Response};
 
-/// Content-Security-Policy for canvas and app-iframe paths.
+/// Content-Security-Policy header for canvas and app-iframe paths.
 ///
-/// Canvas content is user-/agent-authored and rendered inside a sandboxed
-/// iframe. This CSP is the defense-in-depth layer that kicks in when the
-/// HTML allowlist sanitizer (see `crate::html_sanitizer`) misses something
-/// or when the `custom_js` block executes hostile code.
+/// This is the coarse-grained defense-in-depth CSP attached via HTTP
+/// header. It does NOT carry a nonce — the per-response nonce lives in
+/// a `<meta http-equiv="Content-Security-Policy">` tag emitted by
+/// [`CanvasResponse::freeform`][1] and `buildCanvasDocument` in
+/// `static/js/app.js`. Browsers enforce all active CSPs simultaneously,
+/// so the effective policy is the **intersection** of this header and
+/// the per-document meta tag — which means inline scripts only run when
+/// they carry the matching nonce.
+///
+/// This header omits `'unsafe-inline'` entirely (SECURE-005 hardening
+/// over the initial rollout): if a future handler returns canvas HTML
+/// without the meta-tag nonce mechanism, the header still blocks inline
+/// scripts rather than silently weakening the posture.
 ///
 /// Allowances:
-/// - `script-src` / `style-src`: `'self' 'unsafe-inline'` + the CDNs that
-///   [`buildCanvasDocument`] already injects (Bootstrap, Lucide, Chart.js).
-///   `'unsafe-inline'` is unavoidable because canvas JS is emitted as
-///   `<script>…</script>` literals; a future hardening pass can move to a
-///   per-request nonce.
+/// - `script-src` / `style-src`: `'self'` plus the Bootstrap / Lucide /
+///   Chart.js CDNs used by canvas rendering. Nonce-bearing inline
+///   scripts are allowed by the meta-tag CSP; this header simply
+///   doesn't admit non-nonced inline scripts.
 /// - `connect-src 'self'`: canvas code may call `/api/v1/*` but cannot
-///   exfiltrate data to arbitrary third-party origins.
+///   exfiltrate to arbitrary third-party origins.
 /// - `img-src`: `'self' data: https:` to keep inline data URLs and
 ///   third-party images working.
 /// - `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`,
 ///   `frame-ancestors 'self'`: close the most common CSP bypass paths.
 ///
-/// The policy is emitted on every HTML response served out of the canvas
-/// route namespace (`/c/*` and `/api/v1/canvas*`) — the two entry points
-/// that deliver an HTML document containing untrusted app content.
+/// Emitted on every response served out of the canvas route namespace
+/// (`/c/*` and `/api/v1/canvas*`).
+///
+/// [1]: crate::canvas::types::CanvasResponse::freeform
 const CANVAS_CSP: &str = concat!(
     "default-src 'self'; ",
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; ",
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; ",
+    "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; ",
+    "style-src 'self' https://cdn.jsdelivr.net; ",
     "img-src 'self' data: https:; ",
     "font-src 'self' data: https://cdn.jsdelivr.net; ",
     "connect-src 'self'; ",
@@ -310,6 +319,29 @@ mod tests {
         assert!(
             !csp_str.contains("script-src *"),
             "CSP must NOT allow wildcard script-src: {}",
+            csp_str
+        );
+    }
+
+    #[tokio::test]
+    async fn test_csp_header_does_not_allow_unsafe_inline() {
+        // Regression guard: the header-level CSP must NOT weaken back to
+        // `'unsafe-inline'`. Nonces (emitted via meta-tag CSP by
+        // `CanvasResponse::freeform` and `buildCanvasDocument`) are the
+        // mechanism that allows inline scripts to run. If somebody
+        // adds `'unsafe-inline'` back to the header, the meta-tag nonce
+        // becomes pointless — the intersection would admit any inline
+        // script.
+        let resp = get_response_with_canvas_app("/c/my-canvas").await;
+        let csp_str = resp
+            .headers()
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(
+            !csp_str.contains("'unsafe-inline'"),
+            "canvas CSP header must NOT include 'unsafe-inline' (SECURE-005): {}",
             csp_str
         );
     }
