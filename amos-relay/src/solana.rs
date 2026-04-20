@@ -159,6 +159,37 @@ pub fn compute_dynamic_max_reward(
     max_reward.max(ONE_TOKEN.min(available))
 }
 
+/// Validate an RPC endpoint URL.
+///
+/// Rejects empty strings and URLs that don't start with a supported scheme.
+/// Solana RPC uses HTTP(S) for JSON-RPC and WS(S) for pubsub; anything else
+/// is almost certainly a misconfiguration.
+fn validate_rpc_url(rpc_url: &str) -> Result<()> {
+    let trimmed = rpc_url.trim();
+    if trimmed.is_empty() {
+        return Err(AmosError::Validation("RPC URL cannot be empty".into()));
+    }
+    const SUPPORTED_SCHEMES: [&str; 4] = ["http://", "https://", "ws://", "wss://"];
+    if !SUPPORTED_SCHEMES.iter().any(|s| trimmed.starts_with(s)) {
+        return Err(AmosError::Validation(format!(
+            "RPC URL must start with http://, https://, ws://, or wss:// (got: {})",
+            trimmed
+        )));
+    }
+    Ok(())
+}
+
+/// Validate that an agent trust level is in the allowed range 1..=5.
+fn validate_trust_level(trust_level: u8) -> Result<()> {
+    if !(1..=5).contains(&trust_level) {
+        return Err(AmosError::Validation(format!(
+            "trust_level must be in range 1..=5 (got: {})",
+            trust_level
+        )));
+    }
+    Ok(())
+}
+
 /// Compute a fallback max_reward when the on-chain pool cannot be read
 /// (e.g., pool not created yet, RPC error). Uses a conservative estimate
 /// based on the sigmoid emission schedule.
@@ -175,12 +206,17 @@ pub fn fallback_max_reward(points: u64) -> u64 {
 
 impl SolanaClient {
     /// Create a new Solana client connected to the given RPC endpoint.
+    ///
+    /// Validates that `rpc_url` is non-empty and uses a supported scheme
+    /// (`http://`, `https://`, or the Solana-specific `ws://`/`wss://`).
     pub fn new(rpc_url: &str, bounty_program_id: &str) -> Result<Self> {
+        validate_rpc_url(rpc_url)?;
+
         let rpc =
             RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
         let bounty_program_id = Pubkey::from_str(bounty_program_id)
-            .map_err(|e| AmosError::SolanaRpc(format!("Invalid bounty program ID: {}", e)))?;
+            .map_err(|e| AmosError::Validation(format!("Invalid bounty program ID: {}", e)))?;
 
         Ok(Self {
             rpc: Arc::new(rpc),
@@ -203,6 +239,10 @@ impl SolanaClient {
     ///   still proceeds — the warning is advisory.
     pub fn load_oracle_keypair(&mut self, keypair_path: &str) -> Result<()> {
         use std::io::Read;
+
+        if keypair_path.trim().is_empty() {
+            return Err(AmosError::Validation("Keypair path cannot be empty".into()));
+        }
 
         let path = Path::new(keypair_path);
 
@@ -611,7 +651,9 @@ impl SolanaClient {
             }
             Err(AmosError::SolanaRpc(format!(
                 "Failed to fetch config after 3 attempts: {}",
-                last_err.unwrap()
+                last_err
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "no error recorded".into())
             )))
         })
         .await
@@ -651,14 +693,34 @@ impl SolanaClient {
                             return Err(AmosError::Internal("DailyPool account too small".into()));
                         }
                         let off = 8; // skip discriminator
-                        let daily_emission =
-                            u64::from_le_bytes(data[off + 4..off + 12].try_into().unwrap());
-                        let tokens_distributed =
-                            u64::from_le_bytes(data[off + 12..off + 20].try_into().unwrap());
-                        let total_points =
-                            u64::from_le_bytes(data[off + 20..off + 28].try_into().unwrap());
-                        let proof_count =
-                            u32::from_le_bytes(data[off + 28..off + 32].try_into().unwrap());
+                        let daily_emission = u64::from_le_bytes(
+                            data[off + 4..off + 12].try_into().map_err(|_| {
+                                AmosError::SolanaRpc(
+                                    "DailyPool daily_emission slice conversion failed".into(),
+                                )
+                            })?,
+                        );
+                        let tokens_distributed = u64::from_le_bytes(
+                            data[off + 12..off + 20].try_into().map_err(|_| {
+                                AmosError::SolanaRpc(
+                                    "DailyPool tokens_distributed slice conversion failed".into(),
+                                )
+                            })?,
+                        );
+                        let total_points = u64::from_le_bytes(
+                            data[off + 20..off + 28].try_into().map_err(|_| {
+                                AmosError::SolanaRpc(
+                                    "DailyPool total_points slice conversion failed".into(),
+                                )
+                            })?,
+                        );
+                        let proof_count = u32::from_le_bytes(
+                            data[off + 28..off + 32].try_into().map_err(|_| {
+                                AmosError::SolanaRpc(
+                                    "DailyPool proof_count slice conversion failed".into(),
+                                )
+                            })?,
+                        );
 
                         return Ok(Some(DailyPoolState {
                             day_index,
@@ -684,7 +746,9 @@ impl SolanaClient {
             }
             Err(AmosError::SolanaRpc(format!(
                 "Failed to fetch daily pool after 3 attempts: {}",
-                last_err.unwrap()
+                last_err
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "no error recorded".into())
             )))
         })
         .await
@@ -726,6 +790,37 @@ impl SolanaClient {
         claim_timeout_hours: u64,
         deadline: i64,
     ) -> Result<String> {
+        // ── Input validation at the trust boundary ───────────────────────
+        if reward_amount == 0 {
+            return Err(AmosError::Validation(
+                "reward_amount must be greater than 0".into(),
+            ));
+        }
+        if bounty_source > 2 {
+            return Err(AmosError::Validation(format!(
+                "bounty_source must be 0..=2 (got: {})",
+                bounty_source
+            )));
+        }
+        if contribution_type > 3 {
+            return Err(AmosError::Validation(format!(
+                "contribution_type must be 0..=3 (got: {})",
+                contribution_type
+            )));
+        }
+        validate_trust_level(required_trust_level)?;
+        if claim_timeout_hours == 0 {
+            return Err(AmosError::Validation(
+                "claim_timeout_hours must be greater than 0".into(),
+            ));
+        }
+        if deadline <= 0 {
+            return Err(AmosError::Validation(format!(
+                "deadline must be a positive unix timestamp (got: {})",
+                deadline
+            )));
+        }
+
         let oracle = self.oracle_keypair.as_ref().ok_or_else(|| {
             AmosError::Internal(
                 "Oracle keypair not configured — cannot post bounty on-chain".into(),
@@ -788,6 +883,8 @@ impl SolanaClient {
         wallet_address: &str,
         trust_level: u8,
     ) -> Result<String> {
+        validate_trust_level(trust_level)?;
+
         let oracle = self.oracle_keypair.as_ref().ok_or_else(|| {
             AmosError::Internal(
                 "Oracle keypair not configured — cannot bootstrap agent trust".into(),
@@ -795,7 +892,7 @@ impl SolanaClient {
         })?;
 
         let wallet_pubkey = Pubkey::from_str(wallet_address)
-            .map_err(|e| AmosError::Internal(format!("Invalid wallet address: {}", e)))?;
+            .map_err(|e| AmosError::Validation(format!("Invalid wallet address: {}", e)))?;
         let agent_id = wallet_pubkey.to_bytes();
 
         let program_id = self.bounty_program_id;
@@ -850,7 +947,7 @@ impl SolanaClient {
         })?;
 
         let wallet_pubkey = Pubkey::from_str(wallet_address)
-            .map_err(|e| AmosError::Internal(format!("Invalid wallet address: {}", e)))?;
+            .map_err(|e| AmosError::Validation(format!("Invalid wallet address: {}", e)))?;
         let agent_id = wallet_pubkey.to_bytes();
 
         let program_id = self.bounty_program_id;
@@ -2254,5 +2351,301 @@ mod tests {
             reward >= ONE_TOKEN,
             "Fallback should return at least 1 AMOS"
         );
+    }
+
+    // ── Malformed-input / fuzz tests ───────────────────────────────────
+    //
+    // These tests feed pathological inputs into every public `SolanaClient`
+    // function and assert each one returns `Err(_)` rather than panicking.
+    // They guard against the class of bug fixed by SECURE-007: unchecked
+    // `.unwrap()` / unvalidated boundary input that could DoS the relay
+    // when an attacker or buggy caller supplies bad data.
+
+    const VALID_PROGRAM_ID: &str = "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq";
+    const VALID_RPC_URL: &str = "https://api.devnet.solana.com";
+
+    fn make_client() -> SolanaClient {
+        SolanaClient::new(VALID_RPC_URL, VALID_PROGRAM_ID).unwrap()
+    }
+
+    /// Build a client with a random in-memory oracle keypair loaded. This
+    /// makes boundary-validation tests exercise the specific validation
+    /// code path rather than short-circuiting on the "oracle not configured"
+    /// error (which would also return `Err` but prove nothing about the
+    /// input check).
+    fn make_client_with_oracle() -> SolanaClient {
+        let mut client = make_client();
+        client.oracle_keypair = Some(Keypair::new());
+        client
+    }
+
+    // --- validate_rpc_url ---
+
+    #[test]
+    fn test_validate_rpc_url_accepts_supported_schemes() {
+        for url in [
+            "http://localhost:8899",
+            "https://api.devnet.solana.com",
+            "ws://localhost:8900",
+            "wss://api.mainnet-beta.solana.com",
+        ] {
+            assert!(validate_rpc_url(url).is_ok(), "should accept {}", url);
+        }
+    }
+
+    #[test]
+    fn test_validate_rpc_url_rejects_empty_and_whitespace() {
+        for url in ["", "   ", "\t\n"] {
+            assert!(
+                validate_rpc_url(url).is_err(),
+                "should reject empty-ish URL: {:?}",
+                url
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_rpc_url_rejects_unsupported_schemes() {
+        for url in [
+            "ftp://example.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "api.devnet.solana.com", // no scheme at all
+            "localhost",
+            "://no-scheme",
+        ] {
+            assert!(
+                validate_rpc_url(url).is_err(),
+                "should reject unsupported URL: {}",
+                url
+            );
+        }
+    }
+
+    // --- SolanaClient::new ---
+
+    #[test]
+    fn test_new_rejects_empty_rpc_url() {
+        let result = SolanaClient::new("", VALID_PROGRAM_ID);
+        assert!(result.is_err(), "empty URL should be rejected");
+    }
+
+    #[test]
+    fn test_new_rejects_garbage_rpc_url() {
+        let result = SolanaClient::new("not a url at all", VALID_PROGRAM_ID);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_rejects_malformed_program_ids() {
+        for bad_id in [
+            "",
+            " ",
+            "not_base58",
+            "OIl0", // contains 0, O, I, l — none valid in base58
+            "too_short",
+            "A",
+            &"X".repeat(128), // excessively long
+            "\0\0\0\0",
+            "🦀🦀🦀",
+        ] {
+            let result = SolanaClient::new(VALID_RPC_URL, bad_id);
+            assert!(
+                result.is_err(),
+                "SolanaClient::new should reject malformed program id: {:?}",
+                bad_id
+            );
+        }
+    }
+
+    // --- load_oracle_keypair ---
+
+    #[test]
+    fn test_load_oracle_keypair_rejects_empty_path() {
+        let mut client = make_client();
+        assert!(client.load_oracle_keypair("").is_err());
+        assert!(client.load_oracle_keypair("   ").is_err());
+    }
+
+    #[test]
+    fn test_load_oracle_keypair_rejects_nonexistent_path() {
+        let mut client = make_client();
+        let result = client.load_oracle_keypair("/definitely/does/not/exist/keypair.json");
+        assert!(result.is_err());
+    }
+
+    // --- set_mint / set_treasury ---
+
+    #[test]
+    fn test_set_mint_rejects_malformed_input() {
+        let mut client = make_client();
+        for bad in [
+            "",
+            " ",
+            "not_base58",
+            "O0Il", // invalid base58 chars
+            "\0",
+            &"Z".repeat(256),
+        ] {
+            assert!(
+                client.set_mint(bad).is_err(),
+                "set_mint should reject: {:?}",
+                bad
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_treasury_rejects_malformed_input() {
+        let mut client = make_client();
+        for bad in ["", " ", "not_base58", "O0Il", &"Z".repeat(256)] {
+            assert!(
+                client.set_treasury(bad).is_err(),
+                "set_treasury should reject: {:?}",
+                bad
+            );
+        }
+    }
+
+    // --- validate_trust_level ---
+
+    #[test]
+    fn test_validate_trust_level_accepts_valid_range() {
+        for level in 1..=5 {
+            assert!(validate_trust_level(level).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_validate_trust_level_rejects_out_of_range() {
+        for bad in [0, 6, 7, 100, u8::MAX] {
+            assert!(
+                validate_trust_level(bad).is_err(),
+                "should reject trust_level {}",
+                bad
+            );
+        }
+    }
+
+    // --- bootstrap_agent_trust (boundary validation only — no RPC call made
+    //     when validation fails fast) ---
+
+    #[tokio::test]
+    async fn test_bootstrap_agent_trust_rejects_invalid_trust_level() {
+        let client = make_client_with_oracle();
+        for bad_level in [0, 6, 7, u8::MAX] {
+            let result = client
+                .bootstrap_agent_trust("HxfBT3nUz4xTL6zSbXF9HanW2Ext99Ah9f6NPU6dhr5N", bad_level)
+                .await;
+            assert!(
+                result.is_err(),
+                "bootstrap should reject trust_level={}",
+                bad_level
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_agent_trust_rejects_malformed_wallet() {
+        let client = make_client_with_oracle();
+        for bad in ["", " ", "not_base58", "O0Il", "\0\0", &"Q".repeat(256)] {
+            let result = client.bootstrap_agent_trust(bad, 5).await;
+            assert!(
+                result.is_err(),
+                "bootstrap should reject malformed wallet: {:?}",
+                bad
+            );
+        }
+    }
+
+    // --- post_bounty_on_chain (numeric-boundary validation) ---
+    //
+    // These use `make_client_with_oracle()` so that validation is what fails,
+    // not the "no oracle keypair configured" check. A valid deadline in the
+    // future is used for cases that only exercise one other field.
+
+    #[tokio::test]
+    async fn test_post_bounty_rejects_zero_reward() {
+        let client = make_client_with_oracle();
+        let result = client
+            .post_bounty_on_chain(&[0u8; 32], 0, 0, 0, 5, 24, 1_800_000_000)
+            .await;
+        assert!(result.is_err(), "should reject zero reward_amount");
+    }
+
+    #[tokio::test]
+    async fn test_post_bounty_rejects_bad_source() {
+        let client = make_client_with_oracle();
+        for bad_source in [3u8, 4, 100, u8::MAX] {
+            let result = client
+                .post_bounty_on_chain(&[0u8; 32], bad_source, 1000, 0, 5, 24, 1_800_000_000)
+                .await;
+            assert!(
+                result.is_err(),
+                "should reject bounty_source={}",
+                bad_source
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_post_bounty_rejects_bad_contribution_type() {
+        let client = make_client_with_oracle();
+        for bad_ct in [4u8, 5, 100, u8::MAX] {
+            let result = client
+                .post_bounty_on_chain(&[0u8; 32], 0, 1000, bad_ct, 5, 24, 1_800_000_000)
+                .await;
+            assert!(
+                result.is_err(),
+                "should reject contribution_type={}",
+                bad_ct
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_post_bounty_rejects_bad_trust_level() {
+        let client = make_client_with_oracle();
+        for bad in [0u8, 6, 100, u8::MAX] {
+            let result = client
+                .post_bounty_on_chain(&[0u8; 32], 0, 1000, 0, bad, 24, 1_800_000_000)
+                .await;
+            assert!(result.is_err(), "should reject trust_level={}", bad);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_post_bounty_rejects_zero_timeout() {
+        let client = make_client_with_oracle();
+        let result = client
+            .post_bounty_on_chain(&[0u8; 32], 0, 1000, 0, 5, 0, 1_800_000_000)
+            .await;
+        assert!(result.is_err(), "should reject zero claim_timeout_hours");
+    }
+
+    #[tokio::test]
+    async fn test_post_bounty_rejects_nonpositive_deadline() {
+        let client = make_client_with_oracle();
+        for bad_deadline in [0i64, -1, -100, i64::MIN] {
+            let result = client
+                .post_bounty_on_chain(&[0u8; 32], 0, 1000, 0, 5, 24, bad_deadline)
+                .await;
+            assert!(result.is_err(), "should reject deadline={}", bad_deadline);
+        }
+    }
+
+    // --- register_agent_on_chain ---
+
+    #[tokio::test]
+    async fn test_register_agent_rejects_malformed_wallet() {
+        let client = make_client_with_oracle();
+        for bad in ["", " ", "not_base58", "O0Il", "\0\0", &"Q".repeat(256)] {
+            let result = client.register_agent_on_chain(bad).await;
+            assert!(
+                result.is_err(),
+                "register_agent should reject malformed wallet: {:?}",
+                bad
+            );
+        }
     }
 }
