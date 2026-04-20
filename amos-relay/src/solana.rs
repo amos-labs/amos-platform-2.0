@@ -886,6 +886,77 @@ impl SolanaClient {
         info!(wallet = %wallet_address, tx = %tx_sig, "Agent trust registered on-chain");
         Ok(tx_sig)
     }
+
+    /// Bootstrap an agent's trust level on-chain via `bootstrap_trust`.
+    ///
+    /// Intended for one-time operator + QA reviewer bootstrap when the system
+    /// is first brought online. The on-chain handler refuses to bootstrap any
+    /// agent that already has completions — so this is safe to call but will
+    /// fail with `TrustUpgradeNotAvailable` for already-active agents.
+    ///
+    /// Requires the oracle keypair to be loaded.
+    pub async fn bootstrap_agent_trust_on_chain(
+        &self,
+        wallet_address: &str,
+        trust_level: u8,
+    ) -> Result<String> {
+        if !(1..=5).contains(&trust_level) {
+            return Err(AmosError::Validation(format!(
+                "trust_level must be 1-5, got {}",
+                trust_level
+            )));
+        }
+
+        let oracle = self.oracle_keypair.as_ref().ok_or_else(|| {
+            AmosError::Internal(
+                "Oracle keypair not configured — cannot bootstrap agent trust".into(),
+            )
+        })?;
+
+        let wallet_pubkey = Pubkey::from_str(wallet_address)
+            .map_err(|e| AmosError::Internal(format!("Invalid wallet address: {}", e)))?;
+        let agent_id = wallet_pubkey.to_bytes();
+
+        let program_id = self.bounty_program_id;
+        let oracle_pubkey = oracle.pubkey();
+
+        let (config_pda, _) =
+            Pubkey::find_program_address(&[BOUNTY_CONFIG_SEED], &program_id);
+        let (trust_pda, _) =
+            Pubkey::find_program_address(&[AGENT_TRUST_SEED, &agent_id], &program_id);
+
+        let data = build_bootstrap_trust_data(&agent_id, trust_level);
+
+        let ix = Instruction {
+            program_id,
+            accounts: vec![
+                AccountMeta::new_readonly(config_pda, false),
+                AccountMeta::new(trust_pda, false),
+                AccountMeta::new(oracle_pubkey, true),
+            ],
+            data,
+        };
+
+        let rpc = self.rpc.clone();
+        let oracle_bytes: Vec<u8> = oracle.to_bytes().to_vec();
+
+        let tx_sig = tokio::task::spawn_blocking(move || {
+            let oracle_kp = Keypair::try_from(oracle_bytes.as_slice()).map_err(|e| {
+                AmosError::Internal(format!("Failed to reconstruct keypair: {}", e))
+            })?;
+            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2)
+        })
+        .await
+        .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
+
+        info!(
+            wallet = %wallet_address,
+            trust_level,
+            tx = %tx_sig,
+            "Agent trust bootstrapped on-chain"
+        );
+        Ok(tx_sig)
+    }
 }
 
 /// Send a transaction with retry and exponential backoff.
@@ -972,6 +1043,20 @@ fn anchor_discriminator(name: &str) -> [u8; 8] {
 /// Build the instruction data for `bootstrap_agent_trust`.
 /// Layout: 8-byte discriminator + agent_id ([u8; 32]) + trust_level (u8) = 41 bytes.
 fn build_bootstrap_agent_trust_data(agent_id: &[u8; 32], trust_level: u8) -> Vec<u8> {
+    let disc = anchor_discriminator("bootstrap_agent_trust");
+    let mut data = Vec::with_capacity(8 + 32 + 1);
+    data.extend_from_slice(&disc);
+    data.extend_from_slice(agent_id);
+    data.push(trust_level);
+    data
+}
+
+/// Build the instruction data for `bootstrap_agent_trust`.
+///
+/// Layout: 8-byte Anchor discriminator + 32-byte agent_id + 1-byte trust_level.
+/// The discriminator is derived from the `#[program]` entry-point function
+/// name (`bootstrap_agent_trust`), not the inner handler (`handler_bootstrap_trust`).
+fn build_bootstrap_trust_data(agent_id: &[u8; 32], trust_level: u8) -> Vec<u8> {
     let disc = anchor_discriminator("bootstrap_agent_trust");
     let mut data = Vec::with_capacity(8 + 32 + 1);
     data.extend_from_slice(&disc);

@@ -33,7 +33,7 @@ from pathlib import Path
 
 RELAY_URL = os.environ.get("RELAY_URL", "http://localhost:4100")
 RELAY_API_KEY = os.environ.get("RELAY_API_KEY", "test_key_e2e_maxreward_2026")
-QA_WALLET = os.environ.get("QA_WALLET", "87GzqDXXH5sDfbmrmjpoMA4aHNNooNSBf6Q7vyPJEMoh")
+QA_WALLET = os.environ.get("QA_WALLET", "5ik1JSm387xoEtzL5iNHc3wvVM12nzpPVJtaw4k1RHHY")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "amos-labs/amos-automate")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", str(Path(__file__).resolve().parent.parent))
