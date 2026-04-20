@@ -163,10 +163,7 @@ impl Tool for CreateLandingPageTool {
             amos_core::AmosError::Validation("html_content is required".to_string())
         })?;
 
-        let title = params
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or(name);
+        let title = params.get("title").and_then(|v| v.as_str()).unwrap_or(name);
         let description = params.get("description").and_then(|v| v.as_str());
         let css_content = params.get("css_content").and_then(|v| v.as_str());
         let js_content = params.get("js_content").and_then(|v| v.as_str());
