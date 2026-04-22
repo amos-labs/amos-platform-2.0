@@ -58,18 +58,46 @@ jobs:
         continue-on-error: true  # Advisory-only for now
 
   # ============================================================================
+  # GATE 1.5: Release Gate — critical-path invariants that MUST block deploys
+  #
+  # Narrow, fast suite that guards against the regression classes that have
+  # actually hit prod: bad Bedrock model IDs, malformed tool schemas, pricing
+  # drift. Runs the same tests as the `check` job but isolated here so a
+  # failure blocks image builds — unlike clippy/audit which stay advisory.
+  # ============================================================================
+  release-gate:
+    name: Release Gate — Catalog + Schema Invariants
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Model catalog + pricing invariants
+        run: cargo test --lib -p amos-harness routes::settings::tests
+
+      - name: Tool schema invariants
+        run: cargo test --lib -p amos-harness schema_tests
+
+  # ============================================================================
   # GATE 2: Build Docker images and push to ECR
   #
-  # This runs on every push to main INDEPENDENTLY of the check job.
-  # Rationale: a clippy lint failure should not prevent image builds.
-  # New harnesses are provisioned from :latest — if images stop building,
-  # new customers get stale/broken code with no warning.
-  #
-  # The check job still runs and reports failures, but does not gate deploys.
+  # Depends on `release-gate` — a bad catalog or malformed tool schema cannot
+  # reach a customer harness. `check` (clippy/audit/full test suite) stays
+  # advisory and does not block deploys.
   # ============================================================================
   build-images:
     name: Build & Push Images
     runs-on: ubuntu-latest
+    needs: release-gate
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     permissions:
