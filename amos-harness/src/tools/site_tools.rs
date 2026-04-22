@@ -685,3 +685,83 @@ impl Tool for ListSitesTool {
         ToolCategory::Schema
     }
 }
+
+// ═════════════════════════════════════════════════════════════════════════
+// Schema invariants — every site tool's parameters_schema() stays
+// Bedrock-compatible. Runs at `cargo test` time.
+// ═════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+    use crate::tools::validate_tool_schema;
+
+    fn lazy_pool() -> PgPool {
+        // Never connects — schema-only calls don't touch the DB.
+        PgPool::connect_lazy("postgres://localhost/fake").unwrap()
+    }
+
+    fn check(tool: &dyn Tool) {
+        let schema = tool.parameters_schema();
+        validate_tool_schema(&schema, tool.name())
+            .unwrap_or_else(|e| panic!("invalid schema: {}", e));
+        assert!(
+            !tool.description().is_empty(),
+            "{}: description must not be empty",
+            tool.name()
+        );
+        assert!(
+            tool.description().len() >= 20,
+            "{}: description should be meaningful (>=20 chars)",
+            tool.name()
+        );
+    }
+
+    #[tokio::test]
+    async fn create_landing_page_schema_valid() {
+        check(&CreateLandingPageTool::new(lazy_pool()));
+    }
+
+    #[tokio::test]
+    async fn create_site_schema_valid() {
+        check(&CreateSiteTool::new(lazy_pool()));
+    }
+
+    #[tokio::test]
+    async fn manage_page_schema_valid() {
+        check(&ManagePageTool::new(lazy_pool()));
+    }
+
+    #[tokio::test]
+    async fn patch_page_schema_valid() {
+        check(&PatchPageTool::new(lazy_pool()));
+    }
+
+    #[tokio::test]
+    async fn publish_site_schema_valid() {
+        check(&PublishSiteTool::new(lazy_pool()));
+    }
+
+    #[tokio::test]
+    async fn list_sites_schema_valid() {
+        check(&ListSitesTool::new(lazy_pool()));
+    }
+
+    #[tokio::test]
+    async fn create_landing_page_requires_html_content() {
+        // Regression guard: the whole point of create_landing_page is that
+        // one call produces a viewable page. If html_content becomes optional
+        // we regress to the empty-site bug that broke Jana's landing pages.
+        let tool = CreateLandingPageTool::new(lazy_pool());
+        let schema = tool.parameters_schema();
+        let required = schema
+            .get("required")
+            .and_then(|v| v.as_array())
+            .expect("required array");
+        let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+        assert!(
+            names.contains(&"html_content"),
+            "create_landing_page must require html_content"
+        );
+    }
+}

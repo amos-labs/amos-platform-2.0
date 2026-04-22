@@ -545,6 +545,91 @@ macro_rules! tool_schema {
     };
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// Schema invariants — catch malformed tool schemas before they reach Bedrock
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Bedrock's tool spec validator is strict: a missing `type`, a `required` field
+// that names a property that doesn't exist, or a top-level `$schema` key is an
+// instant 400. These invariants run as tests on each Tool impl and as a boot-
+// time sanity pass on the populated registry, so any regression fails fast.
+
+/// Validate that a tool's `parameters_schema()` is well-formed and Bedrock-compatible.
+///
+/// Returns `Ok(())` on success or `Err(reason)` describing the first failure found.
+pub fn validate_tool_schema(
+    schema: &JsonValue,
+    tool_name: &str,
+) -> std::result::Result<(), String> {
+    let obj = schema
+        .as_object()
+        .ok_or_else(|| format!("{}: schema is not a JSON object", tool_name))?;
+
+    let ty = obj
+        .get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("{}: schema missing top-level `type`", tool_name))?;
+    if ty != "object" {
+        return Err(format!(
+            "{}: schema `type` must be `object`, got `{}`",
+            tool_name, ty
+        ));
+    }
+
+    // Bedrock's validator rejects top-level JSON Schema meta keys.
+    for k in ["$schema", "$id", "$ref"] {
+        if obj.contains_key(k) {
+            return Err(format!(
+                "{}: schema must not contain top-level `{}` (Bedrock rejects)",
+                tool_name, k
+            ));
+        }
+    }
+
+    let properties = obj
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| format!("{}: schema missing `properties` object", tool_name))?;
+
+    if let Some(required) = obj.get("required") {
+        let required_arr = required
+            .as_array()
+            .ok_or_else(|| format!("{}: `required` must be an array", tool_name))?;
+        for r in required_arr {
+            let name = r
+                .as_str()
+                .ok_or_else(|| format!("{}: `required` entries must be strings", tool_name))?;
+            if !properties.contains_key(name) {
+                return Err(format!(
+                    "{}: `required` lists `{}` but it's not in `properties`",
+                    tool_name, name
+                ));
+            }
+        }
+    }
+
+    // Each property should declare its own `type` (or use a composition keyword).
+    for (prop_name, prop_schema) in properties {
+        let Some(po) = prop_schema.as_object() else {
+            return Err(format!(
+                "{}: property `{}` is not an object",
+                tool_name, prop_name
+            ));
+        };
+        let has_type = po.contains_key("type");
+        let has_composition =
+            po.contains_key("oneOf") || po.contains_key("anyOf") || po.contains_key("allOf");
+        if !has_type && !has_composition {
+            return Err(format!(
+                "{}: property `{}` missing `type` / `oneOf` / `anyOf` / `allOf`",
+                tool_name, prop_name
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

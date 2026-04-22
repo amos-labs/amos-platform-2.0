@@ -244,3 +244,177 @@ async fn set_setting(state: &AppState, key: &str, value: &str) -> Result<(), Sta
     })?;
     Ok(())
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Regression tests — catalog invariants
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Matches the real Bedrock inference-profile / foundation-model ID grammar.
+    /// Rejects rogue suffixes like `-v1` where Anthropic's actual profile has none
+    /// (the Opus 4.7 bug that broke prod on 2026-04-20).
+    fn is_valid_bedrock_model_id(id: &str) -> bool {
+        // Optional geo prefix (us./eu./jp./global.), then "anthropic.claude-<tier>-<version>",
+        // then optional "-YYYYMMDD-v<n>:<n>" or "-v<n>" tail.
+        let re = regex::Regex::new(
+            r"^((us|eu|jp|global)\.)?anthropic\.claude-(haiku|sonnet|opus)-\d+-\d+(-\d{8})?(-v\d+(:\d+)?)?$",
+        )
+        .expect("regex should compile");
+        re.is_match(id)
+    }
+
+    #[test]
+    fn model_catalog_is_non_empty() {
+        assert!(!AVAILABLE_MODELS.is_empty(), "catalog must have ≥1 model");
+    }
+
+    #[test]
+    fn default_model_is_in_catalog() {
+        assert!(
+            AVAILABLE_MODELS.iter().any(|m| m.id == DEFAULT_MODEL),
+            "DEFAULT_MODEL '{}' not in AVAILABLE_MODELS",
+            DEFAULT_MODEL
+        );
+    }
+
+    #[test]
+    fn every_model_id_matches_bedrock_grammar() {
+        for m in AVAILABLE_MODELS {
+            assert!(
+                is_valid_bedrock_model_id(m.id),
+                "model id '{}' fails Bedrock grammar — \
+                 either missing/extra '-v1' suffix or wrong date segment",
+                m.id
+            );
+        }
+    }
+
+    #[test]
+    fn every_model_has_distinct_id_and_display_name() {
+        let mut ids = std::collections::HashSet::new();
+        let mut names = std::collections::HashSet::new();
+        for m in AVAILABLE_MODELS {
+            assert!(ids.insert(m.id), "duplicate model id: {}", m.id);
+            assert!(
+                names.insert(m.display_name),
+                "duplicate display name: {}",
+                m.display_name
+            );
+        }
+    }
+
+    #[test]
+    fn every_tier_is_known() {
+        for m in AVAILABLE_MODELS {
+            assert!(
+                matches!(m.tier, "fast" | "balanced" | "powerful"),
+                "model '{}' has unknown tier '{}'",
+                m.id,
+                m.tier
+            );
+        }
+    }
+
+    #[test]
+    fn pricing_tiers_are_ordered_sanely() {
+        for m in AVAILABLE_MODELS {
+            assert!(
+                m.input_price_per_mtok > 0.0,
+                "{}: input price must be > 0",
+                m.id
+            );
+            assert!(
+                m.output_price_per_mtok > m.input_price_per_mtok,
+                "{}: output ({}) should be > input ({})",
+                m.id,
+                m.output_price_per_mtok,
+                m.input_price_per_mtok
+            );
+            assert!(
+                m.cache_read_price_per_mtok < m.input_price_per_mtok,
+                "{}: cache read ({}) should be < input ({})",
+                m.id,
+                m.cache_read_price_per_mtok,
+                m.input_price_per_mtok
+            );
+            assert!(
+                m.cache_write_5m_price_per_mtok > m.input_price_per_mtok,
+                "{}: 5m cache write ({}) should be > input ({})",
+                m.id,
+                m.cache_write_5m_price_per_mtok,
+                m.input_price_per_mtok
+            );
+            assert!(
+                m.cache_write_1h_price_per_mtok > m.cache_write_5m_price_per_mtok,
+                "{}: 1h cache write ({}) should be > 5m cache write ({})",
+                m.id,
+                m.cache_write_1h_price_per_mtok,
+                m.cache_write_5m_price_per_mtok
+            );
+        }
+    }
+
+    #[test]
+    fn anthropic_tier_ratios_are_close_to_schedule() {
+        // Anthropic's public pattern (validated against Sonnet 4.6 and Opus 4.7):
+        //   cache_write_5m = 1.25× input, cache_write_1h = 2× input,
+        //   cache_read = 0.10× input, batch = 0.5× base.
+        // Allow 2% slop for rounding at the third decimal.
+        for m in AVAILABLE_MODELS {
+            let r5m = m.cache_write_5m_price_per_mtok / m.input_price_per_mtok;
+            let r1h = m.cache_write_1h_price_per_mtok / m.input_price_per_mtok;
+            let rread = m.cache_read_price_per_mtok / m.input_price_per_mtok;
+            assert!(
+                (1.23..=1.27).contains(&r5m),
+                "{}: cache_write_5m ratio {} not ≈ 1.25",
+                m.id,
+                r5m
+            );
+            assert!(
+                (1.98..=2.02).contains(&r1h),
+                "{}: cache_write_1h ratio {} not ≈ 2.0",
+                m.id,
+                r1h
+            );
+            assert!(
+                (0.09..=0.11).contains(&rread),
+                "{}: cache_read ratio {} not ≈ 0.10",
+                m.id,
+                rread
+            );
+            if let (Some(bi), Some(bo)) =
+                (m.batch_input_price_per_mtok, m.batch_output_price_per_mtok)
+            {
+                let rbi = bi / m.input_price_per_mtok;
+                let rbo = bo / m.output_price_per_mtok;
+                assert!(
+                    (0.49..=0.51).contains(&rbi),
+                    "{}: batch input ratio {} not ≈ 0.50",
+                    m.id,
+                    rbi
+                );
+                assert!(
+                    (0.49..=0.51).contains(&rbo),
+                    "{}: batch output ratio {} not ≈ 0.50",
+                    m.id,
+                    rbo
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bad_model_ids_fail_grammar() {
+        // The exact Opus 4.7 regression that broke prod.
+        assert!(!is_valid_bedrock_model_id("us.anthropic.claude-opus-4-7-v"));
+        // Missing model family.
+        assert!(!is_valid_bedrock_model_id("us.anthropic.claude-4-7"));
+        // Wrong vendor.
+        assert!(!is_valid_bedrock_model_id("us.openai.gpt-5"));
+        // Empty.
+        assert!(!is_valid_bedrock_model_id(""));
+    }
+}
