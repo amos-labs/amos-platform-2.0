@@ -39,14 +39,28 @@ struct SettingsResponse {
     available_models: Vec<ModelInfo>,
 }
 
+/// Prices are per 1M tokens, include the customer-facing 3% markup over Bedrock base.
+///
+/// Anthropic's pricing schedule has five dimensions:
+///   - standard (input, output)
+///   - batch    (input, output) — 50% discount; some models don't offer batch
+///   - cache write (5-minute TTL)
+///   - cache write (1-hour TTL)
+///   - cache read (cheapest; hit on prompt cache)
+///
+/// `None` means the model doesn't offer that tier (e.g. Opus 4.7 has no batch).
 #[derive(Debug, Serialize)]
 struct ModelInfo {
     id: &'static str,
     display_name: &'static str,
     tier: &'static str,
-    /// Price shown to customer (Bedrock cost + 3% markup)
     input_price_per_mtok: f64,
     output_price_per_mtok: f64,
+    batch_input_price_per_mtok: Option<f64>,
+    batch_output_price_per_mtok: Option<f64>,
+    cache_write_5m_price_per_mtok: f64,
+    cache_write_1h_price_per_mtok: f64,
+    cache_read_price_per_mtok: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,40 +73,61 @@ struct UpdateSettingsRequest {
 // Constants — pricing shown to customer includes 3% markup
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MARKUP: f64 = 1.03;
-
+// Pattern across Anthropic tiers: cache-write-5m = 1.25× base input,
+// cache-write-1h = 2× base input, cache-read = 0.10× base input,
+// batch = 0.50× base (input and output). All values below are Bedrock base × 1.03.
 const AVAILABLE_MODELS: &[ModelInfo] = &[
     ModelInfo {
         id: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
         display_name: "Claude Haiku 4.5",
         tier: "fast",
-        // Base: $0.80 / $4.00 → with markup: $0.824 / $4.12
+        // Base: $0.80 / $4.00
         input_price_per_mtok: 0.824,
         output_price_per_mtok: 4.12,
+        batch_input_price_per_mtok: Some(0.412),
+        batch_output_price_per_mtok: Some(2.06),
+        cache_write_5m_price_per_mtok: 1.03,
+        cache_write_1h_price_per_mtok: 1.648,
+        cache_read_price_per_mtok: 0.0824,
     },
     ModelInfo {
         id: "us.anthropic.claude-sonnet-4-6",
         display_name: "Claude Sonnet 4.6",
         tier: "balanced",
-        // Base: $3.00 / $15.00 → with markup: $3.09 / $15.45
+        // Base: $3.00 / $15.00
         input_price_per_mtok: 3.09,
         output_price_per_mtok: 15.45,
+        batch_input_price_per_mtok: Some(1.545),
+        batch_output_price_per_mtok: Some(7.725),
+        cache_write_5m_price_per_mtok: 3.8625,
+        cache_write_1h_price_per_mtok: 6.18,
+        cache_read_price_per_mtok: 0.309,
     },
     ModelInfo {
         id: "us.anthropic.claude-opus-4-6-v1",
         display_name: "Claude Opus 4.6",
         tier: "powerful",
-        // Base: $15.00 / $75.00 → with markup: $15.45 / $77.25
+        // Base: $15.00 / $75.00
         input_price_per_mtok: 15.45,
         output_price_per_mtok: 77.25,
+        batch_input_price_per_mtok: Some(7.725),
+        batch_output_price_per_mtok: Some(38.625),
+        cache_write_5m_price_per_mtok: 19.3125,
+        cache_write_1h_price_per_mtok: 30.90,
+        cache_read_price_per_mtok: 1.545,
     },
     ModelInfo {
         id: "us.anthropic.claude-opus-4-7",
         display_name: "Claude Opus 4.7",
         tier: "powerful",
-        // Base: $5.00 / $25.00 → with markup: $5.15 / $25.75
+        // Base: $5.00 / $25.00 — batch not offered for this model
         input_price_per_mtok: 5.15,
         output_price_per_mtok: 25.75,
+        batch_input_price_per_mtok: None,
+        batch_output_price_per_mtok: None,
+        cache_write_5m_price_per_mtok: 6.4375,
+        cache_write_1h_price_per_mtok: 10.30,
+        cache_read_price_per_mtok: 0.515,
     },
 ];
 
@@ -135,6 +170,11 @@ async fn get_settings(
                 tier: m.tier,
                 input_price_per_mtok: m.input_price_per_mtok,
                 output_price_per_mtok: m.output_price_per_mtok,
+                batch_input_price_per_mtok: m.batch_input_price_per_mtok,
+                batch_output_price_per_mtok: m.batch_output_price_per_mtok,
+                cache_write_5m_price_per_mtok: m.cache_write_5m_price_per_mtok,
+                cache_write_1h_price_per_mtok: m.cache_write_1h_price_per_mtok,
+                cache_read_price_per_mtok: m.cache_read_price_per_mtok,
             })
             .collect(),
     }))
