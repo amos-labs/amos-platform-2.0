@@ -66,11 +66,13 @@ impl RelayState {
                             warn!("Failed to set treasury address: {}", e);
                         }
                     }
+                    client.set_max_priority_fee_lamports(config.solana.max_priority_fee_lamports);
 
                     let ready = client.is_settlement_ready();
                     info!(
                         rpc = %config.solana.rpc_url,
                         settlement_ready = ready,
+                        max_priority_fee_lamports = client.max_priority_fee_lamports(),
                         "Solana client initialized"
                     );
                     Some(Arc::new(client))

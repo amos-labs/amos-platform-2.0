@@ -133,6 +133,15 @@ pub struct SolanaConfig {
     /// Treasury token account that holds distribution tokens.
     #[serde(default = "default_treasury_token_account")]
     pub treasury_token_account: Option<String>,
+    /// Upper bound on the priority fee (in lamports) attached to any single
+    /// transaction. The dynamic estimator (`getRecentPrioritizationFees`)
+    /// produces a per-compute-unit price; this cap is multiplied back out
+    /// against the transaction's compute-unit limit and used to clamp that
+    /// price so a single tx can never cost more than this many lamports in
+    /// priority fee, regardless of network congestion. Default: 100_000
+    /// lamports (0.0001 SOL).
+    #[serde(default = "default_max_priority_fee_lamports")]
+    pub max_priority_fee_lamports: u64,
 }
 
 impl Default for SolanaConfig {
@@ -146,6 +155,7 @@ impl Default for SolanaConfig {
             oracle_keypair_path: None,
             mint_address: default_mint_address(),
             treasury_token_account: default_treasury_token_account(),
+            max_priority_fee_lamports: default_max_priority_fee_lamports(),
         }
     }
 }
@@ -713,6 +723,9 @@ fn default_mint_address() -> Option<String> {
 fn default_treasury_token_account() -> Option<String> {
     Some("9xDVHuW4kiUYH5NPDLFfKhpxLQ31N6bqMrvj4EJ57z2B".into())
 }
+fn default_max_priority_fee_lamports() -> u64 {
+    100_000
+}
 fn default_aws_region() -> String {
     "us-west-2".into()
 }
@@ -940,6 +953,44 @@ mod tests {
         assert_eq!(config.api_base, "http://localhost:11434/v1");
         assert_eq!(config.model_id, "llama3.2:3b");
         assert_eq!(config.cost_threshold, 500);
+    }
+
+    #[test]
+    fn solana_config_default_priority_fee_matches_spec() {
+        // SECURE-001 spec: default 100K lamports (0.0001 SOL). A regression
+        // that changes this default silently shifts every relay's gas
+        // budget — pin it.
+        let config = SolanaConfig::default();
+        assert_eq!(config.max_priority_fee_lamports, 100_000);
+    }
+
+    #[test]
+    fn solana_config_priority_fee_deserializes_from_missing_field() {
+        // Older config files / env without AMOS__SOLANA__MAX_PRIORITY_FEE_LAMPORTS
+        // must still deserialize — serde default must kick in.
+        let json = r#"{
+            "rpc_url": "https://api.devnet.solana.com",
+            "ws_url": "wss://api.devnet.solana.com",
+            "treasury_program_id": "11111111111111111111111111111111",
+            "governance_program_id": "11111111111111111111111111111111",
+            "bounty_program_id": "11111111111111111111111111111111"
+        }"#;
+        let config: SolanaConfig = serde_json::from_str(json).expect("parses with defaults");
+        assert_eq!(config.max_priority_fee_lamports, 100_000);
+    }
+
+    #[test]
+    fn solana_config_priority_fee_deserializes_explicit_override() {
+        let json = r#"{
+            "rpc_url": "https://api.devnet.solana.com",
+            "ws_url": "wss://api.devnet.solana.com",
+            "treasury_program_id": "11111111111111111111111111111111",
+            "governance_program_id": "11111111111111111111111111111111",
+            "bounty_program_id": "11111111111111111111111111111111",
+            "max_priority_fee_lamports": 250000
+        }"#;
+        let config: SolanaConfig = serde_json::from_str(json).expect("parses override");
+        assert_eq!(config.max_priority_fee_lamports, 250_000);
     }
 
     #[test]

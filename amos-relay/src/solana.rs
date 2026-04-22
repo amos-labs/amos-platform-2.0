@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
+    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
@@ -18,7 +19,7 @@ use solana_sdk::{
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 // Well-known program IDs
 const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -39,6 +40,47 @@ const VIRTUAL_POINTS_BASE: u64 = 10_000;
 /// One whole AMOS token in lamports (10^9).
 const ONE_TOKEN: u64 = 1_000_000_000;
 
+// ── Compute budget constants ─────────────────────────────────────────
+//
+// Explicit per-callsite compute-unit limits. The Solana runtime defaults to
+// 200K per instruction, which wastes fees on small instructions and caps
+// multi-instruction settlements below what the Anchor program actually
+// consumes. Each constant below is a conservative estimate for the specific
+// instruction path that uses it, with enough headroom (~20%) on top of the
+// expected consumption to survive program-version drift. Operators with
+// real devnet telemetry should tighten these values; a regression that
+// drops a limit below actual consumption will land as `ProgramFailedToComplete`,
+// not silent data corruption, which is the safe failure mode.
+
+/// CU limit for the full bounty settlement (prepare + submit). The
+/// `submit_bounty_proof` path runs Anchor account init + two SPL token
+/// transfers + on-chain math, comfortably exceeding the 200K runtime
+/// default. 400K gives the two-instruction tx room to execute both the
+/// prepare account-init and the submit payout without hitting the limit.
+const CU_LIMIT_SETTLEMENT: u32 = 400_000;
+
+/// CU limit for single-instruction Anchor/SPL transactions that perform one
+/// on-chain state update (register_agent_trust, post_bounty_on_chain,
+/// bootstrap_agent_trust, register_agent_on_chain). Covers Anchor account
+/// init + one CPI with headroom.
+const CU_LIMIT_SINGLE_ANCHOR_IX: u32 = 100_000;
+
+/// CU limit for idempotent ATA creation (SPL associated-token program, no
+/// Anchor). Small even in the "actually creates" branch.
+const CU_LIMIT_CREATE_ATA: u32 = 60_000;
+
+/// Fallback compute-unit price used when `getRecentPrioritizationFees`
+/// returns zero or cannot be reached. Units: micro-lamports per CU.
+/// At the 400K settlement CU limit this works out to a ~400-lamport priority
+/// fee, still far below the configurable cap.
+const FALLBACK_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS: u64 = 1_000;
+
+/// Default upper bound on priority fee per transaction (in lamports). Used
+/// when a `SolanaClient` is constructed without an explicit cap; relay
+/// startup overrides this via `set_max_priority_fee_lamports` driven by the
+/// `AMOS__SOLANA__MAX_PRIORITY_FEE_LAMPORTS` config value.
+pub(crate) const DEFAULT_MAX_PRIORITY_FEE_LAMPORTS: u64 = 100_000;
+
 /// Wrapper around Solana RPC client for relay operations.
 pub struct SolanaClient {
     rpc: Arc<RpcClient>,
@@ -51,6 +93,9 @@ pub struct SolanaClient {
     mint: Option<Pubkey>,
     /// Treasury token account
     treasury_token_account: Option<Pubkey>,
+    /// Upper bound on priority fee per transaction (lamports). Enforced by
+    /// `send_with_retry` when computing `set_compute_unit_price`.
+    max_priority_fee_lamports: u64,
 }
 
 /// Result of a successful bounty settlement on-chain.
@@ -189,7 +234,27 @@ impl SolanaClient {
             oracle_keypair: None,
             mint: None,
             treasury_token_account: None,
+            max_priority_fee_lamports: DEFAULT_MAX_PRIORITY_FEE_LAMPORTS,
         })
+    }
+
+    /// Override the per-transaction priority-fee cap (in lamports). Called
+    /// during relay startup from `AMOS__SOLANA__MAX_PRIORITY_FEE_LAMPORTS`.
+    /// A zero cap is treated the same as the default — the cap must stay
+    /// positive so `get_recent_prioritization_fees`' non-zero estimate can
+    /// still translate into at least 1 µlamport/CU.
+    pub fn set_max_priority_fee_lamports(&mut self, cap: u64) {
+        self.max_priority_fee_lamports = if cap == 0 {
+            DEFAULT_MAX_PRIORITY_FEE_LAMPORTS
+        } else {
+            cap
+        };
+    }
+
+    /// Expose the currently configured priority-fee cap. Tests and operators
+    /// rely on this to verify config was threaded from env.
+    pub fn max_priority_fee_lamports(&self) -> u64 {
+        self.max_priority_fee_lamports
     }
 
     /// Load the oracle keypair from a JSON file (Solana CLI format).
@@ -398,12 +463,23 @@ impl SolanaClient {
 
                 let rpc_reg = self.rpc.clone();
                 let oracle_bytes_reg = oracle.to_bytes();
+                let budget = ComputeBudget {
+                    compute_unit_limit: CU_LIMIT_SINGLE_ANCHOR_IX,
+                    max_priority_fee_lamports: self.max_priority_fee_lamports,
+                };
                 tokio::task::spawn_blocking(move || {
                     let oracle_kp =
                         Keypair::try_from(oracle_bytes_reg.as_slice()).map_err(|e| {
                             AmosError::Internal(format!("Keypair reconstruction: {}", e))
                         })?;
-                    send_with_retry(&rpc_reg, &[register_ix], &oracle_kp, &[&oracle_kp], 2)
+                    send_with_retry(
+                        &rpc_reg,
+                        &[register_ix],
+                        &oracle_kp,
+                        &[&oracle_kp],
+                        2,
+                        budget,
+                    )
                 })
                 .await
                 .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
@@ -473,12 +549,23 @@ impl SolanaClient {
 
                 let rpc_create = self.rpc.clone();
                 let oracle_bytes_ata = oracle.to_bytes();
+                let budget = ComputeBudget {
+                    compute_unit_limit: CU_LIMIT_CREATE_ATA,
+                    max_priority_fee_lamports: self.max_priority_fee_lamports,
+                };
                 tokio::task::spawn_blocking(move || {
                     let oracle_kp =
                         Keypair::try_from(oracle_bytes_ata.as_slice()).map_err(|e| {
                             AmosError::Internal(format!("Keypair reconstruction: {}", e))
                         })?;
-                    send_with_retry(&rpc_create, &[create_ata_ix], &oracle_kp, &[&oracle_kp], 2)
+                    send_with_retry(
+                        &rpc_create,
+                        &[create_ata_ix],
+                        &oracle_kp,
+                        &[&oracle_kp],
+                        2,
+                        budget,
+                    )
                 })
                 .await
                 .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
@@ -545,6 +632,10 @@ impl SolanaClient {
         // Build, sign, and send transaction with both instructions (with retry)
         let rpc = self.rpc.clone();
         let oracle_keypair_bytes = oracle.to_bytes();
+        let budget = ComputeBudget {
+            compute_unit_limit: CU_LIMIT_SETTLEMENT,
+            max_priority_fee_lamports: self.max_priority_fee_lamports,
+        };
 
         let tx_signature = tokio::task::spawn_blocking(move || {
             let oracle_kp = Keypair::try_from(oracle_keypair_bytes.as_slice())
@@ -556,6 +647,7 @@ impl SolanaClient {
                 &oracle_kp,
                 &[&oracle_kp],
                 4, // max 4 retries = 5 total attempts
+                budget,
             )
         })
         .await
@@ -763,12 +855,16 @@ impl SolanaClient {
 
         let rpc = self.rpc.clone();
         let oracle_bytes: Vec<u8> = oracle.to_bytes().to_vec();
+        let budget = ComputeBudget {
+            compute_unit_limit: CU_LIMIT_SINGLE_ANCHOR_IX,
+            max_priority_fee_lamports: self.max_priority_fee_lamports,
+        };
 
         let tx_sig = tokio::task::spawn_blocking(move || {
             let oracle_kp = Keypair::try_from(oracle_bytes.as_slice()).map_err(|e| {
                 AmosError::Internal(format!("Failed to reconstruct keypair: {}", e))
             })?;
-            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2)
+            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2, budget)
         })
         .await
         .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
@@ -819,12 +915,16 @@ impl SolanaClient {
 
         let rpc = self.rpc.clone();
         let oracle_bytes: Vec<u8> = oracle.to_bytes().to_vec();
+        let budget = ComputeBudget {
+            compute_unit_limit: CU_LIMIT_SINGLE_ANCHOR_IX,
+            max_priority_fee_lamports: self.max_priority_fee_lamports,
+        };
 
         let tx_sig = tokio::task::spawn_blocking(move || {
             let oracle_kp = Keypair::try_from(oracle_bytes.as_slice()).map_err(|e| {
                 AmosError::Internal(format!("Failed to reconstruct keypair: {}", e))
             })?;
-            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2)
+            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2, budget)
         })
         .await
         .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
@@ -873,12 +973,16 @@ impl SolanaClient {
 
         let rpc = self.rpc.clone();
         let oracle_bytes: Vec<u8> = oracle.to_bytes().to_vec();
+        let budget = ComputeBudget {
+            compute_unit_limit: CU_LIMIT_SINGLE_ANCHOR_IX,
+            max_priority_fee_lamports: self.max_priority_fee_lamports,
+        };
 
         let tx_sig = tokio::task::spawn_blocking(move || {
             let oracle_kp = Keypair::try_from(oracle_bytes.as_slice()).map_err(|e| {
                 AmosError::Internal(format!("Failed to reconstruct keypair: {}", e))
             })?;
-            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2)
+            send_with_retry(&rpc, &[ix], &oracle_kp, &[&oracle_kp], 2, budget)
         })
         .await
         .map_err(|e| AmosError::Internal(format!("Tokio join error: {}", e)))??;
@@ -888,14 +992,117 @@ impl SolanaClient {
     }
 }
 
+/// Parameters for compute-budget prefixing on every sent transaction.
+///
+/// Every transaction built by `send_with_retry` is prepended with two
+/// `ComputeBudgetProgram` instructions:
+///
+///   1. `set_compute_unit_limit(compute_unit_limit)` — pins the tx's
+///      compute-unit ceiling to the measured+20% estimate for its specific
+///      path (see the `CU_LIMIT_*` constants). Avoids the runtime's default
+///      200K, which is both too generous for single-ix transactions (wastes
+///      fees) and too tight for the two-instruction settlement path.
+///
+///   2. `set_compute_unit_price(compute_unit_price_micro_lamports)` — the
+///      priority fee in micro-lamports per CU, estimated from recent
+///      prioritization fees and clamped so the product with the CU limit
+///      never exceeds `max_priority_fee_lamports`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ComputeBudget {
+    pub compute_unit_limit: u32,
+    pub max_priority_fee_lamports: u64,
+}
+
+/// Median of a slice of `u64`s, returning 0 if empty. Used for the recent
+/// prioritization-fee aggregation — the median is more robust against
+/// outliers than the mean when a few slots report huge spikes.
+fn median_u64(values: &mut [u64]) -> u64 {
+    if values.is_empty() {
+        return 0;
+    }
+    values.sort_unstable();
+    let mid = values.len() / 2;
+    if values.len().is_multiple_of(2) {
+        // Average the two middle values.
+        ((values[mid - 1] as u128 + values[mid] as u128) / 2) as u64
+    } else {
+        values[mid]
+    }
+}
+
+/// Given a price in micro-lamports per CU and a compute-unit limit, compute
+/// the total priority-fee budget in (full) lamports. Uses u128 arithmetic
+/// and rounds up so the cap is an honest ceiling: if the caller asks for
+/// "no more than N lamports", the tx never exceeds N even after rounding.
+fn priority_fee_lamports_ceiling(price_micro_per_cu: u64, cu_limit: u32) -> u64 {
+    let numerator = (price_micro_per_cu as u128) * (cu_limit as u128);
+    numerator.div_ceil(1_000_000).min(u64::MAX as u128) as u64
+}
+
+/// Given a lamports cap and a CU limit, compute the maximum allowed
+/// `compute_unit_price` in micro-lamports per CU so that the resulting
+/// priority fee stays at or below the cap. Rounds down so the cap is never
+/// exceeded; returns 0 only when `cu_limit == 0` (should never happen —
+/// all call sites use the named `CU_LIMIT_*` constants).
+fn max_micro_lamports_per_cu(max_priority_fee_lamports: u64, cu_limit: u32) -> u64 {
+    if cu_limit == 0 {
+        return 0;
+    }
+    let lamports_micro = (max_priority_fee_lamports as u128) * 1_000_000;
+    (lamports_micro / cu_limit as u128).min(u64::MAX as u128) as u64
+}
+
+/// Estimate a priority-fee bid (micro-lamports per compute unit) for the
+/// next transaction. Queries recent per-slot prioritization fees from the
+/// RPC, takes the median of the non-zero samples as a baseline, and clamps
+/// the result so `price × cu_limit ≤ max_priority_fee_lamports`.
+///
+/// Falls back to `FALLBACK_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS` on RPC errors
+/// or when every sample is zero. The fallback is still clamped against the
+/// cap — operators with tight caps can drive the final price arbitrarily
+/// low, but never above their cap.
+fn estimate_compute_unit_price_micro_lamports(
+    rpc: &RpcClient,
+    max_priority_fee_lamports: u64,
+    cu_limit: u32,
+) -> u64 {
+    let cap_micro_per_cu = max_micro_lamports_per_cu(max_priority_fee_lamports, cu_limit);
+    if cap_micro_per_cu == 0 {
+        return 0;
+    }
+
+    let sampled = rpc.get_recent_prioritization_fees(&[]).unwrap_or_default();
+    let mut non_zero: Vec<u64> = sampled
+        .iter()
+        .map(|f| f.prioritization_fee)
+        .filter(|f| *f > 0)
+        .collect();
+    let median = median_u64(&mut non_zero);
+    let chosen = if median == 0 {
+        FALLBACK_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS
+    } else {
+        median
+    };
+    chosen.min(cap_micro_per_cu)
+}
+
 /// Send a transaction with retry and exponential backoff.
 /// Refreshes blockhash on each attempt. Retries up to `max_retries` times.
+///
+/// Every attempt prepends two `ComputeBudgetProgram` instructions:
+/// `set_compute_unit_limit(budget.compute_unit_limit)` and
+/// `set_compute_unit_price(estimate)`, where the price is a freshly-sampled
+/// median of `getRecentPrioritizationFees`, clamped by
+/// `budget.max_priority_fee_lamports`. Re-sampling on every attempt lets a
+/// retry react to worsening congestion instead of repeatedly bidding the
+/// same (now-insufficient) price.
 fn send_with_retry(
     rpc: &RpcClient,
     instructions: &[Instruction],
     payer: &Keypair,
     signers: &[&Keypair],
     max_retries: u32,
+    budget: ComputeBudget,
 ) -> Result<String> {
     let mut last_error = None;
 
@@ -905,6 +1112,31 @@ fn send_with_retry(
             let delay_ms = 500 * 2u64.pow(attempt - 1);
             std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         }
+
+        // Estimate (and clamp) priority fee per-attempt — congestion may
+        // have shifted since the last try.
+        let compute_unit_price = estimate_compute_unit_price_micro_lamports(
+            rpc,
+            budget.max_priority_fee_lamports,
+            budget.compute_unit_limit,
+        );
+        debug!(
+            attempt,
+            cu_limit = budget.compute_unit_limit,
+            cu_price_micro_per_cu = compute_unit_price,
+            priority_fee_lamports =
+                priority_fee_lamports_ceiling(compute_unit_price, budget.compute_unit_limit),
+            "Submitting transaction with compute budget"
+        );
+
+        let mut full_instructions: Vec<Instruction> = Vec::with_capacity(instructions.len() + 2);
+        full_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+            budget.compute_unit_limit,
+        ));
+        full_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(
+            compute_unit_price,
+        ));
+        full_instructions.extend_from_slice(instructions);
 
         // Always fetch a fresh blockhash on each attempt
         let blockhash = match rpc.get_latest_blockhash() {
@@ -920,7 +1152,7 @@ fn send_with_retry(
         };
 
         let tx = Transaction::new_signed_with_payer(
-            instructions,
+            &full_instructions,
             Some(&payer.pubkey()),
             signers,
             blockhash,
@@ -2254,5 +2486,165 @@ mod tests {
             reward >= ONE_TOKEN,
             "Fallback should return at least 1 AMOS"
         );
+    }
+
+    // ── Compute-budget helpers (SECURE-001) ────────────────────────────
+
+    fn fresh_client() -> SolanaClient {
+        SolanaClient::new(
+            "https://api.devnet.solana.com",
+            "4XbUwKNMoERKuzzeSKJgATttgHFcjazohuYYgiwj9tsq",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn priority_fee_cap_defaults_to_100k_lamports() {
+        let client = fresh_client();
+        assert_eq!(
+            client.max_priority_fee_lamports(),
+            DEFAULT_MAX_PRIORITY_FEE_LAMPORTS
+        );
+        assert_eq!(client.max_priority_fee_lamports(), 100_000);
+    }
+
+    #[test]
+    fn priority_fee_cap_setter_accepts_positive_value() {
+        let mut client = fresh_client();
+        client.set_max_priority_fee_lamports(250_000);
+        assert_eq!(client.max_priority_fee_lamports(), 250_000);
+    }
+
+    #[test]
+    fn priority_fee_cap_setter_substitutes_default_for_zero() {
+        let mut client = fresh_client();
+        client.set_max_priority_fee_lamports(50_000);
+        client.set_max_priority_fee_lamports(0);
+        // Zero would otherwise cause estimate_compute_unit_price_micro_lamports
+        // to return 0, disabling priority fees entirely on a congested cluster.
+        // The setter substitutes the default so priority fees stay enabled.
+        assert_eq!(
+            client.max_priority_fee_lamports(),
+            DEFAULT_MAX_PRIORITY_FEE_LAMPORTS
+        );
+    }
+
+    #[test]
+    fn median_u64_handles_empty_slice() {
+        let mut empty: [u64; 0] = [];
+        assert_eq!(median_u64(&mut empty), 0);
+    }
+
+    #[test]
+    fn median_u64_odd_length_returns_middle() {
+        let mut v = [5u64, 1, 3];
+        assert_eq!(median_u64(&mut v), 3);
+    }
+
+    #[test]
+    fn median_u64_even_length_averages_middle_two() {
+        let mut v = [1u64, 2, 3, 4];
+        assert_eq!(median_u64(&mut v), (2 + 3) / 2);
+    }
+
+    #[test]
+    fn median_u64_resists_outliers() {
+        // A single huge spike must not drag the estimate above the typical rate.
+        let mut v = [10u64, 10, 10, 10, 10, 1_000_000_000];
+        assert_eq!(median_u64(&mut v), 10);
+    }
+
+    #[test]
+    fn max_micro_lamports_per_cu_is_zero_for_zero_cu_limit() {
+        assert_eq!(max_micro_lamports_per_cu(100_000, 0), 0);
+    }
+
+    #[test]
+    fn max_micro_lamports_per_cu_matches_formula() {
+        // 100K lamports / 400K CU = 0.25 lamports per CU = 250_000 µ-lamports per CU
+        assert_eq!(
+            max_micro_lamports_per_cu(100_000, CU_LIMIT_SETTLEMENT),
+            250_000
+        );
+        // 100K lamports / 100K CU = 1 lamport per CU = 1_000_000 µ-lamports per CU
+        assert_eq!(
+            max_micro_lamports_per_cu(100_000, CU_LIMIT_SINGLE_ANCHOR_IX),
+            1_000_000
+        );
+    }
+
+    #[test]
+    fn priority_fee_ceiling_rounds_up() {
+        // 1 µ-lamport/CU × 1 CU = 0.000_001 lamports → ceiling is 1 lamport.
+        assert_eq!(priority_fee_lamports_ceiling(1, 1), 1);
+        // Exactly 1 lamport (1_000_000 µ-lamports over 1 CU) stays 1.
+        assert_eq!(priority_fee_lamports_ceiling(1_000_000, 1), 1);
+        // Exactly the cap with CU_LIMIT_SETTLEMENT should equal the cap.
+        let cap = 100_000u64;
+        let price = max_micro_lamports_per_cu(cap, CU_LIMIT_SETTLEMENT);
+        assert_eq!(
+            priority_fee_lamports_ceiling(price, CU_LIMIT_SETTLEMENT),
+            cap
+        );
+    }
+
+    #[test]
+    fn priority_fee_ceiling_never_exceeds_cap_for_clamped_price() {
+        // For every CU limit we use in production, the max-allowed price
+        // computed from a 100K-lamport cap must produce an actual tx fee
+        // ≤ 100K lamports. This is the bounty's core promise.
+        for &cu_limit in &[
+            CU_LIMIT_SETTLEMENT,
+            CU_LIMIT_SINGLE_ANCHOR_IX,
+            CU_LIMIT_CREATE_ATA,
+        ] {
+            let cap = 100_000u64;
+            let price = max_micro_lamports_per_cu(cap, cu_limit);
+            let actual = priority_fee_lamports_ceiling(price, cu_limit);
+            assert!(
+                actual <= cap,
+                "cu_limit={} price={} actual={} cap={}",
+                cu_limit,
+                price,
+                actual,
+                cap
+            );
+        }
+    }
+
+    #[test]
+    fn priority_fee_ceiling_is_monotonic_in_price() {
+        let prior = priority_fee_lamports_ceiling(100, CU_LIMIT_SETTLEMENT);
+        let next = priority_fee_lamports_ceiling(200, CU_LIMIT_SETTLEMENT);
+        assert!(next >= prior);
+    }
+
+    // CU-limit invariants are enforced at compile time: these values are
+    // compile-time constants, so the "test" would be a runtime assertion
+    // that can never fail against itself. A `const _: () = assert!(...)`
+    // promotes the same guarantee to compile-time — any regression that
+    // lifts a limit past Solana's 1.4M per-tx ceiling or drops the
+    // settlement limit below the 200K runtime default fails to build.
+    const _CU_LIMIT_INVARIANTS: () = {
+        assert!(CU_LIMIT_SETTLEMENT < 1_400_000);
+        assert!(CU_LIMIT_SINGLE_ANCHOR_IX < 1_400_000);
+        assert!(CU_LIMIT_CREATE_ATA < 1_400_000);
+        assert!(CU_LIMIT_SETTLEMENT > 0);
+        assert!(CU_LIMIT_SINGLE_ANCHOR_IX > 0);
+        assert!(CU_LIMIT_CREATE_ATA > 0);
+        assert!(CU_LIMIT_SETTLEMENT > 200_000);
+    };
+
+    #[test]
+    fn compute_budget_struct_carries_both_params() {
+        // Lightweight sanity check that both knobs are plumbed together and
+        // can be constructed in one shot — the call sites all rely on the
+        // struct-literal form.
+        let budget = ComputeBudget {
+            compute_unit_limit: CU_LIMIT_SETTLEMENT,
+            max_priority_fee_lamports: 12_345,
+        };
+        assert_eq!(budget.compute_unit_limit, CU_LIMIT_SETTLEMENT);
+        assert_eq!(budget.max_priority_fee_lamports, 12_345);
     }
 }
