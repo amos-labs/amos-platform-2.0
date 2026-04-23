@@ -1,0 +1,21 @@
+{
+  "inferenceConfig": {
+    "maxTokens": 4096,
+    "temperature": 1.0
+  },
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "What's the weather?"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "system": [
+    {
+      "text": "You are helpful."
+    }
+  ]
+}

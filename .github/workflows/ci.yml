@@ -87,6 +87,12 @@ jobs:
       - name: Tool schema invariants
         run: cargo test --lib -p amos-harness schema_tests
 
+      - name: Bedrock envelope contract
+        # Snapshot-tests the JSON body our Bedrock request builder produces.
+        # Guards against the tool-spec wrapping regressions that have hit
+        # prod twice and against inferenceConfig drift. Pure Rust, no infra.
+        run: cargo test --test bedrock_envelope -p amos-agent
+
   # ============================================================================
   # GATE 1.55: Integration Smoke — core app flows against a real Postgres
   #

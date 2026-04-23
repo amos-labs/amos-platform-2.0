@@ -1,0 +1,41 @@
+{
+  "inferenceConfig": {
+    "maxTokens": 4096,
+    "temperature": 1.0
+  },
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "Think about this."
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "system": [
+    {
+      "text": "You are helpful."
+    }
+  ],
+  "toolConfig": {
+    "tools": [
+      {
+        "toolSpec": {
+          "description": "internal reasoning",
+          "inputSchema": {
+            "json": {
+              "properties": {
+                "thought": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "name": "think"
+        }
+      }
+    ]
+  }
+}

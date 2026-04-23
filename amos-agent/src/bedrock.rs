@@ -148,8 +148,13 @@ impl BedrockProvider {
         Ok(authorization)
     }
 
-    /// Build the request body for Bedrock ConverseStream API
-    fn build_request_body(
+    /// Build the request body for Bedrock ConverseStream API.
+    ///
+    /// Public so `tests/bedrock_envelope.rs` can snapshot the exact JSON
+    /// shape. The envelope is the regression surface Bedrock is strictest
+    /// about (toolSpec wrapping, inputSchema.json envelope, inferenceConfig
+    /// fields) — a golden-JSON contract test catches drift before deploy.
+    pub fn build_request_body(
         &self,
         system_prompt: &str,
         messages: &[Message],

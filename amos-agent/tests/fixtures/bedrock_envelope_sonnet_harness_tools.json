@@ -1,0 +1,43 @@
+{
+  "inferenceConfig": {
+    "maxTokens": 16384,
+    "temperature": 1.0
+  },
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "Build a landing page."
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "toolConfig": {
+    "tools": [
+      {
+        "toolSpec": {
+          "description": "Creates a landing page in one call.",
+          "inputSchema": {
+            "json": {
+              "properties": {
+                "html_content": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "slug",
+                "html_content"
+              ],
+              "type": "object"
+            }
+          },
+          "name": "create_landing_page"
+        }
+      }
+    ]
+  }
+}
