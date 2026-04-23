@@ -22,6 +22,10 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
 
+# AWS SigV4 signing for Bedrock
+sha2 = { workspace = true }
+hmac = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 

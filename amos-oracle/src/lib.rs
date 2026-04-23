@@ -36,6 +36,7 @@
 //! See `docs/OPS_ORACLE_001_DRAFT.md` for the spec this implements.
 
 pub mod agent;
+pub mod bedrock;
 pub mod decision;
 pub mod error;
 pub mod intake;
