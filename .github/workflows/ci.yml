@@ -141,6 +141,68 @@ jobs:
         run: cargo test --test smoke_flows -p amos-harness -- --test-threads=1
 
   # ============================================================================
+  # GATE 1.57: HTTP Integration — real Axum router, real Postgres, real Redis
+  #
+  # Phase 1a of the test harness plan. Drives every protected/public route
+  # through the same middleware stack production uses (auth, rate limiting,
+  # CORS, compression). Catches routing regressions, auth bypasses, middleware
+  # misconfiguration, and JSON serde drift that unit tests can't see.
+  # No Bedrock, no agent sidecar, no LLM — so PR throughput stays fast.
+  # ============================================================================
+  http-integration:
+    name: HTTP Integration — Router + Postgres + Redis
+    runs-on: ubuntu-latest
+    needs: release-gate
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: amos_harness_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:test@localhost:5432/amos_harness_test
+      AMOS__REDIS__URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install postgres client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Enable pgvector extension
+        run: PGPASSWORD=test psql -h localhost -U postgres -d amos_harness_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+      - name: Run HTTP integration tests
+        run: cargo test --test http_integration -p amos-harness -- --test-threads=1
+
+  # ============================================================================
   # GATE 1.6: Live Model Probe — actually call Converse on every cataloged model
   #
   # Only runs on push to main (needs AWS OIDC, which the trust policy on the
@@ -219,7 +281,7 @@ jobs:
   build-images:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    needs: [release-gate, integration-smoke, live-model-probe]
+    needs: [release-gate, integration-smoke, http-integration, live-model-probe]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     permissions:

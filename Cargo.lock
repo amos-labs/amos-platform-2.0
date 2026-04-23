@@ -289,6 +289,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "amos-oracle"
+version = "0.1.0"
+dependencies = [
+ "amos-core",
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "hmac 0.12.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "amos-relay"
 version = "0.1.0"
 dependencies = [
