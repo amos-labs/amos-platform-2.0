@@ -41,6 +41,10 @@ struct PullRequestPayload {
     merged: Option<bool>,
     head: HeadRef,
     title: String,
+    /// PR's HTML URL (e.g. https://github.com/owner/repo/pull/13).
+    /// Used as a fallback when the branch name doesn't follow `bounty/<uuid>` —
+    /// we look up the bounty by the `pr_url` column we stored at submit time.
+    html_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,18 +106,29 @@ async fn github_webhook(
 
     let merged = pr.merged.unwrap_or(false);
 
-    // Step 4: Extract bounty ID from branch name (pattern: bounty/<uuid>)
-    let bounty_id = extract_bounty_id_from_branch(&pr.head.ref_name);
+    // Step 4: Resolve the bounty this PR is for.
+    //   1) Branch name follows `bounty/<uuid>` (the original convention).
+    //   2) Fallback: the agent picked a human-readable branch like
+    //      `bounty/secure-003` — match by the PR's html_url against the
+    //      `pr_url` we stored on submit.
+    let bounty_id = match extract_bounty_id_from_branch(&pr.head.ref_name) {
+        Some(id) => Some(id),
+        None => match pr.html_url.as_deref() {
+            Some(url) => lookup_bounty_id_by_pr_url(&state.db, url).await,
+            None => None,
+        },
+    };
 
     let Some(bounty_id) = bounty_id else {
         info!(
             pr_number = pr.number,
             branch = %pr.head.ref_name,
-            "PR closed but branch doesn't match bounty pattern — ignoring"
+            html_url = ?pr.html_url,
+            "PR closed but no bounty matched by branch or pr_url — ignoring"
         );
         return Ok(Json(serde_json::json!({
             "status": "ignored",
-            "reason": "branch not a bounty branch",
+            "reason": "no bounty matched branch or pr_url",
         })));
     };
 
@@ -245,6 +260,18 @@ fn extract_bounty_id_from_branch(branch: &str) -> Option<Uuid> {
         .and_then(|id_str| Uuid::parse_str(id_str).ok())
 }
 
+/// Fallback: look the bounty up by the PR's html_url. The agent stores this
+/// on the bounty when submitting, so any branch-naming convention the agent
+/// prefers (`bounty/secure-003`, `feat/foo`, etc.) still resolves correctly.
+async fn lookup_bounty_id_by_pr_url(db: &sqlx::PgPool, pr_url: &str) -> Option<Uuid> {
+    sqlx::query_scalar::<_, Uuid>("SELECT id FROM relay_bounties WHERE pr_url = $1 LIMIT 1")
+        .bind(pr_url)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -273,6 +300,30 @@ mod tests {
     #[test]
     fn test_verify_signature_missing_prefix() {
         assert!(!verify_signature("secret", "body", "bad_signature"));
+    }
+
+    #[test]
+    fn branch_with_uuid_resolves() {
+        // Canonical shape: bounty/<uuid>
+        let id = "01234567-89ab-cdef-0123-456789abcdef";
+        assert!(extract_bounty_id_from_branch(&format!("bounty/{id}")).is_some());
+    }
+
+    #[test]
+    fn branch_with_slug_does_not_resolve() {
+        // Regression guard for the ryan-dev case (2026-04-18): agent used
+        // human-readable branches like `bounty/secure-003`, which must NOT
+        // parse as a UUID — the handler is expected to fall back to pr_url.
+        assert!(extract_bounty_id_from_branch("bounty/secure-003").is_none());
+        assert!(extract_bounty_id_from_branch("bounty/secure-006").is_none());
+        assert!(extract_bounty_id_from_branch("bounty/").is_none());
+    }
+
+    #[test]
+    fn non_bounty_branch_does_not_resolve() {
+        assert!(extract_bounty_id_from_branch("feat/foo").is_none());
+        assert!(extract_bounty_id_from_branch("main").is_none());
+        assert!(extract_bounty_id_from_branch("").is_none());
     }
 
     #[test]
