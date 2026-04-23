@@ -39,6 +39,7 @@ pub mod agent;
 pub mod decision;
 pub mod error;
 pub mod intake;
+pub mod llm;
 pub mod metrics;
 pub mod mission;
 pub mod precedent;
@@ -48,6 +49,7 @@ pub mod review;
 pub use agent::OracleAgent;
 pub use decision::{Confidence, Decision, IntakeVerdict, ReviewVerdict};
 pub use error::OracleError;
+pub use llm::LlmClient;
 
 /// Crate-level result alias.
 pub type Result<T> = std::result::Result<T, OracleError>;

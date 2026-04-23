@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use crate::llm::LlmClient;
 use crate::metrics::MetricsProvider;
 use crate::mission::MissionSource;
 use crate::precedent::EventLog;
@@ -66,6 +67,7 @@ pub struct OracleAgent {
     pub metrics: Arc<dyn MetricsProvider>,
     pub registry: Arc<dyn ContributionRegistry>,
     pub event_log: Arc<dyn EventLog>,
+    pub llm: Arc<dyn LlmClient>,
     pub thresholds: Thresholds,
     pub prompt_version: String,
     pub model_version: String,
@@ -76,20 +78,20 @@ impl OracleAgent {
         OracleAgentBuilder::default()
     }
 
-    /// Intake path — delegates to `intake::evaluate_intake`.
+    /// Intake path — delegates to `intake::evaluate`.
     pub async fn intake(
         &self,
         submission: crate::intake::IntakeSubmission,
     ) -> crate::Result<crate::Decision> {
-        crate::intake::evaluate_intake(submission).await
+        crate::intake::evaluate(self, submission).await
     }
 
-    /// Review path — delegates to `review::evaluate_review`.
+    /// Review path — delegates to `review::evaluate`.
     pub async fn review(
         &self,
         request: crate::review::ReviewRequest,
     ) -> crate::Result<crate::Decision> {
-        crate::review::evaluate_review(request).await
+        crate::review::evaluate(self, request).await
     }
 }
 
@@ -99,6 +101,7 @@ pub struct OracleAgentBuilder {
     metrics: Option<Arc<dyn MetricsProvider>>,
     registry: Option<Arc<dyn ContributionRegistry>>,
     event_log: Option<Arc<dyn EventLog>>,
+    llm: Option<Arc<dyn LlmClient>>,
     thresholds: Option<Thresholds>,
     prompt_version: Option<String>,
     model_version: Option<String>,
@@ -119,6 +122,10 @@ impl OracleAgentBuilder {
     }
     pub fn event_log(mut self, e: Arc<dyn EventLog>) -> Self {
         self.event_log = Some(e);
+        self
+    }
+    pub fn llm(mut self, l: Arc<dyn LlmClient>) -> Self {
+        self.llm = Some(l);
         self
     }
     pub fn thresholds(mut self, t: Thresholds) -> Self {
@@ -148,6 +155,9 @@ impl OracleAgentBuilder {
             event_log: self
                 .event_log
                 .ok_or_else(|| crate::OracleError::Internal("event log required".into()))?,
+            llm: self
+                .llm
+                .ok_or_else(|| crate::OracleError::Internal("llm client required".into()))?,
             thresholds: self.thresholds.unwrap_or_default(),
             prompt_version: self
                 .prompt_version
