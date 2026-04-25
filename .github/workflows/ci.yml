@@ -398,6 +398,19 @@ jobs:
           cache-from: type=gha,scope=relay
           cache-to: type=gha,mode=max,scope=relay
 
+      - name: Roll relay ECS service to pick up new :latest image
+        # The amos-relay-v2 service runs the :latest tag, so a forced
+        # new deployment pulls the image we just pushed and replaces the
+        # running task with zero downtime (rolling deployment).
+        run: |
+          aws ecs update-service \
+            --cluster swarm-infrastructure-cluster \
+            --service amos-relay-v2 \
+            --force-new-deployment \
+            --region us-east-1 \
+            --no-cli-pager > /dev/null
+          echo "Relay rolling deployment kicked off for tag ${{ steps.vars.outputs.IMAGE_TAG }}"
+
       - name: Register release with platform
         run: |
           curl -sf -X POST "https://app.amoslabs.com/api/v1/releases" \
