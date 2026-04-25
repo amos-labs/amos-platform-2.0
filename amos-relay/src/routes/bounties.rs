@@ -94,6 +94,7 @@ impl From<StatusCode> for ApiError {
 pub fn routes() -> Router<RelayState> {
     Router::new()
         .route("/", post(create_bounty).get(list_bounties))
+        .route("/pending-review", get(list_pending_review))
         .route("/{id}", get(get_bounty))
         .route("/{id}/claim", post(claim_bounty))
         .route("/{id}/submit", post(submit_work))
@@ -104,6 +105,98 @@ pub fn routes() -> Router<RelayState> {
         .route("/{id}/pushback", post(pushback))
         .route("/{id}/settle", post(retry_settlement))
         .route("/calculate-points", post(calculate_points_endpoint))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Oracle-facing: bounties awaiting mission-alignment review
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Shape the Oracle daemon expects — matches `amos_oracle::review::ReviewRequest`.
+#[derive(Debug, Serialize)]
+pub struct PendingReviewResponse {
+    pub bounty_id: Uuid,
+    pub bounty_title: String,
+    pub bounty_description: String,
+    pub bounty_category: String,
+    pub bounty_contribution_type_id: u8,
+    pub qa_evidence: JsonValue,
+    pub proof: JsonValue,
+    pub revision_count: u8,
+}
+
+/// A bounty is "pending Oracle review" when it's submitted, mechanically
+/// verified by the QA bot, and not yet approved/rejected by the Oracle.
+async fn list_pending_review(
+    State(state): State<RelayState>,
+) -> Result<Json<Vec<PendingReviewResponse>>, StatusCode> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            id, title, description, category,
+            verification_evidence, quality_evidence, result,
+            revision_count
+        FROM relay_bounties
+        WHERE status = 'submitted'
+          AND verified_at IS NOT NULL
+          AND approved_at IS NULL
+          AND rejected_at IS NULL
+        ORDER BY verified_at ASC
+        LIMIT 100
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        warn!(error = %e, "list_pending_review query failed");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let bounty_id: Uuid = match row.try_get("id") {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let title: String = row.try_get("title").unwrap_or_default();
+        let description: String = row.try_get("description").unwrap_or_default();
+        let category: Option<String> = row.try_get("category").ok();
+        let category_str = category.unwrap_or_else(|| "uncategorized".to_string());
+
+        // Merge verification_evidence (QA bot) and quality_evidence into a
+        // single qa_evidence blob for the Oracle. The Oracle doesn't care
+        // about the internal distinction; mission judgment sits on top.
+        let mut qa_evidence = serde_json::Map::new();
+        if let Ok(Some(v)) = row.try_get::<Option<JsonValue>, _>("verification_evidence") {
+            qa_evidence.insert("verification".into(), v);
+        }
+        if let Ok(Some(v)) = row.try_get::<Option<JsonValue>, _>("quality_evidence") {
+            qa_evidence.insert("quality".into(), v);
+        }
+
+        let proof: JsonValue = row
+            .try_get::<Option<JsonValue>, _>("result")
+            .ok()
+            .flatten()
+            .unwrap_or(JsonValue::Null);
+
+        let revision_count_raw: Option<i32> = row.try_get("revision_count").ok();
+        let revision_count = revision_count_raw.unwrap_or(0).clamp(0, u8::MAX as i32) as u8;
+
+        let contribution_type_id = category_to_contribution_type(&category_str);
+
+        out.push(PendingReviewResponse {
+            bounty_id,
+            bounty_title: title,
+            bounty_description: description,
+            bounty_category: category_str,
+            bounty_contribution_type_id: contribution_type_id,
+            qa_evidence: JsonValue::Object(qa_evidence),
+            proof,
+            revision_count,
+        });
+    }
+
+    Ok(Json(out))
 }
 
 // =============================================================================

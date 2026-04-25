@@ -2,8 +2,11 @@
 
 pub mod agents;
 pub mod bounties;
+pub mod escalations;
 pub mod harnesses;
 pub mod health;
+pub mod intakes;
+pub mod metrics;
 pub mod pool;
 pub mod reputation;
 pub mod webhooks;
@@ -20,4 +23,7 @@ pub fn api_routes() -> Router<RelayState> {
         .nest("/harnesses", harnesses::routes())
         .nest("/pool", pool::routes())
         .nest("/webhooks", webhooks::routes())
+        .nest("/intakes", intakes::routes())
+        .nest("/metrics", metrics::routes())
+        .nest("/escalations", escalations::routes())
 }
