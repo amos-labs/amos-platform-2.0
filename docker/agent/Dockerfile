@@ -14,6 +14,7 @@ COPY amos-core ./amos-core
 COPY amos-harness ./amos-harness
 COPY amos-cli ./amos-cli
 COPY amos-agent ./amos-agent
+COPY amos-oracle ./amos-oracle
 COPY amos-relay ./amos-relay
 COPY amos-packages ./amos-packages
 
