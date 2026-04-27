@@ -36,11 +36,13 @@ RUN apt-get update && \
 # Copy binary from builder
 COPY --from=builder /app/target/release/amos-oracle-agent /usr/local/bin/
 
-# Copy mission documents the Oracle reads at startup. These are versioned with
-# the binary on purpose — a council-signed prompt update ships as a new image.
-COPY --from=builder /app/amos-oracle/prompts /app/amos-oracle/prompts
-COPY --from=builder /app/AGENT_CONTEXT.md /app/AGENT_CONTEXT.md
-COPY --from=builder /app/docs/AMOS_THESIS_AND_STRATEGY_v2.md /app/docs/AMOS_THESIS_AND_STRATEGY_v2.md
+# Copy mission documents the Oracle reads at startup. Pulled from the build
+# context (not the builder stage — builder only copied workspace crates).
+# These are versioned with the binary on purpose — a council-signed prompt
+# update ships as a new image.
+COPY amos-oracle/prompts /app/amos-oracle/prompts
+COPY AGENT_CONTEXT.md /app/AGENT_CONTEXT.md
+COPY docs/AMOS_THESIS_AND_STRATEGY_v2.md /app/docs/AMOS_THESIS_AND_STRATEGY_v2.md
 
 # Non-root user
 RUN useradd -m -u 1000 amos && \
