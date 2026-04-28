@@ -97,7 +97,7 @@ pub async fn evaluate(agent: &OracleAgent, submission: IntakeSubmission) -> Resu
     let (final_verdict, confidence) = apply_intake_guards(agent, &llm_out)?;
 
     // 8. Build canonical Decision
-    let mut decision = Decision {
+    let decision = Decision {
         decision_id: Uuid::new_v4(),
         path: DecisionPath::Intake,
         verdict: serde_json::to_value(&final_verdict)?,
