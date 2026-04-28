@@ -3,8 +3,22 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      # Doc-only commits don't need a 25-min CI cycle. Touch any code path
+      # alongside the doc to force a build.
+      - 'docs/**'
+      - 'instructions/**'
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'instructions/**'
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
 
 env:
   CARGO_TERM_COLOR: always
@@ -371,8 +385,10 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/amos-harness:${{ steps.vars.outputs.IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/amos-harness:latest
-          cache-from: type=gha,scope=harness
-          cache-to: type=gha,mode=max,scope=harness
+          # Shared cache scope across all four images so the byte-identical
+          # builder stage hits cache once per workflow run instead of four times.
+          cache-from: type=gha,scope=workspace-builder
+          cache-to: type=gha,mode=max,scope=workspace-builder
 
       - name: Build and push amos-agent
         uses: docker/build-push-action@v6
@@ -383,8 +399,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/amos-agent:${{ steps.vars.outputs.IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/amos-agent:latest
-          cache-from: type=gha,scope=agent
-          cache-to: type=gha,mode=max,scope=agent
+          cache-from: type=gha,scope=workspace-builder
+          cache-to: type=gha,mode=max,scope=workspace-builder
 
       - name: Build and push amos-relay
         uses: docker/build-push-action@v6
@@ -395,8 +411,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/amos-relay:${{ steps.vars.outputs.IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/amos-relay:latest
-          cache-from: type=gha,scope=relay
-          cache-to: type=gha,mode=max,scope=relay
+          cache-from: type=gha,scope=workspace-builder
+          cache-to: type=gha,mode=max,scope=workspace-builder
 
       - name: Build and push amos-oracle
         uses: docker/build-push-action@v6
@@ -407,8 +423,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/amos-oracle:${{ steps.vars.outputs.IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/amos-oracle:latest
-          cache-from: type=gha,scope=oracle
-          cache-to: type=gha,mode=max,scope=oracle
+          cache-from: type=gha,scope=workspace-builder
+          cache-to: type=gha,mode=max,scope=workspace-builder
 
       - name: Roll relay ECS service to pick up new :latest image
         # The amos-relay-v2 service runs the :latest tag, so a forced
