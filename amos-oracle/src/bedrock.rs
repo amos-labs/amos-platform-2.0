@@ -40,9 +40,11 @@ type HmacSha256 = Hmac<Sha256>;
 /// Default model — highest-capability Claude for mission reasoning.
 ///
 /// Uses the US cross-region inference profile prefix because Bedrock no
-/// longer supports on-demand invocation of bare Claude Opus 4 model IDs.
-/// Override via `ORACLE_BEDROCK_MODEL_ID` env var.
-pub const DEFAULT_MODEL_ID: &str = "us.anthropic.claude-opus-4-20250514-v1:0";
+/// longer supports on-demand invocation of bare model IDs for Anthropic
+/// models. Opus 4.7 is the current latest; Opus 4 was marked legacy by
+/// Anthropic and Bedrock now rejects calls against it. Override via
+/// `ORACLE_BEDROCK_MODEL_ID` env var.
+pub const DEFAULT_MODEL_ID: &str = "us.anthropic.claude-opus-4-7";
 
 #[derive(Clone)]
 pub struct BedrockLlmClient {
