@@ -1,6 +1,11 @@
 //! HTTP server configuration and routing.
 
-use crate::{middleware::api_key_auth, routes, state::RelayState, Result, VERSION};
+use crate::{
+    middleware::{api_key_auth, request_id},
+    routes,
+    state::RelayState,
+    Result, VERSION,
+};
 use axum::extract::DefaultBodyLimit;
 use axum::{
     extract::State,
@@ -45,6 +50,7 @@ pub fn build_http_router(state: RelayState) -> Router {
             state.db.clone(),
             api_key_auth,
         ))
+        .layer(middleware::from_fn(request_id))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())

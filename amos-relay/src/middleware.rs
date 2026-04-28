@@ -110,6 +110,56 @@ pub async fn api_key_auth(
     Ok(next.run(req).await)
 }
 
+/// X-Request-ID middleware.
+///
+/// Generates a UUID v4 at request entry, attaches it to the request extension
+/// (so handlers can read via `Extension<RequestId>` if needed), echoes it in
+/// the `X-Request-ID` response header, and joins it into a tracing span so
+/// log lines from different layers can be correlated when an agent makes a
+/// relay call.
+///
+/// If the client supplies an `X-Request-ID` header on the way in, we honor it
+/// (lets harnesses propagate trace IDs end-to-end). Otherwise we mint a fresh
+/// UUID v4. Bounded length + character set so a malicious caller can't pollute
+/// logs with arbitrary content.
+pub async fn request_id(
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::{header::HeaderValue, HeaderName};
+
+    let request_id = req
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .map(String::from)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    // Attach to request extensions for handler access.
+    req.extensions_mut().insert(RequestId(request_id.clone()));
+
+    // Span the rest of the request with the id so structured logs can be joined.
+    let span = tracing::info_span!("request", request_id = %request_id);
+    let mut response = {
+        let _enter = span.enter();
+        next.run(req).await
+    };
+
+    // Echo on the response.
+    if let Ok(value) = HeaderValue::from_str(&request_id) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-request-id"), value);
+    }
+    response
+}
+
+/// Newtype for request id, exposed as an Axum extension. Handlers can use
+/// `axum::extract::Extension<RequestId>` to read it.
+#[derive(Clone, Debug)]
+pub struct RequestId(pub String);
+
 /// Hash an API key with SHA-256 for secure storage/comparison.
 pub fn hash_api_key(key: &str) -> String {
     let mut hasher = Sha256::new();
@@ -231,5 +281,110 @@ mod tests {
         let hash2 = hash_api_key(&key);
         assert_eq!(hash1, hash2);
         assert_eq!(hash1.len(), 64);
+    }
+
+    // ── X-Request-ID middleware ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn request_id_middleware_mints_uuid_when_absent() {
+        use axum::body::Body;
+        use axum::extract::Request;
+        use axum::http::Method;
+        use axum::middleware::from_fn;
+        use axum::routing::get;
+        use axum::Router;
+        use tower::ServiceExt;
+
+        async fn echo() -> &'static str {
+            "ok"
+        }
+        let app = Router::new()
+            .route("/", get(echo))
+            .layer(from_fn(request_id));
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let id = resp
+            .headers()
+            .get("x-request-id")
+            .expect("response missing x-request-id")
+            .to_str()
+            .unwrap();
+        // UUIDv4 is 36 chars (8-4-4-4-12)
+        assert_eq!(id.len(), 36);
+        assert!(id.contains('-'));
+    }
+
+    #[tokio::test]
+    async fn request_id_middleware_honors_caller_supplied_id() {
+        use axum::body::Body;
+        use axum::extract::Request;
+        use axum::http::{HeaderValue, Method};
+        use axum::middleware::from_fn;
+        use axum::routing::get;
+        use axum::Router;
+        use tower::ServiceExt;
+
+        async fn echo() -> &'static str {
+            "ok"
+        }
+        let app = Router::new()
+            .route("/", get(echo))
+            .layer(from_fn(request_id));
+        let mut req = Request::builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        req.headers_mut()
+            .insert("x-request-id", HeaderValue::from_static("trace-abc-123"));
+        let resp = app.oneshot(req).await.unwrap();
+        let id = resp
+            .headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(id, "trace-abc-123");
+    }
+
+    #[tokio::test]
+    async fn request_id_middleware_rejects_oversized_caller_id() {
+        use axum::body::Body;
+        use axum::extract::Request;
+        use axum::http::{HeaderValue, Method};
+        use axum::middleware::from_fn;
+        use axum::routing::get;
+        use axum::Router;
+        use tower::ServiceExt;
+
+        async fn echo() -> &'static str {
+            "ok"
+        }
+        let app = Router::new()
+            .route("/", get(echo))
+            .layer(from_fn(request_id));
+        let mut req = Request::builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        // 100-char id — over the 64 cap, should be replaced with a fresh UUID.
+        req.headers_mut().insert(
+            "x-request-id",
+            HeaderValue::from_static("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        );
+        let resp = app.oneshot(req).await.unwrap();
+        let id = resp
+            .headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_ne!(id.len(), 100);
+        assert_eq!(id.len(), 36);
     }
 }
