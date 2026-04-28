@@ -1,0 +1,63 @@
+name: QA Verification Bot
+
+# Scheduled QA verification: polls the relay every 5 min for submitted
+# bounties, runs cargo check + cargo test against main + checks GitHub CI
+# status for each, then POSTs /verify or /reject. Closes the gap between
+# worker submission and Oracle review.
+#
+# Manual trigger via workflow_dispatch is also supported for ad-hoc runs.
+
+on:
+  schedule:
+    # Every 5 minutes. GHA scheduled runs are best-effort; expect occasional
+    # 5-15 min jitter under load. That's fine for QA — Oracle review is
+    # bounty-poll-driven on a 60s tick anyway.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Concurrency: only one QA cycle runs at a time. If a previous run is still
+# going, the next scheduled trigger is skipped (prevents pile-up under
+# slow cargo test runs).
+concurrency:
+  group: qa-verification-bot
+  cancel-in-progress: false
+
+env:
+  RELAY_URL: https://relay.amoslabs.com
+  GITHUB_REPO: amos-labs/amos-platform-2.0
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  SQLX_OFFLINE: true
+  RUST_BACKTRACE: 1
+
+jobs:
+  qa-verify:
+    name: QA verification cycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: qa-bot
+
+      - name: Run QA verification bot
+        env:
+          RELAY_API_KEY: ${{ secrets.QA_BOT_RELAY_API_KEY }}
+          QA_WALLET: ${{ secrets.QA_BOT_WALLET }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$RELAY_API_KEY" ] || [ -z "$QA_WALLET" ]; then
+            echo "::error::Required secrets QA_BOT_RELAY_API_KEY and QA_BOT_WALLET are not set"
+            exit 1
+          fi
+          chmod +x scripts/qa-verification-bot.sh
+          ./scripts/qa-verification-bot.sh
