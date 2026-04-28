@@ -390,20 +390,79 @@ fn load_aws_credentials(
         });
     }
 
-    // 3. ~/.aws/credentials (profile-based)
+    // 3. ECS container credentials (Fargate task role).
+    // ECS sets AWS_CONTAINER_CREDENTIALS_RELATIVE_URI; the metadata endpoint
+    // at 169.254.170.2 returns short-lived creds tied to the task role.
+    if let Ok(relative_uri) = std::env::var("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") {
+        match load_ecs_container_credentials(&relative_uri) {
+            Ok((key, secret, token)) => {
+                return Ok(AwsCredentials {
+                    access_key_id: key,
+                    secret_access_key: secret,
+                    session_token: token,
+                    region,
+                });
+            }
+            Err(e) => {
+                warn!(error = %e, "ECS container credentials fetch failed; falling through");
+            }
+        }
+    }
+
+    // 4. ~/.aws/credentials (profile-based)
     let profile = std::env::var("AWS_PROFILE").unwrap_or_else(|_| "default".to_string());
     if let Some(creds) = read_aws_credentials_file(&profile) {
         return Ok(AwsCredentials { region, ..creds });
     }
 
     warn!(
-        "no AWS credentials found (env vars unset, ~/.aws/credentials missing profile '{}')",
+        "no AWS credentials found (env vars unset, ECS metadata unavailable, ~/.aws/credentials missing profile '{}')",
         profile
     );
     Err(OracleError::Llm(format!(
-        "no AWS credentials found for profile '{}'; set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY or configure ~/.aws/credentials",
+        "no AWS credentials found for profile '{}'; set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY, run inside ECS with a task role, or configure ~/.aws/credentials",
         profile
     )))
+}
+
+/// Fetch short-lived credentials from the ECS container metadata endpoint.
+/// Returns `(access_key_id, secret_access_key, session_token)`.
+fn load_ecs_container_credentials(
+    relative_uri: &str,
+) -> Result<(String, String, Option<String>)> {
+    let url = format!("http://169.254.170.2{}", relative_uri);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| OracleError::Llm(format!("ECS http client: {}", e)))?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .map_err(|e| OracleError::Llm(format!("ECS metadata request failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(OracleError::Llm(format!(
+            "ECS metadata returned {}",
+            resp.status()
+        )));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .map_err(|e| OracleError::Llm(format!("ECS metadata parse: {}", e)))?;
+
+    let key = body["AccessKeyId"]
+        .as_str()
+        .ok_or_else(|| OracleError::Llm("ECS metadata missing AccessKeyId".into()))?
+        .to_string();
+    let secret = body["SecretAccessKey"]
+        .as_str()
+        .ok_or_else(|| OracleError::Llm("ECS metadata missing SecretAccessKey".into()))?
+        .to_string();
+    let token = body["Token"].as_str().map(|s| s.to_string());
+
+    Ok((key, secret, token))
 }
 
 fn credentials_file_path() -> Option<std::path::PathBuf> {
