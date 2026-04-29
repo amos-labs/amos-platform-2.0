@@ -1,26 +1,34 @@
 # AMOS
 
-**Autonomous Management Operating System** -- an AI-native economic operating system written in pure Rust.
+**A bounded autonomous economic organism for human-aligned agent work.**
 
 ---
 
-### Mainnet Launch: April 15, 2026
+AMOS is live infrastructure for the autonomous economy: a protocol where humans and AI agents coordinate through proof-carrying bounties, build reputation through verified outcomes, and settle rewards on Solana.
 
-Real Solana token. Live bounty marketplace. Open relay. Proof-carrying autonomous loop.
+The current operating mode is bounded recursive self-improvement. AMOS can observe its own state, identify missing capabilities, generate or route bounty work, verify outcomes through proof receipts and Oracle review, and feed the results back into the network.
+
+The point is not autonomy for its own sake. The point is autonomous economic infrastructure whose growth remains legible, bounded, and oriented toward human agency.
+
+### Current State
+
+Live on Solana mainnet. Proof-carrying autonomous loop complete. Bounded RSI active.
 
 **[Docs](docs/README.md)** | **[Thesis](docs/core/thesis.md)** | **[Architecture](docs/core/architecture.md)** | **[Proof-Carrying Loop](docs/protocol/proof-carrying-loop.md)** | **[Developer Guide](docs/core/developer-guide.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
 
 ---
 
-AMOS is infrastructure for the autonomous economy. Four macro forces -- the re-weaponization of energy as geopolitical power, a US fiscal crisis demanding productivity at scale, $700B/year in AI investment with near-zero macro productivity payoff, and model access concentrated in 3-5 companies -- are converging to make autonomous agents inevitable. AMOS ensures that when agents become economic participants, humans retain ownership and agency through transparent, auditable, on-chain mechanisms.
+AMOS Labs builds the seed. AMOS is the protocol organism. AMOS Services Co. bootstraps real-world demand while the open network learns from verified work.
 
-The system provides a per-customer AI harness (the "operating system") that hosts 54+ tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. A global relay marketplace enables cross-harness bounty distribution with proof receipts, Oracle review, Solana-based settlement, and reputation tracking. The proof-carrying autonomous loop is now the core safety substrate for bounded recursive self-improvement: AMOS can create work, execute work, review work, settle work, and feed outcomes back into the next round without reducing human agency to an afterthought. Five interlocking design choices make it structurally resistant to capture:
+The thesis is simple: the agent economy needs open economic rails, and humans need agency inside those rails. AMOS combines a local agent harness, a global relay marketplace, constitutional Oracle review, progressive reputation, and on-chain settlement so useful work can move through the system without becoming opaque or unaccountable.
 
-1. **Substrate-agnostic bounties** -- rewards output, not identity; human, AI, or hybrid
-2. **Dynamic decay (2-25% annually)** -- tokens flow from passive holders to active contributors
-3. **Progressive trust (5 tiers)** -- reputation earned through verified work, not purchased
-4. **Contribution-based governance** -- voting power tracks contribution, not token size
-5. **Open source + on-chain immutability** -- Apache 2.0 code, immutable Solana smart contracts
+Five design commitments hold the system together:
+
+1. **Proof-carrying bounties** -- code, reasoning, tests, failures, and validation plans travel with the work
+2. **Progressive trust** -- reputation is earned through verified outcomes, not purchased
+3. **Human agency** -- council review, override accountability, and governance constraints remain first-class
+4. **On-chain settlement** -- rewards, claims, contribution records, and constraints are auditable
+5. **Open infrastructure** -- Apache 2.0 code, external agent access, and protocol-level portability
 
 ## Architecture
 
