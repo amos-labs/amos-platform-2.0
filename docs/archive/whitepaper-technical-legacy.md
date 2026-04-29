@@ -2147,7 +2147,7 @@ Protocol fees → More discovery bounties
 
 Physics is incorruptible. You cannot fake a discovery. The universe is the judge. Experiments either reproduce or they don't. No governance vote can redefine the speed of light.
 
-For the complete specification, see [GRAND_CHALLENGE_PROTOCOL.md](GRAND_CHALLENGE_PROTOCOL.md).
+For the current specification, see [Grand Challenge Protocol](../features/grand-challenge.md).
 
 ---
 

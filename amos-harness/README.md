@@ -57,7 +57,7 @@ src/
 ├── sites.rs              # Site data layer
 ├── revisions.rs          # Revision data layer
 ├── storage.rs            # S3-compatible object storage
-├── platform_sync.rs      # Heartbeat + config sync with amos-platform
+├── platform_sync.rs      # Heartbeat + config sync with the managed platform
 ├── server.rs             # Axum server setup + route registration
 ├── state.rs              # Shared application state (AppState)
 ├── lib.rs                # Crate root (re-exports)

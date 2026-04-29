@@ -4,6 +4,10 @@ This document describes the current security posture of the AMOS platform,
 the threat model the existing controls cover (and don't cover), the planned
 hardening work, and how to report security issues.
 
+This root file is intentionally kept at repository root for GitHub security
+disclosure workflows. For the broader STRIDE threat model and system-wide
+security analysis, see [docs/features/security.md](docs/features/security.md).
+
 It focuses on the relay's oracle keypair because that key signs on-chain
 `submit_bounty_proof` transactions and therefore holds real value. The same
 principles apply to any other signing keys that get added later.

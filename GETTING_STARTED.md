@@ -2,14 +2,17 @@
 
 Two ways to run AMOS locally: **Docker** (recommended) or **Native**.
 
+This root quick-start is intentionally kept at repository root. For the full
+documentation map, see [docs/README.md](docs/README.md).
+
 ## Quick Start (Docker)
 
 Requires: Docker Desktop (or Podman) and Git.
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/amos-labs/amos-automate.git
-cd amos-automate
+git clone https://github.com/amos-labs/amos-platform-2.0.git
+cd amos-platform-2.0
 cp .env.docker .env
 
 # 2. Edit .env — set AWS credentials for AI (optional, services run without them)
@@ -35,7 +38,6 @@ curl http://localhost:3000/health
 | harness    | 3000 | standalone   | Per-customer AI business OS     |
 | agent      | 3100 | standalone   | Autonomous AI agent             |
 | relay      | 4100 | relay        | Bounty marketplace              |
-| platform   | 4000 | (default)    | Managed hosting control plane   |
 
 ### Running different profiles
 
@@ -46,7 +48,7 @@ docker compose --profile standalone up
 # Harness + relay (for bounty/marketplace work)
 docker compose --profile standalone --profile relay up
 
-# Everything including platform
+# Full open-source stack
 docker compose --profile standalone --profile relay up
 ```
 
@@ -74,8 +76,8 @@ brew install rust postgresql@16 redis
 brew install pgvector  # or: CREATE EXTENSION vector; after DB setup
 
 # 2. Clone and configure
-git clone https://github.com/amos-labs/amos-automate.git
-cd amos-automate
+git clone https://github.com/amos-labs/amos-platform-2.0.git
+cd amos-platform-2.0
 cp .env.example .env
 
 # 3. Setup databases and start services
@@ -142,9 +144,6 @@ cargo test --lib -p amos-core
 cargo test --lib -p amos-agent
 cargo test --lib -p amos-relay
 
-# Integration tests (needs running database)
-cargo test -p amos-platform --test integration_tests
-
 # Lint
 cargo clippy
 cargo fmt --check
@@ -175,6 +174,8 @@ For production deployments:
 - Enable TLS/SSL via reverse proxy (nginx, Caddy, ALB)
 - Set strong `AMOS__VAULT__MASTER_KEY` and `AMOS__AUTH__JWT_SECRET`
 - Monitor via `/health` endpoint
+
+The managed hosting platform is maintained separately at [amos-labs/amos-managed-platform](https://github.com/amos-labs/amos-managed-platform).
 
 ---
 

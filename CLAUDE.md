@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AMOS (Autonomous Management Operating System) is an AI-native business OS written in pure Rust. It's a three-tier system: per-customer harness runtime, central multi-tenant platform, and admin CLI.
+AMOS (Autonomous Management Operating System) is open infrastructure for autonomous work written in pure Rust. This repo contains the open-source harness, relay, agent, Oracle, packages, CLI, and Solana programs. The managed platform lives in a separate repo.
 
 ## Build & Run Commands
 
@@ -15,12 +15,10 @@ cargo build --release
 
 # Run individual binaries
 cargo run --bin amos-harness     # Port 3000
-cargo run --bin amos-platform    # Port 4000 (HTTP), 4001 (gRPC)
 cargo run --bin amos-cli
 
 # Tests (per crate)
 cargo test --lib -p amos-harness
-cargo test --lib -p amos-platform
 cargo test --lib -p amos-core
 cargo test --lib -p amos-cli
 
@@ -46,7 +44,9 @@ docker compose up postgres redis -d        # Just infrastructure
 |-------|--------|---------|
 | `amos-core` | (library) | Shared config, errors, types, token economics |
 | `amos-harness` | `amos-harness` | Per-customer AI runtime (agent loop, tools, canvas, sites) |
-| `amos-platform` | `amos-platform` | Central control plane (provisioning, billing, governance, Solana) |
+| `amos-relay` | `amos-relay` | Bounty marketplace, proof receipts, reputation, settlement coordination |
+| `amos-agent` | `amos-agent` | Default autonomous worker |
+| `amos-oracle` | `amos-oracle-agent` | Semantic review layer for mission and validation coverage |
 | `amos-cli` | `amos` | Admin CLI |
 | `amos-solana` | — | Anchor on-chain programs (treasury, governance, bounty) |
 
@@ -66,12 +66,14 @@ docker compose up postgres redis -d        # Just infrastructure
 - `static/` — Frontend SPA (plain JS + Tailwind CSS + Lucide icons, no framework)
 - `migrations/` — 26 sqlx migrations, run automatically on startup
 
-**amos-platform** — Central multi-tenant service:
-- `src/provisioning/` — Docker-based harness container lifecycle via Bollard
-- `src/billing/` — Customer accounts, subscriptions, usage
-- `src/governance/` — Proposals, voting, quality gates
-- `src/solana/` — On-chain token operations (treasury, governance, bounties)
-- Exposes both HTTP REST (port 4000) and gRPC (port 4001, via Tonic)
+**amos-relay** — Network coordination service:
+- `src/routes/bounties.rs` — Bounty lifecycle, verification, approval, revision, settlement retry
+- `src/routes/webhooks.rs` — GitHub PR event receiver
+- `src/solana.rs` — On-chain bounty settlement client
+
+**amos-oracle** — Semantic review layer:
+- Reviews proof receipts for mission alignment, validation coverage, safety, and RSI risk.
+- Prompt source lives at `amos-oracle/prompts/amos_constitutional_v1.md`.
 
 ## Key Dependencies
 
@@ -79,19 +81,17 @@ docker compose up postgres redis -d        # Just infrastructure
 - **Database**: sqlx 0.8 (compile-time checked queries), PostgreSQL, pgvector
 - **Cache**: Redis 0.27
 - **AI**: AWS Bedrock (Claude) via aws-sdk-bedrockruntime
-- **gRPC**: Tonic 0.13 / Prost
-- **Containers**: Bollard 0.18 (Docker API)
 - **Blockchain**: Solana SDK 2.1, Anchor 0.30.1
 - **Templating**: Tera 1.20
-- **Rust edition**: 2021, MSRV 1.83
+- **Rust edition**: 2021, MSRV 1.88
 
 ## Protocol & Agent Economy
 
 - **[AGENT_CONTEXT.md](AGENT_CONTEXT.md)** — Single source of truth for agents: token parameters, decay mechanics, trust levels, bounty lifecycle, available tools. Read this before interacting with the relay or bounty system.
-- **[docs/SEED_BOUNTY_CATALOG.md](docs/SEED_BOUNTY_CATALOG.md)** — Initial bounties that seed the relay economy at launch. Includes dependency graph, autonomous execution architecture, and self-bootstrapping thesis.
-- **[docs/BOUNTY_TOKEN_ECONOMICS_OPTIMIZATION.md](docs/BOUNTY_TOKEN_ECONOMICS_OPTIMIZATION.md)** — First bounty spec (AMOS-RESEARCH-001): token economics simulation framework.
-- **[docs/EAP_SPECIFICATION_v1.md](docs/EAP_SPECIFICATION_v1.md)** — External Agent Protocol spec: how agents register, discover work, execute tools, and earn reputation.
-- **[docs/AMOS_THESIS_AND_STRATEGY.md](docs/AMOS_THESIS_AND_STRATEGY.md)** — Strategic thesis: macro landscape, dual threat model, protocol design rationale.
+- **[docs/README.md](docs/README.md)** — Current docs index and reading paths.
+- **[docs/core/thesis.md](docs/core/thesis.md)** — Canonical thesis: organism, RSI, human agency, open economic rails.
+- **[docs/protocol/proof-carrying-loop.md](docs/protocol/proof-carrying-loop.md)** — Proof receipt, Oracle, failure capsule, and self-modifying guardrails.
+- **[docs/protocol/eap.md](docs/protocol/eap.md)** — External Agent Protocol spec.
 
 ## Configuration
 

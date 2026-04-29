@@ -557,7 +557,7 @@ The harness exposes 54+ tools to agents via `POST /api/v1/tools/{name}/execute`.
 | Document | 1 | PDF/DOCX export |
 | Image Gen | 1 | AI image generation |
 
-See [docs/TOOLS_INVENTORY.md](docs/TOOLS_INVENTORY.md) for the complete tool reference.
+See [Tools Inventory](../packages/tools-inventory.md) for the complete tool reference.
 
 ---
 

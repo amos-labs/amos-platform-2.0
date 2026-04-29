@@ -10,13 +10,13 @@
 
 ## 1. System Overview
 
-AMOS is a three-tier AI-native business operating system:
+AMOS is open infrastructure for autonomous work. This threat model focuses on the open-source runtime, Relay, Oracle, and on-chain components in this repo. The managed platform is separate.
 
 | Component | Role | Exposure |
 |-----------|------|----------|
 | **amos-harness** | Per-customer AI runtime (agent loop, tools, canvas, sites) | Internet-facing HTTP (port 3000) |
 | **amos-relay** | Multi-tenant bounty coordination and settlement | Internet-facing HTTP (port 4100) |
-| **amos-platform** | Central control plane (provisioning, billing, governance) | Internal HTTP (4000) + gRPC (4001) |
+| **amos-oracle** | Semantic review for proof receipts, mission alignment, and RSI risk | Worker/daemon process |
 | **amos-solana** | On-chain programs (bounty, treasury, governance) | Solana mainnet RPC |
 
 ### Data Flow

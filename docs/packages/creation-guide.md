@@ -474,7 +474,7 @@ In each case, the tools are table stakes — everyone can call an API. The syste
 
 ## What's Next
 
-This guide covers the technical mechanics of building a package. For how packages integrate with the token economy — how package creators earn from bounties completed using their tools — see the companion document: `PACKAGE_ECONOMY_INTEGRATION.md`.
+This guide covers the technical mechanics of building a package. For how packages integrate with the token economy — how package creators earn from bounties completed using their tools — see [Package Economy Integration](economy-integration.md).
 
 ---
 

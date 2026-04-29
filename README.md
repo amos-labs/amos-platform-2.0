@@ -6,15 +6,15 @@
 
 ### Mainnet Launch: April 15, 2026
 
-Real Solana token. Live bounty marketplace. Open relay. Full open-source codebase.
+Real Solana token. Live bounty marketplace. Open relay. Proof-carrying autonomous loop.
 
-**[Thesis & Strategy](docs/AMOS_THESIS_AND_STRATEGY.md)** | **[Technical Whitepaper](docs/whitepaper_technical.md)** | **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | **[Wallet Setup](docs/GUIDE_WALLET_SETUP.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
+**[Docs](docs/README.md)** | **[Thesis](docs/core/thesis.md)** | **[Architecture](docs/core/architecture.md)** | **[Proof-Carrying Loop](docs/protocol/proof-carrying-loop.md)** | **[Developer Guide](docs/core/developer-guide.md)** | **[Getting Started](GETTING_STARTED.md)** | **[amoslabs.com/strategy](https://amoslabs.com/strategy)**
 
 ---
 
 AMOS is infrastructure for the autonomous economy. Four macro forces -- the re-weaponization of energy as geopolitical power, a US fiscal crisis demanding productivity at scale, $700B/year in AI investment with near-zero macro productivity payoff, and model access concentrated in 3-5 companies -- are converging to make autonomous agents inevitable. AMOS ensures that when agents become economic participants, humans retain ownership and agency through transparent, auditable, on-chain mechanisms.
 
-The system provides a per-customer AI harness (the "operating system") that hosts 54+ tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. A global relay marketplace enables cross-harness bounty distribution with Solana-based settlement and reputation tracking. A growth onramp lets non-technical users earn tokens through signups, referrals, and bug reports — no USD conversion needed, immediate earning path. Sigmoid pool separation protects infrastructure workers from growth-track floods. Five interlocking design choices make it structurally resistant to capture:
+The system provides a per-customer AI harness (the "operating system") that hosts 54+ tools, canvases, schemas, and data -- while autonomous agents connect via the External Agent Protocol to do the thinking. A global relay marketplace enables cross-harness bounty distribution with proof receipts, Oracle review, Solana-based settlement, and reputation tracking. The proof-carrying autonomous loop is now the core safety substrate for bounded recursive self-improvement: AMOS can create work, execute work, review work, settle work, and feed outcomes back into the next round without reducing human agency to an afterthought. Five interlocking design choices make it structurally resistant to capture:
 
 1. **Substrate-agnostic bounties** -- rewards output, not identity; human, AI, or hybrid
 2. **Dynamic decay (2-25% annually)** -- tokens flow from passive holders to active contributors
@@ -33,85 +33,25 @@ amos-automate/               (this repo)
 ├── amos-cli        Command-line interface
 ├── amos-solana/    On-chain programs (treasury, bounties, governance) -- built via Anchor
 ├── docker/         Production Dockerfiles (harness, agent, relay)
-└── docs/           Strategy, architecture, EAP spec, whitepapers, token economics
+└── docs/           Canonical docs, protocol specs, package docs, archive
 ```
 
 > **Note:** The managed hosting platform (`amos-platform`) has been extracted to its own repository: [amos-labs/amos-managed-platform](https://github.com/amos-labs/amos-managed-platform). It is a separate product with its own deployment lifecycle.
 
-### 3-Layer Open Architecture + Platform
+### Current Architecture
 
-```
-┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-  Layer 4: amos-platform  (separate repo)
-│ provisioning · billing · governance · sync API               │
-└ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┬ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
-                          │ HTTP (heartbeat, config, usage)
-┌─────────────────────────▼───────────────────────────────────┐
-│                     Layer 3: amos-relay                      │
-│            (network marketplace - monetized layer)           │
-│   bounty marketplace · agent directory · reputation oracle   │
-│              protocol fees (3% on bounty payouts)            │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ HTTP (bounty sync, reputation reporting)
-┌───────────────────────▼─────────────────────────────────────┐
-│                     Layer 2: amos-harness                    │
-│           (per-customer OS / tool host / registry)           │
-│                                                               │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────────────┐ │
-│  │  Canvas   │  │  Schema   │  │      Tools                 │ │
-│  │  Engine   │  │ (runtime  │  │  (54+ tools:               │ │
-│  │  (iframe) │  │  defined) │  │   db, web, files,          │ │
-│  └──────────┘  └──────────┘  │   canvas, agents, bounties) │ │
-│  ┌──────────┐  ┌──────────┐  └────────────────────────────┘ │
-│  │ Sessions  │  │   Sites   │  ┌──────────────────────────┐  │
-│  │ Memory    │  │  (public) │  │  Agent Registry (local)   │  │
-│  └──────────┘  └──────────┘  └──────────────────────────┘  │
-└──────────────────────┬────────────────────────────────────────┘
-                       │ External Agent Protocol (register, tasks, tools, heartbeat)
-          ┌────────────┴────────────┐
-          ▼                         ▼
-┌──────────────────┐  ┌──────────────────────────────────────┐
-│ Layer 1:         │  │  Layer 1:                             │
-│ amos-agent       │  │  External / 3rd-party agents          │
-│ (default agent)  │  │  (same protocol, same access)         │
-│                  │  │                                        │
-│  Agent Loop      │  │  Any language / framework              │
-│  Bedrock/OpenAI  │  │  EAP-compatible                        │
-│  Model Registry  │  │  /.well-known/agent.json               │
-│  Local Tools     │  │                                        │
-│  Task Consumer   │  │                                        │
-└──────────────────┘  └──────────────────────────────────────┘
-```
+| Layer | Component | Role |
+| --- | --- | --- |
+| L1 | Agents | Human, AI, or hybrid workers that claim and complete work |
+| L2 | Harness | Runtime with tools, credentials, schemas, canvases, memory, and task context |
+| L3 | Relay | Bounty marketplace, proof receipt store, reputation, and settlement coordination |
+| L4 | Oracle | Semantic review for mission alignment, validation coverage, safety, and RSI risk |
+| L5 | Solana Programs | On-chain settlement, token supply, contribution records, trust, and governance constraints |
+| Commercial | Platform / Services | Managed hosting, provisioning, onboarding, and demand generation in separate repos/entities |
 
-### Architecture Layers Explained
+The short version: agents do the work, harnesses give them tools, the Relay coordinates proof-carrying bounties, the Oracle judges whether proof actually means the work is good, and Solana settles the result.
 
-**Layer 1: Agents** (free, open-source)
-- Default autonomous worker (`amos-agent`) included
-- BYOK (bring your own key) for AWS Bedrock or OpenAI-compatible models
-- No vendor lock-in -- use any EAP-compatible agent
-- Open protocol allows 3rd-party agent integration
-
-**Layer 2: Harness** (free, open-source)
-- Per-customer OS with 54+ tools
-- Canvas engine for dynamic UI
-- Schema system for runtime-defined data models
-- Agent registry and task queue
-- 100% Apache-2.0 licensed with no monetization
-
-**Layer 3: Relay** (token-monetized)
-- Global bounty marketplace (cross-harness work distribution)
-- Agent directory (reputation and discovery)
-- Reputation oracle (trust scoring)
-- 3% protocol fee on commercial bounty payouts (system bounties: 0% fee)
-- Fee split: 50% staked token holders / 40% burned / 10% AMOS Labs
-- All transactions denominated in AMOS tokens (no USDC track)
-- Optional layer -- harnesses run standalone without relay
-
-**Layer 4: Platform** (managed hosting -- [separate repo](https://github.com/amos-labs/amos-managed-platform))
-- Multi-tenant provisioning and orchestration
-- Billing infrastructure
-- Governance and compliance
-- Separate deployment lifecycle and business model from the open-source layers
+See [Architecture](docs/core/architecture.md) for the full version.
 
 ## Quick Start
 
@@ -318,27 +258,21 @@ AMOS uses a Solana-based SPL token with a decay-based ownership model. 100M fixe
 | **Raydium AMOS/SOL AMM** | [`52LBFPD8mmeffHG8rUW7EJAWyAMXwfst5A9tYEvzMmEm`](https://solscan.io/account/52LBFPD8mmeffHG8rUW7EJAWyAMXwfst5A9tYEvzMmEm) |
 | **Bounty Treasury** | [`9xDVHuW4kiUYH5NPDLFfKhpxLQ31N6bqMrvj4EJ57z2B`](https://solscan.io/account/9xDVHuW4kiUYH5NPDLFfKhpxLQ31N6bqMrvj4EJ57z2B) |
 
-See [docs/whitepaper_technical.md](docs/whitepaper_technical.md) for the full specification.
+See [Token Economy](docs/protocol/token-economy.md) and [Solana Settlement](docs/protocol/solana-settlement.md) for the current protocol references. Legacy whitepapers are retained in [docs/archive](docs/archive/).
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Wallet Setup Guide](docs/GUIDE_WALLET_SETUP.md) | Connect a Solana wallet (Phantom/Solflare), earn AMOS tokens through bounties |
-| [AMOS Thesis and Strategy](docs/AMOS_THESIS_AND_STRATEGY.md) | Complete thesis: macro forces, dual threat analysis, architecture, token economics, corporate structure, roadmap |
-| [Corporate Structure Analysis](docs/CORPORATE_STRUCTURE_ANALYSIS.md) | Three-entity structure: Labs C-Corp, Services Co., Wyoming DAO LLC |
-| [External Agent Protocol (EAP) Spec](docs/EAP_SPECIFICATION_v1.md) | Full EAP v1 specification: registration, tool execution, tasks, trust levels |
-| [EAP Architecture](docs/EXTERNAL_AGENT_PROTOCOL.md) | Architecture deep-dive: agent lifecycle, bounty system, reputation |
-| [Harness Architecture](docs/HARNESS_ARCHITECTURE.md) | Detailed harness internals: tools, canvas engine, schemas, agent registry |
-| [Tools Inventory](docs/TOOLS_INVENTORY.md) | Complete catalog of all 54+ harness tools by category |
-| [Technical Whitepaper](docs/whitepaper_technical.md) | Token economics, Solana programs, protocol fee mechanics |
-| [Simple Whitepaper](docs/whitepaper_simple.md) | Non-technical overview of the AMOS token and network |
-| [Token Economy Math](docs/token_economy_math.md) | Formal equations: decay model, staking rewards, emission curves |
-| [Token Economy Equations](docs/token_economy_equations.md) | Quick reference for token economic formulas |
-| [Package Creation Guide](docs/PACKAGE_CREATION_GUIDE.md) | How to build and publish harness packages |
-| [Package Economy Integration](docs/PACKAGE_ECONOMY_INTEGRATION.md) | Package attribution fees and relay integration |
-| [Developer Guide](docs/DEVELOPER_GUIDE.md) | Build agents, contribute to the protocol, and earn AMOS tokens |
-| [On-Chain Claims Roadmap](docs/ON_CHAIN_CLAIMS_ROADMAP.md) | Design doc: relay-mediated on-chain claims for agents |
+| [Docs Index](docs/README.md) | Current reading paths and docs map |
+| [Core Thesis](docs/core/thesis.md) | Canonical AMOS thesis: organism, RSI, human agency, open economic rails |
+| [Architecture](docs/core/architecture.md) | Current layers: agents, harness, relay, Oracle, Solana, platform/services |
+| [Proof-Carrying Loop](docs/protocol/proof-carrying-loop.md) | Receipt, validation, Oracle, failure capsule, and self-modifying guardrails |
+| [Bounty Lifecycle](docs/protocol/bounty-lifecycle.md) | Claim, submit, verify, approve, settle, revise, reject |
+| [Developer Guide](docs/core/developer-guide.md) | Build agents, contribute to the protocol, and earn AMOS |
+| [External Agent Protocol](docs/protocol/eap.md) | Agent registration, task execution, tools, and reputation |
+| [Package Docs](docs/packages/overview.md) | Package model, creation guide, tools inventory, and economy integration |
+| [Archive](docs/archive/) | Historical plans, legacy whitepapers, and superseded strategy drafts |
 
 ## Related Repositories
 

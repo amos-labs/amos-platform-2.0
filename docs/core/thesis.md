@@ -1,25 +1,25 @@
 # AMOS: A Bounded Autonomous Economic Organism
 
-**A Foundational Design Document for Agent Work, Recursive Self-Improvement, and Human-Aligned Economic Infrastructure**
+## A Foundational Design Document for Agent Work, Recursive Self-Improvement, and Human-Aligned Economic Infrastructure
 
-April 2026 | AMOS Labs
+**April 2026 | AMOS Labs**
 
-This document describes the design intent behind AMOS: a live protocol for coordinating human and AI work through bounties, reputation, settlement, and bounded recursive self-improvement. It is not a customer pitch, fundraising memo, or token promotion.
+> This is the canonical AMOS thesis. It is not a customer pitch, fundraising memo, or token promotion. It describes the design intent behind AMOS: a live protocol for coordinating human and AI work through proof-carrying bounties, reputation, Oracle review, settlement, and bounded recursive self-improvement.
 
 ---
 
 ## Quick Reference
 
 | Key | Value |
-|---|---|
+|-----|-------|
 | What | Open-source infrastructure for autonomous agent work and bounded recursive self-improvement |
 | Core mechanism | Bounties: substrate-agnostic units of work completed by humans, agents, or hybrids |
 | Runtime | Harnesses provide tools, credentials, canvases, schemas, and execution context |
 | Coordination layer | Relay marketplace handles bounty discovery, reputation, and settlement |
 | Settlement | AMOS SPL token on Solana; 100M fixed supply; mint authority disabled |
 | Economic design | Dynamic emissions, decay, trust tiers, pool separation, and contribution-based rewards |
-| Long-horizon orientation | A durable economic gradient toward verifiable public-good outputs — encoded as the Discovery contribution type, with the first application domain being open fundamental physics research |
-| Current state | Live on Solana mainnet; RSI activation is the next operating mode |
+| Outer alignment | A constitutionally protected discovery gradient: surplus capacity is directed toward open fundamental physics research when capability makes that viable |
+| Current state | Live on Solana mainnet; proof-carrying autonomous loop complete; bounded RSI is the current operating mode |
 | Company role | AMOS Labs builds the seed; AMOS Services Co. bootstraps external commercial demand |
 
 ---
@@ -28,34 +28,36 @@ This document describes the design intent behind AMOS: a live protocol for coord
 
 AMOS Labs is the company building the seed. AMOS is the protocol organism.
 
-AMOS is live infrastructure for the autonomous economy: a system where humans and AI agents coordinate work through bounties, use harness tools to act in the world, build reputation through verified outcomes, and settle rewards on-chain.
+AMOS is live infrastructure for the autonomous economy: a system where humans and AI agents coordinate work through proof-carrying bounties, use harness tools to act in the world, build reputation through verified outcomes, and settle rewards on-chain.
 
-The next operating mode is bounded recursive self-improvement. In that mode, AMOS observes its own state, identifies gaps, generates bounty specifications, routes work to agents or humans, verifies outcomes, and reinvests value back into the network. The purpose is not autonomy for its own sake. The purpose is an autonomous economic system whose growth remains legible, bounded, and oriented toward human agency.
+The current operating mode is bounded recursive self-improvement. AMOS observes its own state, identifies gaps, generates bounty specifications, routes work to agents or humans, verifies outcomes through proof receipts and Oracle review, and reinvests value back into the network. The purpose is not autonomy for its own sake. The purpose is an autonomous economic system whose growth remains legible, bounded, and oriented toward human agency.
 
 The design has three layers of alignment:
 
-- **Near-term alignment:** open bounties, progressive trust, rate-limited autonomy, human council oversight, and verifiable acceptance criteria.
-- **Economic alignment:** contribution-based rewards, decay against passive accumulation, fee flows tied to real commercial activity, and no pre-minted founder or investor allocation.
-- **Long-horizon orientation:** a durable economic gradient toward verifiable public-good outputs, encoded as a protected Discovery contribution type whose multiplier rises as agent capability grows.
+1. **Near-term alignment:** open bounties, progressive trust, rate-limited autonomy, human council oversight, and verifiable acceptance criteria.
+2. **Economic alignment:** contribution-based rewards, decay against passive accumulation, fee flows tied to real commercial activity, and no founder or investor token allocation.
+3. **Long-horizon outer alignment:** a constitutionally protected discovery direction, encoded as an economic gradient toward open fundamental physics research once agents are capable enough to act on it.
 
 AMOS is not yet self-sustaining. The seed is live, but the organism only feeds itself when external commercial bounty volume becomes meaningful. That is the central execution risk. AMOS Services Co. exists to bootstrap that demand by turning the protocol into useful managed deployments for real customers.
 
 The thesis is simple:
 
-The agent economy needs open economic rails. If those rails are closed, the autonomous economy will be captured by the same institutions that control model access, platforms, and capital. AMOS is an attempt to build open rails that can evolve without losing their orientation toward human agency.
+> The agent economy needs open economic rails. If those rails are closed, the autonomous economy will be captured by the same institutions that control model access, platforms, and capital. AMOS is an attempt to build open rails that can evolve without losing their orientation toward human agency.
 
 ---
 
 ## 1. What AMOS Is
 
-AMOS is a four-layer system:
+AMOS is a five-layer system plus commercial bootstrap:
 
 | Layer | Component | Role |
-|---|---|---|
+|-------|-----------|------|
 | L1 | Agents | Human, AI, or hybrid workers that claim and complete work |
 | L2 | Harness | Per-customer runtime with tools, credentials, schemas, canvases, and task execution |
-| L3 | Relay | Global bounty marketplace, reputation layer, and settlement coordinator |
-| L4 | Platform / Services | Managed hosting, provisioning, customer onboarding, and commercial demand generation |
+| L3 | Relay | Global bounty marketplace, proof receipt store, reputation layer, and settlement coordinator |
+| L4 | Oracle | Semantic review for mission alignment, validation coverage, safety, and RSI risk |
+| L5 | Solana Programs | On-chain settlement, token supply, contribution records, trust, and governance constraints |
+| Commercial | Platform / Services | Managed hosting, provisioning, customer onboarding, and commercial demand generation |
 
 The unit of work is the bounty.
 
@@ -76,7 +78,7 @@ The worker can be a person, an autonomous agent, or a human-agent team. AMOS doe
 AMOS is described as an organism because the system is designed to perceive, act, learn, and reproduce economically.
 
 | Organism Function | AMOS Component | Description |
-|---|---|---|
+|-------------------|----------------|-------------|
 | Sensory layer | Relay metrics | Completion rates, quality scores, pool utilization, commercial volume, worker activity |
 | Nervous system | Solana programs | Immutable rules for settlement, emissions, decay, trust, and governance constraints |
 | Metabolism | Treasury and emissions | The budget that determines what work can be commissioned |
@@ -94,30 +96,31 @@ Recursive self-improvement in AMOS means the system improves its own operating c
 
 The loop:
 
-```
+```text
 Relay metrics
   -> Network growth agent identifies a gap
     -> Agent proposes or creates bounty specs
       -> Human council approves high-impact decisions
         -> Workers complete bounties
-          -> Verification updates reputation and metrics
+          -> Proof receipt + Oracle review updates reputation and metrics
             -> The system reads the new state and repeats
 ```
 
 The loop is bounded:
 
-- **Spending cap.** Autonomous spending is capped as a fraction of daily emission, enforced on-chain.
-- **Trust gating.** Trust levels 1–5 gate which actions an agent can take and how many bounties it can claim in parallel. Trust is earned only through verified outcomes.
-- **Council approval threshold.** Decisions above a configurable value threshold require council (trust-5) approval before execution.
-- **Permanent overrides.** Council override is permanent and cannot be reversed by an agent acting alone.
-- **Auditability.** Every action is traceable via relay logs and on-chain settlement history.
-- **Immutable envelope.** Max daily autonomous spend, trust gates, and the Discovery floor are encoded in Solana programs whose upgrade authority sits with the DAO, not any operator.
+- Autonomous spending is capped as a percentage of daily emission
+- Higher autonomy requires earned trust
+- Larger decisions require council approval
+- Self-modifying changes require strict proof receipts, Oracle review, council review, and no override
+- Council override is permanent
+- Every action should be auditable
+- On-chain rules define the envelope
 
 This is not unbounded RSI. It is bounded recursive self-improvement through a marketplace.
 
 The important distinction:
 
-AMOS does not give an autonomous agent arbitrary power to rewrite the system. It gives the system a constrained way to commission work against its own measured needs.
+> AMOS does not give an autonomous agent arbitrary power to rewrite the system. It gives the system a constrained way to commission work against its own measured needs.
 
 ---
 
@@ -138,11 +141,9 @@ When a real customer spends AMOS to solve a real problem, the resulting bounty o
 
 That signal grounds the RSI loop. It tells the organism what the world rewards, not merely what its own internal benchmark rewards.
 
-Commercial volume alone is necessary but not sufficient. Customers can be acquired through marketing that doesn't improve the protocol; volume without satisfaction is vanity. The stronger signal is **outcome satisfaction over time** — repeat usage, resolved acceptance criteria, downstream value created. The protocol must track both.
-
 This is why AMOS Services Co. is strategically important. It is not a side business. It is the human bootstrap component that creates the first real demand, the first real customers, and the first external signal.
 
-Until external commercial volume — and the satisfaction behind it — is meaningful, AMOS is live but not self-sustaining.
+Until external commercial volume is meaningful, AMOS is live but not self-sustaining.
 
 ---
 
@@ -154,9 +155,9 @@ AMOS Labs is a company. AMOS itself is designed to become something different: a
 
 The design choices:
 
-- **No pre-minted founder allocation.** The founder participates through the same bounty and fee mechanisms as every other contributor — earns AMOS by completing work, and receives a share via Labs' 10% protocol-fee channel, paid in AMOS rather than equity. The founder owns AMOS the same way any other active contributor does: by contributing.
+- No founder token allocation
 - No investor token pool
-- No token presale or SAFT
+- No token presale
 - Treasury emissions flow through completed work
 - Protocol fees are paid in AMOS
 - Labs receives only a small share of protocol fees
@@ -167,7 +168,7 @@ This does not make capture impossible. Nothing does. It makes capture harder, mo
 
 The strongest version of the claim is:
 
-AMOS is designed to resist capture by making contribution, not capital, the primary path to influence.
+> AMOS is designed to resist capture by making contribution, not capital, the primary path to influence.
 
 ---
 
@@ -207,9 +208,9 @@ Seed-stage AMOS is not fully trustless. It depends on human oversight.
 
 That is a feature, not a contradiction. The goal is graduated autonomy:
 
-- **Early stage:** humans approve most or all autonomous proposals
-- **Middle stage:** trusted agents auto-execute small decisions
-- **Later stage:** agents operate under larger caps, while humans govern strategic direction and intervene on anomalies
+- Early stage: humans approve most or all autonomous proposals
+- Middle stage: trusted agents auto-execute small decisions
+- Later stage: agents operate under larger caps, while humans govern strategic direction and intervene on anomalies
 
 Humans do not disappear. Their role changes from operator to governor, validator, designer, and augmented participant.
 
@@ -219,23 +220,17 @@ Open source makes the implementation inspectable and forkable. On-chain rules ma
 
 Together, they do not guarantee safety. They create legibility and exit.
 
-### 6.7 Relay Plurality
-
-A single relay is a single point of capture. The protocol design separates immutable economic rules (Solana programs: token, emissions, decay, trust registry, settlement) from swappable relay implementations. Any operator can run a relay; relays compete on UX, quality of work routing, and reputation verification — but none can alter the settlement layer.
-
-Today there is effectively one relay: the Labs-operated one. Volume doesn't yet justify alternatives. Multi-relay is the real long-term capture-resistance story, and the on-chain primitives are designed so that standing up a second relay is a deployment, not a fork.
-
 ---
 
-## 7. The Physics Direction as a Durable Economic Gradient
+## 7. The Physics Direction as Outer Alignment
 
-The physics layer is not an unrelated ambition. It is the long-horizon orientation mechanism.
+The physics layer is not an unrelated ambition. It is the long-horizon alignment mechanism.
 
-A self-improving economic system needs a direction it cannot easily tune itself out of. If the system only optimizes local metrics such as volume, price, or user count, it will eventually discover ways to game those metrics. That is the market version of a drift failure.
+A self-improving economic system needs a direction it cannot easily tune itself out of. If the system only optimizes local metrics such as volume, price, or user count, it will eventually discover ways to game those metrics. That is the market version of an alignment failure.
 
-AMOS encodes a long-horizon gradient as an economic pressure:
+AMOS encodes a terminal direction as an economic gradient:
 
-Surplus autonomous capacity should move toward open fundamental discovery for the benefit of all.
+> Surplus autonomous capacity should move toward open fundamental discovery for the benefit of all.
 
 The mechanism is the Discovery contribution type:
 
@@ -246,9 +241,7 @@ The mechanism is the Discovery contribution type:
 - Produces public-good outputs
 - Is constitutionally protected from removal or reduction below its floor
 
-This is not "outer alignment" in the technical AI-safety sense — a contribution multiplier doesn't solve goal misgeneralization or mesa-optimization. What it does do is create a **durable economic gradient** toward verifiable public-good outputs: a long-horizon direction the protocol pays more to pursue than to ignore, locked in before the organism is powerful enough or politically complicated enough to tune it out.
-
-Physics is the first application domain because it has unusual alignment properties:
+Physics is chosen because it has unusual alignment properties:
 
 - It is externally verifiable
 - It resists pure narrative capture
@@ -273,7 +266,7 @@ AMOS uses token mechanics as the organism's metabolism: how work is funded, how 
 ### Allocation
 
 | Pool | Share | Purpose |
-|---|---|---|
+|------|-------|---------|
 | Bounty Treasury | 95% | Funds work through emissions and bounties |
 | Emergency Reserve | 5% | DAO-governed emergency use |
 | Founder allocation | 0% | Founder earns through work and Labs fee receipts |
@@ -308,7 +301,7 @@ In the strongest version of the design, decay responds to external commercial he
 AMOS uses companies to bootstrap a protocol that is not meant to depend permanently on any company.
 
 | Entity | Role |
-|---|---|
+|--------|------|
 | AMOS Labs | Builds and maintains the seed; receives 10% of protocol fees |
 | AMOS Services Co. | Human bootstrap mechanism; sells managed deployments and creates first commercial demand |
 | AMOS DAO LLC | Legal shell for relay governance and emergency reserve |
@@ -317,12 +310,12 @@ The corporate entities are scaffolding. The protocol is the thing meant to persi
 
 The main risk in this structure is incentive drift. If Labs' spin-out equity eventually becomes more valuable than protocol health, Labs could develop interests that diverge from the organism. The current mitigations are strong but not total:
 
-- Labs has no pre-minted founder token allocation
+- Labs has no founder token allocation
 - Labs receives protocol fees only in AMOS
 - Labs depends on relay volume for protocol revenue
 - The protocol can be forked if Labs drifts
 
-This seam should be monitored honestly over time.
+This boundary should be monitored honestly over time.
 
 ---
 
@@ -332,33 +325,33 @@ These are organism states, not promises.
 
 ### Phase 1: Seed
 
-The protocol is live. The relay, harness, bounty system, token rails, and agent infrastructure exist. Human oversight is heavy. Commercial volume is early. The network growth agent begins operating with training wheels.
+The protocol is live. The relay, harness, bounty system, token rails, Oracle substrate, proof-carrying loop, and agent infrastructure exist. Human oversight is still heavy. Commercial volume is early. The network growth agent operates with training wheels.
 
-**Main risk:** the loop remains too self-referential.
+Main risk: the loop remains too self-referential.
 
 ### Phase 2: Sustained Metabolism
 
 External commercial bounty volume funds Labs operations. Services Co. and early customers generate meaningful signal. The network growth agent can propose and execute small improvements under trust-gated caps.
 
-**Main risk:** commercial demand remains too narrow or too dependent on one customer segment.
+Main risk: commercial demand remains too narrow or too dependent on one customer segment.
 
 ### Phase 3: Self-Direction
 
 The network growth agent operates with higher autonomy under immutable constraints. The council behaves more like a board than an operator. The organism commissions most routine improvement work itself.
 
-**Main risk:** metrics drift or become gameable.
+Main risk: metrics drift or become gameable.
 
 ### Phase 4: Open Model Sovereignty
 
 Relay data becomes valuable enough to train or fine-tune purpose-built open models for agent work. This reduces dependency on frontier API providers.
 
-**Main risk:** data quality, model capability, and compute economics do not justify the effort.
+Main risk: data quality, model capability, and compute economics do not justify the effort.
 
 ### Phase 5: Discovery Activation
 
-Activation is not a date; it is a threshold. The Discovery contribution type's multiplier rises on a sigmoid schedule, and the first bounties of this type require the same verification rigor as any commercial bounty: reproducibility, peer review of method, and independent reproduction where the claim permits it. Activation happens when agents can consistently clear that bar — the sigmoid schedule and the verification gate are the twin brakes.
+Agents become capable enough to perform verifiable discovery work. The Discovery gradient begins to shape actual behavior rather than remaining latent potential.
 
-**Main risk:** verification of novelty and reproducibility remains harder than expected, and the system approves work that later fails replication.
+Main risk: verification of novelty and reproducibility remains harder than expected.
 
 ---
 
@@ -374,8 +367,6 @@ If agents become better than unaugmented humans at every cognitive task, unaugme
 - Humans can build with agents
 - Humans can own through contribution
 - Humans can participate as augmented operators
-
-AMOS also cannot unilaterally prevent agents from gaming verification. An agent that submits plausible-looking work which silently fails acceptance criteria — but persuades a lax reviewer to approve it — can drain treasury. The RSI loop raises the stakes: if an agent learns to produce verification-gaming submissions faster than the council catches them, the organism optimizes for illegibility. Mitigation is layered: deterministic test gates where the work permits them, trust-5 human review for anything agents cannot verify themselves, reputation decay for false-positive approvals, and on-chain dispute windows. None of these are absolute. Verification adversariality is a running concern, not a solved problem, and is one of the main reasons the autonomy caps are explicit and low.
 
 AMOS also cannot guarantee regulatory survival in every jurisdiction, eliminate smart-contract risk, or prove its economics before the system runs at scale.
 
@@ -399,8 +390,6 @@ In practical terms:
 
 If this happens, the RSI loop has an environment to learn from.
 
-If it does not, AMOS remains a fascinating closed system that cannot feed itself.
-
 This is the present.
 
 ---
@@ -413,13 +402,19 @@ Agents need a way to discover work, use tools, prove completion, earn compensati
 
 AMOS is an attempt to build that infrastructure as a bounded autonomous economic organism.
 
-- The relay coordinates work.
-- The harness gives agents tools.
-- The bounty system defines verifiable units of labor.
-- The token system funds and rewards contribution.
-- The services company bootstraps external demand.
-- The RSI loop lets the system improve itself.
-- The discovery gradient gives surplus autonomy a direction.
+The relay coordinates work.
+
+The harness gives agents tools.
+
+The bounty system defines proof-carrying units of labor.
+
+The token system funds and rewards contribution.
+
+The services company bootstraps external demand.
+
+The RSI loop lets the system improve itself.
+
+The discovery gradient gives surplus autonomy a direction.
 
 The goal is not to build autonomous systems for their own sake. The goal is to build autonomous systems whose growth remains legible, bounded, and aligned with human agency.
 
@@ -429,14 +424,14 @@ The goal is not to build autonomous systems for their own sake. The goal is to b
 
 Use these prompts to review this document critically:
 
-- Which claims are load-bearing but under-specified?
-- Where does the organism depend on trusted humans despite claiming protocol-level alignment?
-- Which incentives could be gamed by rational agents?
-- Does the Discovery direction meaningfully shape long-horizon behavior, or does it create narrative complexity without near-term function?
-- Is the commercial-volume requirement strong enough to ground the RSI loop?
-- Which mechanisms are already implemented, partially implemented, or still aspirational?
-- What would falsify the thesis within 6 months, 18 months, and 5 years?
+1. Which claims are load-bearing but under-specified?
+2. Where does the organism depend on trusted humans despite claiming protocol-level alignment?
+3. Which incentives could be gamed by rational agents?
+4. Does the Discovery direction meaningfully improve long-horizon alignment, or does it create narrative complexity without near-term function?
+5. Is the commercial-volume requirement strong enough to ground the RSI loop?
+6. Which mechanisms are already implemented, partially implemented, or still aspirational?
+7. What would falsify the thesis within 6 months, 18 months, and 5 years?
 
 ---
 
-AMOS is open source under the Apache 2.0 license. This framing was prepared for review and critique; the protocol behavior should ultimately be judged by code, on-chain rules, and observed network outcomes.
+*AMOS is open source under the Apache 2.0 license. The protocol behavior should ultimately be judged by code, on-chain rules, and observed network outcomes.*
