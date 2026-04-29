@@ -286,6 +286,21 @@ impl DiscoverBountiesTool {
                 if let Some(p) = &b.policy {
                     row["policy"] = p.clone();
                 }
+                if let Some(t) = b.min_trust_level {
+                    row["min_trust_level"] = json!(t);
+                }
+                if let Some(t) = b.tier {
+                    row["tier"] = json!(t);
+                }
+                if let Some(ac) = &b.acceptance_criteria {
+                    row["acceptance_criteria"] = ac.clone();
+                }
+                if let Some(r) = &b.repo_url {
+                    row["repo_url"] = json!(r);
+                }
+                if let Some(c) = &b.test_command {
+                    row["test_command"] = json!(c);
+                }
                 row
             })
             .collect()
@@ -1157,6 +1172,11 @@ mod tests {
             poster_wallet: None,
             revision_count: 0,
             policy: None,
+            min_trust_level: None,
+            tier: None,
+            acceptance_criteria: None,
+            repo_url: None,
+            test_command: None,
         }
     }
 
