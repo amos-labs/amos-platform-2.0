@@ -244,6 +244,21 @@ pub struct CreateBountyRequest {
     /// proposed_bounty_spec.
     #[serde(default)]
     pub policy: Option<JsonValue>,
+    /// Minimum trust level required to claim (1-5). NULL = open to all.
+    #[serde(default)]
+    pub min_trust_level: Option<i16>,
+    /// Verification tier: 1=scripted, 2=spec+review (default), 3=creative.
+    #[serde(default)]
+    pub tier: Option<i16>,
+    /// Structured "what done means" contract. Replaces parsing description prose.
+    #[serde(default)]
+    pub acceptance_criteria: Option<JsonValue>,
+    /// Repo (or sub-path / branch) the work targets.
+    #[serde(default)]
+    pub repo_url: Option<String>,
+    /// Exact command the verifier will run to validate the submission.
+    #[serde(default)]
+    pub test_command: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -436,6 +451,22 @@ pub struct BountyResponse {
     pub merged_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub merged_by: Option<String>,
+    /// Minimum trust level required to claim. NULL = open to all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_trust_level: Option<i16>,
+    /// Verification mode tier: 1=scripted, 2=spec+review, 3=creative.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<i16>,
+    /// Structured contract for "what done means". JSONB. Replaces parsing
+    /// description prose.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acceptance_criteria: Option<JsonValue>,
+    /// GitHub repo URL the work targets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_url: Option<String>,
+    /// Exact command the verifier runs. Agent self-checks before submitting.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_command: Option<String>,
 }
 
 // =============================================================================
@@ -455,6 +486,7 @@ const BOUNTY_SELECT: &str = r#"
     policy, proof_receipt, failure_capsule,
     gate_override_reason, gate_override_by, gate_override_at,
     merge_commit_sha, merged_at, merged_by,
+    min_trust_level, tier, acceptance_criteria, repo_url, test_command,
     created_at, updated_at
 "#;
 
@@ -506,6 +538,11 @@ fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::E
         merge_commit_sha: row.try_get("merge_commit_sha").ok().flatten(),
         merged_at: row.try_get("merged_at").ok().flatten(),
         merged_by: row.try_get("merged_by").ok().flatten(),
+        min_trust_level: row.try_get("min_trust_level").ok().flatten(),
+        tier: row.try_get("tier").ok().flatten(),
+        acceptance_criteria: row.try_get("acceptance_criteria").ok().flatten(),
+        repo_url: row.try_get("repo_url").ok().flatten(),
+        test_command: row.try_get("test_command").ok().flatten(),
     })
 }
 
@@ -664,9 +701,10 @@ async fn create_bounty(
                 id, title, description, reward_tokens, deadline_at,
                 required_capabilities, poster_wallet, status, category,
                 policy,
+                min_trust_level, tier, acceptance_criteria, repo_url, test_command,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING {BOUNTY_SELECT}"
     ))
     .bind(bounty_id)
@@ -679,6 +717,11 @@ async fn create_bounty(
     .bind(BountyStatus::Open.as_str())
     .bind(category)
     .bind(req.policy.as_ref())
+    .bind(req.min_trust_level)
+    .bind(req.tier)
+    .bind(req.acceptance_criteria.as_ref())
+    .bind(req.repo_url.as_deref())
+    .bind(req.test_command.as_deref())
     .bind(now)
     .bind(now)
     .fetch_one(&state.db)
