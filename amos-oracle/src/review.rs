@@ -54,6 +54,17 @@ pub struct ReviewRequest {
     /// Oracle judges whether the resubmission addressed the cited failure.
     #[serde(default)]
     pub failure_capsule: Option<serde_json::Value>,
+    /// OPS-QA-SEMANTIC-001 / v1.3 review polish: structured "what done
+    /// means" the Oracle drafted at intake-commission. Primary judging
+    /// surface for the review path — each criterion is checked against the
+    /// diff and the QA bot's test_command result.
+    #[serde(default)]
+    pub acceptance_criteria: Option<serde_json::Value>,
+    /// OPS-QA-SEMANTIC-001 / v1.3 review polish: the exact shell command
+    /// the QA bot ran. Surfaced alongside `qa_evidence.test_command_pass`
+    /// so the Oracle prompt can frame the verdict around contract execution.
+    #[serde(default)]
+    pub test_command: Option<String>,
 }
 
 /// Raw LLM output shape for review decisions.
@@ -228,11 +239,52 @@ fn render_review_input_block(request: &ReviewRequest) -> String {
         }
     }
 
+    // ── Acceptance contract (the v1.2 contract layer) ───────────────────
+    // When present, this is the FIRST thing the Oracle should check.
+    // Drafted by Oracle itself at intake-commission time so the criteria
+    // are unambiguous; the diff either satisfies them or it does not.
+    if request.acceptance_criteria.is_some() || request.test_command.is_some() {
+        let _ = writeln!(
+            b,
+            "\n## Acceptance contract (drafted at commission, primary judging surface)"
+        );
+        if let Some(criteria) = &request.acceptance_criteria {
+            let _ = writeln!(b, "**Acceptance criteria:**");
+            let _ = writeln!(
+                b,
+                "```json\n{}\n```",
+                serde_json::to_string_pretty(criteria).unwrap_or_default()
+            );
+        }
+        if let Some(cmd) = &request.test_command {
+            let _ = writeln!(b, "**Test command (the QA bot ran this exact string):**");
+            let _ = writeln!(b, "```\n{}\n```", cmd);
+        }
+        let _ = writeln!(
+            b,
+            "\n**Judge against the contract first.** For each criterion, ask: \
+             does the diff (see `proof_receipt.github.changed_files` and the \
+             linked PR) deliver it? If the test_command exit was 0, that's the \
+             worker's mechanical satisfaction; mission alignment is whether the \
+             criteria themselves were the right shape for what the bounty \
+             asked. If criteria pass and the work is non-trivial substrate \
+             improvement at standard scope, this is the class where you should \
+             self-authorize at the standard threshold rather than escalate."
+        );
+    }
+
     let _ = writeln!(b, "\n## QA bot evidence (mechanical verification)");
     let _ = writeln!(
         b,
         "```json\n{}\n```",
         serde_json::to_string_pretty(&request.qa_evidence).unwrap_or_default()
+    );
+    let _ = writeln!(
+        b,
+        "**Note:** when the QA bot ran a bounty `test_command`, look for \
+         `test_command_pass` and `test_command_exit`. A passing test_command \
+         is *direct evidence* the acceptance contract executed cleanly — \
+         weight it accordingly, not as just one more cargo test."
     );
 
     // Proof receipt — intent + validation plan + execution evidence.
@@ -426,6 +478,8 @@ mod tests {
             }),
             revision_count: 0,
             policy: None,
+            acceptance_criteria: None,
+            test_command: None,
             proof_receipt: None,
             failure_capsule: None,
         }
@@ -606,5 +660,47 @@ mod tests {
         let d = evaluate(&agent, sample_request()).await.unwrap();
         let v: ReviewVerdict = serde_json::from_value(d.verdict.clone()).unwrap();
         assert_eq!(v, ReviewVerdict::Reject);
+    }
+
+    // ── v1.3 review-contract-layer surfacing ──────────────────────────
+
+    #[test]
+    fn input_block_surfaces_acceptance_contract_when_present() {
+        let mut req = sample_request();
+        req.acceptance_criteria = Some(serde_json::json!([
+            "GET /api/v1/bounties responds with X-Request-ID header",
+            "tracing log lines for the request include the same id"
+        ]));
+        req.test_command = Some("cargo test -p amos-relay request_id".into());
+        let block = render_review_input_block(&req);
+
+        // The contract section must appear *before* QA evidence so Oracle
+        // reads it first and frames the verdict around the contract.
+        let contract_at = block
+            .find("Acceptance contract")
+            .expect("contract block must render");
+        let qa_at = block.find("QA bot evidence").expect("qa block must render");
+        assert!(
+            contract_at < qa_at,
+            "contract block must appear before QA evidence (got contract@{contract_at}, qa@{qa_at})"
+        );
+        assert!(block.contains("X-Request-ID"));
+        assert!(block.contains("cargo test -p amos-relay request_id"));
+        assert!(
+            block.contains("primary judging surface"),
+            "must instruct Oracle to treat the contract as the primary surface"
+        );
+    }
+
+    #[test]
+    fn input_block_omits_contract_section_when_absent() {
+        // Pre-v1.2 bounties have neither field. The contract section should
+        // not render, leaving Oracle on the older judging path.
+        let req = sample_request();
+        let block = render_review_input_block(&req);
+        assert!(
+            !block.contains("Acceptance contract"),
+            "no contract section should render when both fields are None"
+        );
     }
 }

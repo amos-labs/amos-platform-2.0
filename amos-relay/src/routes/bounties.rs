@@ -136,6 +136,17 @@ pub struct PendingReviewResponse {
     /// the prior cited failure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_capsule: Option<JsonValue>,
+    /// OPS-QA-SEMANTIC-001: structured "what done means" contract drafted by
+    /// Oracle at intake-commission time. Surface to the review prompt so
+    /// Oracle judges whether each criterion was met (rather than going off
+    /// QA bot evidence alone).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acceptance_criteria: Option<JsonValue>,
+    /// OPS-QA-SEMANTIC-001: exact shell command the QA bot ran. Pairs with
+    /// `qa_evidence.test_command_pass` / `test_command_exit` so Oracle can
+    /// say "the contract was X, the bot ran X, here's the result."
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_command: Option<String>,
 }
 
 /// A bounty is "pending Oracle review" when it's submitted, mechanically
@@ -149,7 +160,8 @@ async fn list_pending_review(
             id, title, description, category,
             verification_evidence, quality_evidence, result,
             revision_count,
-            policy, proof_receipt, failure_capsule
+            policy, proof_receipt, failure_capsule,
+            acceptance_criteria, test_command
         FROM relay_bounties
         WHERE status = 'submitted'
           AND verified_at IS NOT NULL
@@ -203,6 +215,9 @@ async fn list_pending_review(
         let policy: Option<JsonValue> = row.try_get("policy").ok().flatten();
         let proof_receipt: Option<JsonValue> = row.try_get("proof_receipt").ok().flatten();
         let failure_capsule: Option<JsonValue> = row.try_get("failure_capsule").ok().flatten();
+        let acceptance_criteria: Option<JsonValue> =
+            row.try_get("acceptance_criteria").ok().flatten();
+        let test_command: Option<String> = row.try_get("test_command").ok().flatten();
 
         out.push(PendingReviewResponse {
             bounty_id,
@@ -216,6 +231,8 @@ async fn list_pending_review(
             policy,
             proof_receipt,
             failure_capsule,
+            acceptance_criteria,
+            test_command,
         });
     }
 
