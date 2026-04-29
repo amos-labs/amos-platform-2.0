@@ -10,6 +10,7 @@ pub mod communication_tools;
 pub mod credential_tools;
 pub mod document_tools;
 pub mod image_gen_tools;
+pub mod intake_tools;
 pub mod integration_tools;
 pub mod knowledge_tools;
 pub mod memory_tools;
@@ -412,6 +413,15 @@ impl ToolRegistry {
         registry.register(Arc::new(task_tools::CreateBountyTool::new(
             config.relay.url.clone(),
         )));
+        // OPS-HARNESS-INTAKE-TOOL-001: user-facing intake into the AMOS protocol.
+        // The harness becomes the intake interface — user describes a bug or
+        // feature, AMOS drafts the ticket and submits to the Oracle queue.
+        registry.register(Arc::new(intake_tools::SubmitProtocolIntakeTool::new(
+            config.clone(),
+        )));
+        registry.register(Arc::new(intake_tools::CheckProtocolIntakeStatusTool::new(
+            config.clone(),
+        )));
         registry.register(Arc::new(task_tools::ListTasksTool::new(task_queue.clone())));
         registry.register(Arc::new(task_tools::GetTaskResultTool::new(
             task_queue.clone(),
@@ -514,6 +524,9 @@ impl ToolRegistry {
         )));
         registry.register(Arc::new(bounty_agent_tools::CheckBountyStatusTool::new(
             config.relay.url.clone(),
+            db_pool.clone(),
+        )));
+        registry.register(Arc::new(bounty_agent_tools::BountyWorkspaceTool::new(
             db_pool.clone(),
         )));
 

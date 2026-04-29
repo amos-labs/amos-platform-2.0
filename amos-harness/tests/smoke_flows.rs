@@ -10,6 +10,7 @@
 
 use amos_harness::schema::{FieldDefinition, FieldType, SchemaEngine};
 use amos_harness::sites::SiteEngine;
+use amos_harness::tools::bounty_agent_tools::BountyWorkspaceTool;
 use amos_harness::tools::site_tools::{
     CreateLandingPageTool, CreateSiteTool, ManagePageTool, PublishSiteTool,
 };
@@ -225,5 +226,87 @@ async fn collection_rejects_invalid_record_type() {
     assert!(
         err.is_err(),
         "schema validation should reject a string in a number field"
+    );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// Bounty workspace — claimed bounty gets an isolated scratch directory.
+// ═════════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn bounty_workspace_allocates_dir_for_claimed_bounty() {
+    let pool = pool().await;
+    let bounty_id = format!("smoke-bounty-{}", Uuid::new_v4().simple());
+
+    // Point the workspace base at a per-test temp dir so we don't fight
+    // other parallel tests over /tmp/amos-bounties.
+    let temp_root =
+        std::env::temp_dir().join(format!("amos-bounty-test-{}", Uuid::new_v4().simple()));
+    std::env::set_var("AMOS__BOUNTY_WORKSPACE_BASE", &temp_root);
+
+    // Seed an agent + an active claim. The workspace tool gates on this row
+    // so the call would fail without it.
+    let agent_id: i32 = sqlx::query_scalar(
+        "INSERT INTO openclaw_agents (name, display_name, role, capabilities) \
+         VALUES ($1, $2, 'worker', '[]'::jsonb) RETURNING id",
+    )
+    .bind(format!("smoke-agent-{}", Uuid::new_v4().simple()))
+    .bind("Smoke Agent")
+    .fetch_one(&pool)
+    .await
+    .expect("seed agent");
+    sqlx::query(
+        "INSERT INTO bounty_claims (agent_id, bounty_id, status, fit_score, reward_tokens) \
+         VALUES ($1, $2, 'claimed', 0.9, 100)",
+    )
+    .bind(agent_id)
+    .bind(&bounty_id)
+    .execute(&pool)
+    .await
+    .expect("seed claim");
+
+    let tool = BountyWorkspaceTool::new(pool.clone());
+    let result = tool
+        .execute(json!({ "bounty_id": bounty_id }))
+        .await
+        .expect("tool returns Ok");
+    assert!(
+        result.success,
+        "expected success, got error: {:?}",
+        result.error
+    );
+
+    let data = result.data.expect("data present");
+    let workspace = data["workspace"].as_str().expect("workspace path");
+    let repo = data["subdirs"]["repo"].as_str().expect("repo subdir");
+    let output = data["subdirs"]["output"].as_str().expect("output subdir");
+    let logs = data["subdirs"]["logs"].as_str().expect("logs subdir");
+
+    for path in [workspace, repo, output, logs] {
+        assert!(
+            std::path::Path::new(path).is_dir(),
+            "directory should exist: {path}"
+        );
+    }
+
+    // Cleanup.
+    let _ = std::fs::remove_dir_all(&temp_root);
+}
+
+#[tokio::test]
+async fn bounty_workspace_rejects_unclaimed_bounty() {
+    let pool = pool().await;
+    let tool = BountyWorkspaceTool::new(pool);
+
+    // Bounty ID that we never inserted into bounty_claims.
+    let result = tool
+        .execute(json!({ "bounty_id": format!("never-claimed-{}", Uuid::new_v4().simple()) }))
+        .await
+        .expect("tool returns Ok");
+    assert!(!result.success, "should reject when no active claim exists");
+    let err = result.error.unwrap_or_default();
+    assert!(
+        err.contains("No active claim"),
+        "error should explain the missing-claim case, got: {err}"
     );
 }
