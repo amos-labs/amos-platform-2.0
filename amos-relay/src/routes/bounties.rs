@@ -104,6 +104,7 @@ pub fn routes() -> Router<RelayState> {
         .route("/{id}/request_revision", post(request_revision))
         .route("/{id}/pushback", post(pushback))
         .route("/{id}/settle", post(retry_settlement))
+        .route("/{id}/record-merge", post(record_merge))
         .route("/calculate-points", post(calculate_points_endpoint))
 }
 
@@ -357,6 +358,15 @@ pub struct PushbackRequest {
     pub reason: String,
 }
 
+/// OPS-AUTOMERGE-001: posted by the auto-merge bot after it has squash-merged
+/// the bounty's PR onto main. Only valid for status=approved AND
+/// settlement_status=settled bounties; idempotent if the same SHA is replayed.
+#[derive(Debug, Deserialize)]
+pub struct RecordMergeRequest {
+    pub merge_commit_sha: String,
+    pub merged_by: String,
+}
+
 // BountyStatus is re-exported from amos_core::types
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -416,6 +426,16 @@ pub struct BountyResponse {
     pub gate_override_by: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gate_override_at: Option<DateTime<Utc>>,
+    /// OPS-AUTOMERGE-001: set by the auto-merge bot when the bounty's PR
+    /// has been squash-merged onto main. Until this is non-null, "approved
+    /// + settled" is contract-true but the code may not actually be on
+    /// main — see feedback_settled_neq_merged.md for the prior incident.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merge_commit_sha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merged_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merged_by: Option<String>,
 }
 
 // =============================================================================
@@ -434,6 +454,7 @@ const BOUNTY_SELECT: &str = r#"
     revision_count, revision_feedback, pr_url, category,
     policy, proof_receipt, failure_capsule,
     gate_override_reason, gate_override_by, gate_override_at,
+    merge_commit_sha, merged_at, merged_by,
     created_at, updated_at
 "#;
 
@@ -482,6 +503,9 @@ fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::E
         gate_override_reason: row.try_get("gate_override_reason").ok().flatten(),
         gate_override_by: row.try_get("gate_override_by").ok().flatten(),
         gate_override_at: row.try_get("gate_override_at").ok().flatten(),
+        merge_commit_sha: row.try_get("merge_commit_sha").ok().flatten(),
+        merged_at: row.try_get("merged_at").ok().flatten(),
+        merged_by: row.try_get("merged_by").ok().flatten(),
     })
 }
 
@@ -2102,5 +2126,103 @@ async fn retry_settlement(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let bounty = bounty_from_row(row).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    Ok(Json(bounty))
+}
+
+/// OPS-AUTOMERGE-001: record that the bounty's PR has been squash-merged onto
+/// main. Called by the auto-merge bot after `gh pr merge` succeeds.
+///
+/// Preconditions:
+/// - Bounty exists and is status='approved'
+/// - settlement_status='settled' (settlement must precede merge; merging a PR
+///   for an unsettled bounty would let the worker double-claim against a
+///   later rejection)
+///
+/// Idempotency: replaying with the same `merge_commit_sha` returns 200 with
+/// the existing record. A *different* SHA on a row that already has one is
+/// rejected with 409 — that would imply two different merges of the same
+/// bounty's PR, which is a bug worth surfacing.
+async fn record_merge(
+    State(state): State<RelayState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<RecordMergeRequest>,
+) -> Result<Json<BountyResponse>, ApiError> {
+    let sha = req.merge_commit_sha.trim();
+    if sha.len() != 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ApiError::bad_request(
+            "merge_commit_sha must be a 40-char hex git SHA.",
+        ));
+    }
+    let merged_by = req.merged_by.trim();
+    if merged_by.is_empty() || merged_by.len() > 64 {
+        return Err(ApiError::bad_request(
+            "merged_by must be a non-empty string ≤64 chars.",
+        ));
+    }
+
+    let current = sqlx::query(
+        "SELECT status, settlement_status, merge_commit_sha \
+         FROM relay_bounties WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("record_merge: fetch bounty {} failed: {}", id, e);
+        ApiError::internal("Failed to fetch bounty.")
+    })?
+    .ok_or_else(|| ApiError::not_found(format!("Bounty {} not found.", id)))?;
+
+    let status: String = current.get("status");
+    if status != BountyStatus::Approved.as_str() {
+        return Err(ApiError::conflict(format!(
+            "Cannot record merge: bounty is in status '{}', expected 'approved'.",
+            status
+        )));
+    }
+    let settle: Option<String> = current.get("settlement_status");
+    if settle.as_deref() != Some("settled") {
+        return Err(ApiError::conflict(format!(
+            "Cannot record merge: settlement_status is {:?}, expected 'settled'. \
+             Settlement must precede merge so workers cannot double-claim.",
+            settle
+        )));
+    }
+
+    let existing: Option<String> = current.get("merge_commit_sha");
+    if let Some(existing_sha) = existing {
+        if existing_sha != sha {
+            return Err(ApiError::conflict(format!(
+                "Bounty already records merge SHA {}; refusing to overwrite with {}.",
+                existing_sha, sha
+            )));
+        }
+        // Same SHA — idempotent replay; fall through to return current row.
+    } else {
+        sqlx::query(
+            "UPDATE relay_bounties \
+             SET merge_commit_sha = $1, merged_at = NOW(), merged_by = $2, updated_at = NOW() \
+             WHERE id = $3",
+        )
+        .bind(sha)
+        .bind(merged_by)
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            warn!("record_merge: update bounty {} failed: {}", id, e);
+            ApiError::internal("Failed to record merge.")
+        })?;
+        info!(bounty_id = %id, merge_sha = %sha, by = %merged_by, "merge recorded");
+    }
+
+    let row = sqlx::query(&format!(
+        "SELECT {BOUNTY_SELECT} FROM relay_bounties WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| ApiError::internal("Failed to reload bounty."))?;
+    let bounty = bounty_from_row(row).map_err(|_| ApiError::internal("Row decode failed."))?;
     Ok(Json(bounty))
 }

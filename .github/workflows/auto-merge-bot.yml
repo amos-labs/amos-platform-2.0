@@ -1,0 +1,53 @@
+name: Auto-Merge Bot
+
+# Scheduled auto-merge: polls relay every 5 min for bounties that are
+# approved + on-chain settled but not yet merged. For each candidate, the
+# bot verifies the PR head SHA matches the proof_receipt's pinned SHA,
+# verifies CI is green, runs `gh pr merge --squash --delete-branch`, then
+# records the merge SHA back to the relay. Closes OPS-AUTOMERGE-001.
+#
+# Manual trigger via workflow_dispatch is supported for ad-hoc runs.
+
+on:
+  schedule:
+    # Every 5 minutes. Settlement is async on the relay side (typically
+    # lands within ~10s of /approve), so this cadence picks newly-settled
+    # bounties up within one tick.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Concurrency: only one merge cycle runs at a time. If a previous cycle is
+# still going (e.g., GitHub API was slow), the next scheduled trigger is
+# skipped to avoid double-merge attempts on the same PR.
+concurrency:
+  group: auto-merge-bot
+  cancel-in-progress: false
+
+env:
+  RELAY_URL: https://relay.amoslabs.com
+  GITHUB_REPO: amos-labs/amos-platform-2.0
+
+jobs:
+  auto-merge:
+    name: Auto-merge cycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run auto-merge bot
+        env:
+          RELAY_API_KEY: ${{ secrets.AUTO_MERGE_BOT_RELAY_API_KEY }}
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_BOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$RELAY_API_KEY" ]; then
+            echo "::error::Required secret AUTO_MERGE_BOT_RELAY_API_KEY is not set"
+            exit 1
+          fi
+          chmod +x scripts/auto-merge-bot.sh
+          ./scripts/auto-merge-bot.sh
