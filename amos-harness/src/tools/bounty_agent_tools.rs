@@ -1894,8 +1894,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn verify_tool_caps_timeout_at_300s() {
+    #[tokio::test]
+    async fn verify_tool_caps_timeout_at_300s() {
         // The schema declares the upper bound; the execute path also clamps.
         let pool = sqlx::PgPool::connect_lazy("postgres://localhost/fake").unwrap();
         let cache = Arc::new(RwLock::new(Vec::<RelayBounty>::new()));
