@@ -1466,40 +1466,61 @@ async fn approve_submission(
                     max_reward,
                 };
 
-                match solana.process_bounty_payout(&params).await {
-                    Ok(result) => {
-                        settlement_tx = Some(result.tx_signature.clone());
-                        info!(
-                            bounty_id = %id,
-                            tx = %result.tx_signature,
-                            "On-chain settlement successful"
-                        );
-
-                        // Update fee ledger with settlement tx
-                        let _ = sqlx::query(
-                            "UPDATE protocol_fee_ledger SET settled_on_chain = true, settlement_tx = $1 WHERE id = $2",
-                        )
-                        .bind(&result.tx_signature)
-                        .bind(fee_id)
-                        .execute(&state.db)
-                        .await;
-
-                        // Update bounty with settlement info
-                        let _ = sqlx::query(
-                            "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
-                        )
-                        .bind(&result.tx_signature)
-                        .bind(id)
-                        .execute(&state.db)
-                        .await;
+                // Idempotency pre-flight: reconcile if already settled on-chain.
+                match crate::settlement_retry::check_and_reconcile_if_settled(&state.db, solana, id)
+                    .await
+                {
+                    Ok(true) => {
+                        info!(bounty_id = %id, "Approval: bounty already settled on-chain, reconciled");
                     }
+                    Ok(false) => match solana.process_bounty_payout(&params).await {
+                        Ok(result) => {
+                            settlement_tx = Some(result.tx_signature.clone());
+                            info!(
+                                bounty_id = %id,
+                                tx = %result.tx_signature,
+                                "On-chain settlement successful"
+                            );
+
+                            // Update fee ledger with settlement tx
+                            let _ = sqlx::query(
+                                "UPDATE protocol_fee_ledger SET settled_on_chain = true, settlement_tx = $1 WHERE id = $2",
+                            )
+                            .bind(&result.tx_signature)
+                            .bind(fee_id)
+                            .execute(&state.db)
+                            .await;
+
+                            // Update bounty with settlement info
+                            let _ = sqlx::query(
+                                "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+                            )
+                            .bind(&result.tx_signature)
+                            .bind(id)
+                            .execute(&state.db)
+                            .await;
+                        }
+                        Err(e) => {
+                            warn!(
+                                bounty_id = %id,
+                                error = %e,
+                                "On-chain settlement failed — bounty approved but tokens not distributed"
+                            );
+                            // Mark as failed for retry
+                            let _ = sqlx::query(
+                                "UPDATE relay_bounties SET settlement_status = 'failed' WHERE id = $1",
+                            )
+                            .bind(id)
+                            .execute(&state.db)
+                            .await;
+                        }
+                    },
                     Err(e) => {
                         warn!(
                             bounty_id = %id,
                             error = %e,
-                            "On-chain settlement failed — bounty approved but tokens not distributed"
+                            "Pre-flight settlement check failed — leaving status for retry"
                         );
-                        // Mark as failed for retry
                         let _ = sqlx::query(
                             "UPDATE relay_bounties SET settlement_status = 'failed' WHERE id = $1",
                         )
@@ -2034,29 +2055,39 @@ async fn retry_settlement(
 
     info!(bounty_id = %id, "Retrying on-chain settlement");
 
-    match solana.process_bounty_payout(&params).await {
-        Ok(result) => {
-            let _ = sqlx::query(
-                "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
-            )
-            .bind(&result.tx_signature)
-            .bind(id)
-            .execute(&state.db)
-            .await;
-
-            // Update fee ledger too
-            let _ = sqlx::query(
-                "UPDATE protocol_fee_ledger SET settled_on_chain = true, settlement_tx = $1 WHERE bounty_id = $2",
-            )
-            .bind(&result.tx_signature)
-            .bind(id)
-            .execute(&state.db)
-            .await;
-
-            info!(bounty_id = %id, tx = %result.tx_signature, "Settlement retry succeeded");
+    // Idempotency pre-flight: reconcile if already settled on-chain.
+    match crate::settlement_retry::check_and_reconcile_if_settled(&state.db, solana, id).await {
+        Ok(true) => {
+            info!(bounty_id = %id, "Retry: bounty already settled on-chain, reconciled — skipping payout");
         }
+        Ok(false) => match solana.process_bounty_payout(&params).await {
+            Ok(result) => {
+                let _ = sqlx::query(
+                    "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+                )
+                .bind(&result.tx_signature)
+                .bind(id)
+                .execute(&state.db)
+                .await;
+
+                // Update fee ledger too
+                let _ = sqlx::query(
+                    "UPDATE protocol_fee_ledger SET settled_on_chain = true, settlement_tx = $1 WHERE bounty_id = $2",
+                )
+                .bind(&result.tx_signature)
+                .bind(id)
+                .execute(&state.db)
+                .await;
+
+                info!(bounty_id = %id, tx = %result.tx_signature, "Settlement retry succeeded");
+            }
+            Err(e) => {
+                warn!(bounty_id = %id, error = %e, "Settlement retry failed");
+                return Err(StatusCode::BAD_GATEWAY);
+            }
+        },
         Err(e) => {
-            warn!(bounty_id = %id, error = %e, "Settlement retry failed");
+            warn!(bounty_id = %id, error = %e, "Pre-flight settlement check failed on retry");
             return Err(StatusCode::BAD_GATEWAY);
         }
     }
