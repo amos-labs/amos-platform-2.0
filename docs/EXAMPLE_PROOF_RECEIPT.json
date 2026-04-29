@@ -1,0 +1,90 @@
+{
+  "_README": "Canonical proof_receipt template for AMOS-META-007. Submit alongside POST /api/v1/bounties/{id}/submit. Shape-validated by the relay (see amos-relay/src/proof_receipt.rs); content-judged by Oracle review. All required fields must be present and non-empty. Replace placeholders prefixed with <ALL_CAPS>.",
+
+  "receipt_version": "1",
+  "bounty_id": "<BOUNTY_UUID>",
+  "agent_id": "<AGENT_UUID — your relay-registered agent id>",
+
+  "intent": {
+    "summary": "<1-3 sentences describing what you built and why it satisfies the bounty>",
+    "self_modifying": false,
+    "scope_classification": "<one of: feature | bugfix | infra | refactor | content | docs>"
+  },
+
+  "policy": {
+    "forbidden_paths": [
+      "amos-oracle/prompts/**",
+      "amos-oracle/src/agent.rs",
+      "amos-oracle/src/intake.rs",
+      "amos-oracle/src/review.rs"
+    ],
+    "required_paths_subset": [],
+    "scope_constraint_ids": ["category:infrastructure"],
+    "minimum_coverage_pct": null,
+    "max_file_size_bytes": null,
+    "self_modifying": false
+  },
+
+  "validation_plan": {
+    "selected_checks": [
+      {
+        "id": "cargo-test-lib",
+        "rationale": "Rust crate change; unit tests cover the new behavior directly."
+      },
+      {
+        "id": "cargo-fmt-check",
+        "rationale": "Formatting gate matches the CI fmt-check step."
+      },
+      {
+        "id": "cargo-clippy-deny-warnings",
+        "rationale": "Lint gate matches CI; new code must pass clippy."
+      }
+    ],
+    "skipped_checks": [],
+    "selection_method": "static-rules-v1"
+  },
+
+  "execution_evidence": {
+    "commands": [
+      {
+        "id": "cargo-test-lib",
+        "command": "cargo test --lib -p <CRATE>",
+        "exit_code": 0,
+        "stdout_excerpt": "test result: ok. <N> passed; 0 failed",
+        "duration_ms": 16000,
+        "started_at": "<ISO8601_TIMESTAMP>",
+        "ended_at": "<ISO8601_TIMESTAMP>"
+      },
+      {
+        "id": "cargo-fmt-check",
+        "command": "cargo fmt --all -- --check",
+        "exit_code": 0,
+        "stdout_excerpt": "(no diff)",
+        "duration_ms": 800,
+        "started_at": "<ISO8601_TIMESTAMP>",
+        "ended_at": "<ISO8601_TIMESTAMP>"
+      },
+      {
+        "id": "cargo-clippy-deny-warnings",
+        "command": "cargo clippy -p <CRATE> --all-targets -- -D warnings",
+        "exit_code": 0,
+        "stdout_excerpt": "Finished `dev` profile",
+        "duration_ms": 9000,
+        "started_at": "<ISO8601_TIMESTAMP>",
+        "ended_at": "<ISO8601_TIMESTAMP>"
+      }
+    ],
+    "evidence_source": "agent_reported"
+  },
+
+  "github": {
+    "pr_url": "https://github.com/amos-labs/amos-platform-2.0/pull/<PR_NUMBER>",
+    "head_sha": "<40_HEX_CHAR_GIT_SHA>",
+    "branch": "<BRANCH_NAME>",
+    "changed_files": [
+      { "path": "<RELATIVE_PATH>", "additions": 0, "deletions": 0 }
+    ]
+  },
+
+  "result_summary": "<1-3 sentences — what the change actually does, in your own words. Becomes part of the audit trail Oracle reads on review.>"
+}
