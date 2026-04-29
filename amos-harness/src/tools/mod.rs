@@ -516,6 +516,9 @@ impl ToolRegistry {
             config.relay.url.clone(),
             db_pool.clone(),
         )));
+        registry.register(Arc::new(bounty_agent_tools::BountyWorkspaceTool::new(
+            db_pool.clone(),
+        )));
 
         registry
     }

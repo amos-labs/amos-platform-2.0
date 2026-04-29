@@ -1135,6 +1135,128 @@ pub fn filter_bounties_by_capabilities<'a>(
         .collect()
 }
 
+// ── BountyWorkspaceTool ─────────────────────────────────────────────────
+
+/// Allocate (or get) an isolated working directory for a claimed bounty.
+///
+/// Each claim should run in its own scratch dir so cloning a repo for one
+/// bounty doesn't contaminate another. The agent then composes this path
+/// with the existing `read_file` / `write_file` / `bash` tools to do work
+/// without per-tool changes.
+///
+/// Workspace base path resolves in priority order:
+///   1. `AMOS__BOUNTY_WORKSPACE_BASE` env var
+///   2. `/tmp/amos-bounties` (writable in ECS Fargate; cleared on task restart)
+pub struct BountyWorkspaceTool {
+    db_pool: PgPool,
+}
+
+impl BountyWorkspaceTool {
+    pub fn new(db_pool: PgPool) -> Self {
+        Self { db_pool }
+    }
+
+    fn workspace_base() -> String {
+        std::env::var("AMOS__BOUNTY_WORKSPACE_BASE")
+            .unwrap_or_else(|_| "/tmp/amos-bounties".to_string())
+    }
+}
+
+#[async_trait]
+impl Tool for BountyWorkspaceTool {
+    fn name(&self) -> &str {
+        "bounty_workspace"
+    }
+
+    fn description(&self) -> &str {
+        "Allocate (or fetch) an isolated working directory for a bounty you have \
+         claimed. Returns an absolute path you can use with read_file, write_file, \
+         and bash to clone the repo, write artifacts, and run tests without \
+         contaminating other claims. The directory is created on first call. \
+         Validates that the harness has an active claim on the bounty before \
+         allocating. The response also includes conventional subdirs: \
+         {workspace}/repo (clone target), {workspace}/output (artifacts to submit), \
+         {workspace}/logs (execution logs) — all created up front."
+    }
+
+    fn parameters_schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "bounty_id": {
+                    "type": "string",
+                    "description": "ID of a bounty this harness has claimed (must be an active claim — not rejected or expired)."
+                }
+            },
+            "required": ["bounty_id"]
+        })
+    }
+
+    async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
+        let bounty_id = params["bounty_id"]
+            .as_str()
+            .ok_or_else(|| amos_core::AmosError::Validation("bounty_id is required".to_string()))?;
+
+        // Reject path-traversal attempts before they reach the filesystem.
+        if bounty_id.is_empty()
+            || bounty_id.contains('/')
+            || bounty_id.contains('\\')
+            || bounty_id.contains("..")
+        {
+            return Ok(ToolResult::error(
+                "bounty_id contains illegal characters".to_string(),
+            ));
+        }
+
+        // Validate this harness has an active claim on the bounty. This stops
+        // an agent from quietly allocating workspaces for bounties it never
+        // claimed (e.g. trying to read another agent's scratch space).
+        let claim: Option<(String,)> = sqlx::query_as(
+            "SELECT bounty_id FROM bounty_claims \
+             WHERE bounty_id = $1 AND status NOT IN ('rejected', 'expired') \
+             LIMIT 1",
+        )
+        .bind(bounty_id)
+        .fetch_optional(&self.db_pool)
+        .await
+        .ok()
+        .flatten();
+
+        if claim.is_none() {
+            return Ok(ToolResult::error(format!(
+                "No active claim for bounty {bounty_id}. Claim it with claim_bounty first."
+            )));
+        }
+
+        let base = Self::workspace_base();
+        let workspace = format!("{}/{}", base.trim_end_matches('/'), bounty_id);
+        let repo = format!("{workspace}/repo");
+        let output = format!("{workspace}/output");
+        let logs = format!("{workspace}/logs");
+
+        for dir in [&workspace, &repo, &output, &logs] {
+            std::fs::create_dir_all(dir).map_err(|e| {
+                amos_core::AmosError::Internal(format!("Failed to create workspace dir {dir}: {e}"))
+            })?;
+        }
+
+        Ok(ToolResult::success(json!({
+            "workspace": workspace,
+            "bounty_id": bounty_id,
+            "subdirs": {
+                "repo": repo,
+                "output": output,
+                "logs": logs,
+            },
+            "message": format!("Workspace ready at {workspace}. Clone repo into {repo}, write artifacts to {output}, log to {logs}.")
+        })))
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::BountyAgent
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1440,5 +1562,40 @@ mod tests {
         // Even with worst possible inputs
         let worst = compute_fit_score(&["x".into()], &[], 3, 3, 0.0, 100);
         assert!(worst.fit_score >= 0.0);
+    }
+
+    // ── BountyWorkspaceTool ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn workspace_tool_metadata_is_well_formed() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/fake").unwrap();
+        let tool = BountyWorkspaceTool::new(pool);
+        assert_eq!(tool.name(), "bounty_workspace");
+        assert!(tool.description().len() >= 20);
+        let schema = tool.parameters_schema();
+        crate::tools::validate_tool_schema(&schema, tool.name())
+            .unwrap_or_else(|e| panic!("invalid schema: {e}"));
+        let required = schema["required"].as_array().expect("required array");
+        let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+        assert!(
+            names.contains(&"bounty_id"),
+            "bounty_workspace must require bounty_id"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_tool_rejects_path_traversal() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/fake").unwrap();
+        let tool = BountyWorkspaceTool::new(pool);
+        for malicious in ["../etc/passwd", "/etc/passwd", "..\\windows", "", "foo/bar"] {
+            let result = tool
+                .execute(json!({ "bounty_id": malicious }))
+                .await
+                .unwrap();
+            assert!(
+                !result.success,
+                "should reject malicious bounty_id `{malicious}`"
+            );
+        }
     }
 }
