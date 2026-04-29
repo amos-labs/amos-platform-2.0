@@ -44,11 +44,32 @@ const DEFAULT_SUBMITTER: &str = "amos-harness";
 // Pure validation — extracted so unit tests don't need a full AppConfig.
 // ──────────────────────────────────────────────────────────────────────
 
-/// Returns the cleaned (title, body, suggested_category, suggested_capabilities)
-/// tuple, or an error string on validation failure.
+/// Validated, cleaned shape of a submit_protocol_intake request. Returned by
+/// `validate_submit_params` so unit tests don't need a full `AppConfig`.
+#[derive(Debug)]
+struct ValidatedIntake {
+    title: String,
+    body: String,
+    suggested_category: Option<String>,
+    suggested_capabilities: Vec<String>,
+    submitter_wallet: Option<String>,
+}
+
+/// Lightweight Solana base58 sanity check — same length and alphabet rules
+/// the relay's validate_wallet_address enforces, kept inline so the harness
+/// crate doesn't take a relay dependency.
+fn looks_like_solana_wallet(s: &str) -> bool {
+    let len = s.len();
+    if !(32..=44).contains(&len) {
+        return false;
+    }
+    s.bytes()
+        .all(|b| b.is_ascii_alphanumeric() && b != b'0' && b != b'O' && b != b'I' && b != b'l')
+}
+
 fn validate_submit_params(
     params: &JsonValue,
-) -> std::result::Result<(String, String, Option<String>, Vec<String>), String> {
+) -> std::result::Result<ValidatedIntake, String> {
     let title = params
         .get("title")
         .and_then(|v| v.as_str())
@@ -94,12 +115,26 @@ fn validate_submit_params(
         })
         .unwrap_or_default();
 
-    Ok((
-        title.to_string(),
-        body.to_string(),
+    let submitter_wallet = params
+        .get("submitter_wallet")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if let Some(w) = submitter_wallet {
+        if !looks_like_solana_wallet(w) {
+            return Err(format!(
+                "submitter_wallet '{w}' does not look like a Solana base58 address"
+            ));
+        }
+    }
+
+    Ok(ValidatedIntake {
+        title: title.to_string(),
+        body: body.to_string(),
         suggested_category,
         suggested_capabilities,
-    ))
+        submitter_wallet: submitter_wallet.map(String::from),
+    })
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -150,7 +185,12 @@ impl Tool for SubmitProtocolIntakeTool {
          self-authorizes the bounty without escalating to council.\n\
          \n\
          Returns the submission_id; use check_protocol_intake_status later \
-         to learn whether the Oracle commissioned a bounty for it."
+         to learn whether the Oracle commissioned a bounty for it.\n\
+         \n\
+         OPTIONAL — submitter_wallet: a Solana wallet to receive a finder's \
+         fee (default 5%) when this report leads to a commissioned + settled \
+         bounty. Only ask the user for one if they bring it up; reporting bugs \
+         is free and they shouldn't have to think about wallets to file."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -176,6 +216,10 @@ impl Tool for SubmitProtocolIntakeTool {
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Capabilities a worker would need (e.g. ['rust','axum','solana']). Optional, ≤20 items."
+                },
+                "submitter_wallet": {
+                    "type": "string",
+                    "description": "Optional Solana base58 wallet for finder's-fee payout (default 5% of reward when the report leads to a settled bounty). Reporting is free; only set this if the user volunteers a wallet."
                 }
             },
             "required": ["title", "body"]
@@ -183,18 +227,19 @@ impl Tool for SubmitProtocolIntakeTool {
     }
 
     async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
-        let (title, body, suggested_category, suggested_capabilities) = match validate_submit_params(
-            &params,
-        ) {
+        let ValidatedIntake {
+            title,
+            body,
+            suggested_category,
+            suggested_capabilities,
+            submitter_wallet,
+        } = match validate_submit_params(&params) {
             Ok(v) => v,
             Err(msg) => {
-                // body-too-short is a soft "guidance" failure (return as
-                // ToolResult::error so the LLM can self-correct); other
-                // validation issues are hard errors that abort the tool.
                 if msg.starts_with("body too short") {
                     return Ok(ToolResult::error(format!(
-                            "{msg}. Describe symptom, repro, intent, and acceptance criteria so Oracle has enough to reason against."
-                        )));
+                        "{msg}. Describe symptom, repro, intent, and acceptance criteria so Oracle has enough to reason against."
+                    )));
                 }
                 return Err(amos_core::AmosError::Validation(msg));
             }
@@ -206,6 +251,7 @@ impl Tool for SubmitProtocolIntakeTool {
             "submitter": self.submitter_label(),
             "suggested_category": suggested_category,
             "suggested_capabilities": suggested_capabilities,
+            "submitter_wallet": submitter_wallet,
         });
 
         let url = format!(
@@ -406,36 +452,83 @@ mod tests {
     #[test]
     fn validate_caps_capability_list_at_20() {
         let caps: Vec<String> = (0..30).map(|i| format!("cap{i}")).collect();
-        let (_, _, _, returned) = validate_submit_params(&json!({
+        let v = validate_submit_params(&json!({
             "title": "Thing",
             "body": "x".repeat(50),
             "suggested_capabilities": caps,
         }))
         .unwrap();
-        assert_eq!(returned.len(), 20);
+        assert_eq!(v.suggested_capabilities.len(), 20);
     }
 
     #[test]
     fn validate_strips_empty_capabilities() {
-        let (_, _, _, returned) = validate_submit_params(&json!({
+        let v = validate_submit_params(&json!({
             "title": "Thing",
             "body": "x".repeat(50),
             "suggested_capabilities": ["rust", "  ", "axum", ""],
         }))
         .unwrap();
-        assert_eq!(returned, vec!["rust".to_string(), "axum".to_string()]);
+        assert_eq!(
+            v.suggested_capabilities,
+            vec!["rust".to_string(), "axum".to_string()]
+        );
+    }
+
+    #[test]
+    fn validate_accepts_valid_submitter_wallet() {
+        let v = validate_submit_params(&json!({
+            "title": "T",
+            "body": "x".repeat(50),
+            "submitter_wallet": "WxdXw1f1kFMRu8HDf1SE6yjgeWyf3Vb4T63QXMs4yij"
+        }))
+        .unwrap();
+        assert!(v.submitter_wallet.is_some());
+    }
+
+    #[test]
+    fn validate_rejects_short_submitter_wallet() {
+        let err = validate_submit_params(&json!({
+            "title": "T",
+            "body": "x".repeat(50),
+            "submitter_wallet": "tooshort"
+        }))
+        .unwrap_err();
+        assert!(err.contains("submitter_wallet"));
+    }
+
+    #[test]
+    fn validate_rejects_submitter_wallet_with_invalid_chars() {
+        // 0/O/I/l are excluded from base58
+        let err = validate_submit_params(&json!({
+            "title": "T",
+            "body": "x".repeat(50),
+            "submitter_wallet": "00000000000000000000000000000000"
+        }))
+        .unwrap_err();
+        assert!(err.contains("submitter_wallet"));
+    }
+
+    #[test]
+    fn validate_omits_submitter_wallet_when_absent() {
+        let v = validate_submit_params(&json!({
+            "title": "T",
+            "body": "x".repeat(50)
+        }))
+        .unwrap();
+        assert!(v.submitter_wallet.is_none());
     }
 
     #[test]
     fn validate_accepts_minimal_valid_input() {
-        let (title, body, cat, caps) = validate_submit_params(&json!({
+        let v = validate_submit_params(&json!({
             "title": "Bug in /agents/register",
             "body": "When the wallet param is malformed the response is a 500 instead of a 400 with a useful error message. Repro: send POST /agents/register with wallet='not-a-pubkey'.",
         }))
         .unwrap();
-        assert_eq!(title, "Bug in /agents/register");
-        assert!(body.starts_with("When the wallet"));
-        assert!(cat.is_none());
-        assert!(caps.is_empty());
+        assert_eq!(v.title, "Bug in /agents/register");
+        assert!(v.body.starts_with("When the wallet"));
+        assert!(v.suggested_category.is_none());
+        assert!(v.suggested_capabilities.is_empty());
     }
 }

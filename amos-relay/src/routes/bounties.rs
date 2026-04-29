@@ -259,6 +259,15 @@ pub struct CreateBountyRequest {
     /// Exact command the verifier will run to validate the submission.
     #[serde(default)]
     pub test_command: Option<String>,
+    /// Bug-report finder's fee: copied from oracle_intakes.submitter_wallet at
+    /// commission time. When set, this fraction of reward_tokens is queued for
+    /// payout to the submitter on settlement (split, not addition).
+    #[serde(default)]
+    pub intake_submitter_wallet: Option<String>,
+    /// Basis points of reward_tokens routed to intake submitter. Default 500
+    /// (5%). Ignored when intake_submitter_wallet is null.
+    #[serde(default)]
+    pub intake_submitter_payout_bps: Option<i16>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -467,6 +476,17 @@ pub struct BountyResponse {
     /// Exact command the verifier runs. Agent self-checks before submitting.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test_command: Option<String>,
+    /// Bug-report finder's fee fields (V1: tracked, payout queued).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intake_submitter_wallet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intake_submitter_payout_bps: Option<i16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intake_submitter_payout_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intake_submitter_payout_tx: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intake_submitter_payout_at: Option<DateTime<Utc>>,
 }
 
 // =============================================================================
@@ -487,6 +507,9 @@ const BOUNTY_SELECT: &str = r#"
     gate_override_reason, gate_override_by, gate_override_at,
     merge_commit_sha, merged_at, merged_by,
     min_trust_level, tier, acceptance_criteria, repo_url, test_command,
+    intake_submitter_wallet, intake_submitter_payout_bps,
+    intake_submitter_payout_status, intake_submitter_payout_tx,
+    intake_submitter_payout_at,
     created_at, updated_at
 "#;
 
@@ -543,6 +566,14 @@ fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::E
         acceptance_criteria: row.try_get("acceptance_criteria").ok().flatten(),
         repo_url: row.try_get("repo_url").ok().flatten(),
         test_command: row.try_get("test_command").ok().flatten(),
+        intake_submitter_wallet: row.try_get("intake_submitter_wallet").ok().flatten(),
+        intake_submitter_payout_bps: row.try_get("intake_submitter_payout_bps").ok().flatten(),
+        intake_submitter_payout_status: row
+            .try_get("intake_submitter_payout_status")
+            .ok()
+            .flatten(),
+        intake_submitter_payout_tx: row.try_get("intake_submitter_payout_tx").ok().flatten(),
+        intake_submitter_payout_at: row.try_get("intake_submitter_payout_at").ok().flatten(),
     })
 }
 
@@ -695,6 +726,24 @@ async fn create_bounty(
         req.reward_tokens
     };
 
+    // Validate intake_submitter_wallet format if provided.
+    if let Some(ref w) = req.intake_submitter_wallet {
+        if !crate::validate_wallet_address(w) {
+            warn!("Invalid intake_submitter_wallet: {}", w);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    // Default 5% payout when wallet present and bps unspecified.
+    let intake_submitter_bps: Option<i16> = match (
+        &req.intake_submitter_wallet,
+        req.intake_submitter_payout_bps,
+    ) {
+        (Some(_), Some(bps)) if (0..=10_000).contains(&bps) => Some(bps),
+        (Some(_), Some(_)) => return Err(StatusCode::BAD_REQUEST), // out of range
+        (Some(_), None) => Some(500),
+        (None, _) => None,
+    };
+
     let caps_json = serde_json::to_value(&req.required_capabilities).unwrap_or_default();
     let row = sqlx::query(&format!(
         "INSERT INTO relay_bounties (
@@ -702,9 +751,10 @@ async fn create_bounty(
                 required_capabilities, poster_wallet, status, category,
                 policy,
                 min_trust_level, tier, acceptance_criteria, repo_url, test_command,
+                intake_submitter_wallet, intake_submitter_payout_bps,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             RETURNING {BOUNTY_SELECT}"
     ))
     .bind(bounty_id)
@@ -722,6 +772,8 @@ async fn create_bounty(
     .bind(req.acceptance_criteria.as_ref())
     .bind(req.repo_url.as_deref())
     .bind(req.test_command.as_deref())
+    .bind(req.intake_submitter_wallet.as_deref())
+    .bind(intake_submitter_bps)
     .bind(now)
     .bind(now)
     .fetch_one(&state.db)
@@ -1558,9 +1610,19 @@ async fn approve_submission(
                             .execute(&state.db)
                             .await;
 
-                            // Update bounty with settlement info
+                            // Update bounty with settlement info. Also flag
+                            // intake_submitter_payout_status='pending' when a
+                            // submitter wallet is set, queueing the finder's
+                            // fee for the disbursement worker.
                             let _ = sqlx::query(
-                                "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+                                "UPDATE relay_bounties \
+                                 SET settlement_tx = $1, settlement_status = 'settled', \
+                                     intake_submitter_payout_status = CASE \
+                                         WHEN intake_submitter_wallet IS NOT NULL \
+                                              AND intake_submitter_payout_status IS NULL \
+                                         THEN 'pending' ELSE intake_submitter_payout_status \
+                                     END \
+                                 WHERE id = $2",
                             )
                             .bind(&result.tx_signature)
                             .bind(id)
@@ -2130,7 +2192,14 @@ async fn retry_settlement(
         Ok(false) => match solana.process_bounty_payout(&params).await {
             Ok(result) => {
                 let _ = sqlx::query(
-                    "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+                    "UPDATE relay_bounties \
+                     SET settlement_tx = $1, settlement_status = 'settled', \
+                         intake_submitter_payout_status = CASE \
+                             WHEN intake_submitter_wallet IS NOT NULL \
+                                  AND intake_submitter_payout_status IS NULL \
+                             THEN 'pending' ELSE intake_submitter_payout_status \
+                         END \
+                     WHERE id = $2",
                 )
                 .bind(&result.tx_signature)
                 .bind(id)

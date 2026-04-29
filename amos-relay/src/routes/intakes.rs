@@ -43,6 +43,11 @@ pub struct CreateIntakeRequest {
     pub suggested_category: Option<String>,
     #[serde(default)]
     pub suggested_capabilities: Vec<String>,
+    /// Optional Solana wallet — when set, submitter is eligible for a
+    /// finder's fee on commissioned + settled bounties derived from this
+    /// intake. Anonymous reports (no wallet) are still accepted.
+    #[serde(default)]
+    pub submitter_wallet: Option<String>,
 }
 
 /// Oracle-daemon-facing shape. Matches `amos_oracle::intake::IntakeSubmission`.
@@ -61,6 +66,8 @@ pub struct IntakeResponse {
     pub commissioned_bounty_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub evaluated_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submitter_wallet: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +107,12 @@ async fn create_intake(
     if req.suggested_capabilities.len() > 20 {
         return Err(StatusCode::BAD_REQUEST);
     }
+    // Validate submitter_wallet format if provided (anonymous reports OK).
+    if let Some(ref w) = req.submitter_wallet {
+        if !crate::validate_wallet_address(w) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
 
     let submission_id = Uuid::new_v4();
     let caps =
@@ -109,13 +122,15 @@ async fn create_intake(
         r#"
         INSERT INTO oracle_intakes (
             submission_id, title, body, submitter,
-            parent_submission_id, suggested_category, suggested_capabilities
+            parent_submission_id, suggested_category, suggested_capabilities,
+            submitter_wallet
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING
             submission_id, title, body, submitter, parent_submission_id,
             suggested_category, suggested_capabilities, status, verdict,
-            decision_id, commissioned_bounty_id, created_at, evaluated_at
+            decision_id, commissioned_bounty_id, created_at, evaluated_at,
+            submitter_wallet
         "#,
     )
     .bind(submission_id)
@@ -125,6 +140,7 @@ async fn create_intake(
     .bind(req.parent_submission_id)
     .bind(&req.suggested_category)
     .bind(&caps)
+    .bind(&req.submitter_wallet)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
@@ -153,7 +169,8 @@ async fn list_intakes(
                 SELECT
                     submission_id, title, body, submitter, parent_submission_id,
                     suggested_category, suggested_capabilities, status, verdict,
-                    decision_id, commissioned_bounty_id, created_at, evaluated_at
+                    decision_id, commissioned_bounty_id, created_at, evaluated_at,
+                    submitter_wallet
                 FROM oracle_intakes
                 WHERE status = $1
                 ORDER BY created_at ASC
@@ -171,7 +188,8 @@ async fn list_intakes(
                 SELECT
                     submission_id, title, body, submitter, parent_submission_id,
                     suggested_category, suggested_capabilities, status, verdict,
-                    decision_id, commissioned_bounty_id, created_at, evaluated_at
+                    decision_id, commissioned_bounty_id, created_at, evaluated_at,
+                    submitter_wallet
                 FROM oracle_intakes
                 ORDER BY created_at DESC
                 LIMIT $1
@@ -312,5 +330,6 @@ fn intake_from_row(row: sqlx::postgres::PgRow) -> Result<IntakeResponse, String>
             .map_err(|e| e.to_string())?,
         created_at: row.try_get("created_at").map_err(|e| e.to_string())?,
         evaluated_at: row.try_get("evaluated_at").map_err(|e| e.to_string())?,
+        submitter_wallet: row.try_get("submitter_wallet").ok().flatten(),
     })
 }
