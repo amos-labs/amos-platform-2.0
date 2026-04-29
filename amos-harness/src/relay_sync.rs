@@ -65,6 +65,22 @@ pub struct RelayBounty {
     /// the submission must respect.
     #[serde(default)]
     pub policy: Option<JsonValue>,
+    /// Minimum trust level required to claim (1-5). NULL = open to all.
+    #[serde(default)]
+    pub min_trust_level: Option<i16>,
+    /// Verification tier: 1=scripted, 2=spec+review (default), 3=creative.
+    #[serde(default)]
+    pub tier: Option<i16>,
+    /// Structured "what done means". Replaces parsing description prose.
+    /// Shape: { tests, files, endpoints, metrics, reviewer_notes }.
+    #[serde(default)]
+    pub acceptance_criteria: Option<JsonValue>,
+    /// Repo URL (or sub-path / branch) the work targets.
+    #[serde(default)]
+    pub repo_url: Option<String>,
+    /// Exact command the verifier runs. Agent should self-check first.
+    #[serde(default)]
+    pub test_command: Option<String>,
 }
 
 fn default_category() -> String {
