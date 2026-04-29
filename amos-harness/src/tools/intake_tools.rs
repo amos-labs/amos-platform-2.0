@@ -67,9 +67,7 @@ fn looks_like_solana_wallet(s: &str) -> bool {
         .all(|b| b.is_ascii_alphanumeric() && b != b'0' && b != b'O' && b != b'I' && b != b'l')
 }
 
-fn validate_submit_params(
-    params: &JsonValue,
-) -> std::result::Result<ValidatedIntake, String> {
+fn validate_submit_params(params: &JsonValue) -> std::result::Result<ValidatedIntake, String> {
     let title = params
         .get("title")
         .and_then(|v| v.as_str())
