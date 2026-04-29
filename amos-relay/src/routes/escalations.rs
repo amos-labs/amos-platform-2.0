@@ -34,6 +34,11 @@ pub struct CreateEscalationRequest {
     pub decision_id: Uuid,
     pub path: String, // "intake" or "review"
     pub reason: String,
+    /// REQUIRED when path="review". Links the escalation to the bounty
+    /// being reviewed so /pending-review can filter out bounties with an
+    /// active escalation (otherwise Oracle re-reviews them every tick).
+    #[serde(default)]
+    pub bounty_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,6 +97,12 @@ async fn create_escalation(
     if req.reason.trim().is_empty() || req.reason.len() > 10_000 {
         return Err(StatusCode::BAD_REQUEST);
     }
+    // Review-path escalations must reference the bounty so /pending-review
+    // can filter it out (otherwise Oracle re-reviews every tick).
+    if req.path == "review" && req.bounty_id.is_none() {
+        warn!("review-path escalation missing bounty_id");
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     // Verify the decision exists before linking.
     let exists: Option<Uuid> =
@@ -107,10 +118,15 @@ async fn create_escalation(
         return Err(StatusCode::NOT_FOUND);
     }
 
+    let mut tx = state.db.begin().await.map_err(|e| {
+        warn!(error = %e, "create_escalation: tx begin failed");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     let row = sqlx::query(
         r#"
-        INSERT INTO oracle_escalations (decision_id, path, reason)
-        VALUES ($1, $2, $3)
+        INSERT INTO oracle_escalations (decision_id, path, reason, bounty_id)
+        VALUES ($1, $2, $3, $4)
         RETURNING escalation_id, decision_id, path, reason, status,
                   council_verdict, council_reasoning, resolved_by,
                   resolved_at, created_at
@@ -119,14 +135,37 @@ async fn create_escalation(
     .bind(req.decision_id)
     .bind(&req.path)
     .bind(&req.reason)
-    .fetch_one(&state.db)
+    .bind(req.bounty_id)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         warn!(error = %e, "create_escalation insert failed");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+    let resp = escalation_from_row(row);
 
-    Ok((StatusCode::CREATED, Json(escalation_from_row(row))))
+    // For review-path, link the bounty to this escalation so /pending-review
+    // excludes it until council resolves.
+    if req.path == "review" {
+        if let Some(bid) = req.bounty_id {
+            sqlx::query("UPDATE relay_bounties SET oracle_review_escalation_id = $1 WHERE id = $2")
+                .bind(resp.escalation_id)
+                .bind(bid)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    warn!(error = %e, "create_escalation: bounty link failed");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+        }
+    }
+
+    tx.commit().await.map_err(|e| {
+        warn!(error = %e, "create_escalation: tx commit failed");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok((StatusCode::CREATED, Json(resp)))
 }
 
 async fn list_escalations(
@@ -325,12 +364,26 @@ async fn resolve_escalation(
                 })?;
         }
         ("review", _) => {
-            // TODO: dispatch into bounty approve/reject/request_revision.
-            // Tracked as a follow-up. Resolution + outcome are still recorded.
+            // Clear the bounty's escalation link so it re-enters /pending-review
+            // (or so a subsequent council /approve|/reject|/request_revision call
+            // is unblocked). TODO: dispatch the council's verdict directly to
+            // the bounty action — for now council calls those endpoints
+            // separately with rick-reviewer or equivalent wallet.
+            sqlx::query(
+                "UPDATE relay_bounties SET oracle_review_escalation_id = NULL \
+                 WHERE oracle_review_escalation_id = $1",
+            )
+            .bind(resp.escalation_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "resolve: clearing review escalation link failed");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
             warn!(
                 escalation_id = %resp.escalation_id,
                 verdict = %req.council_verdict,
-                "review-path council resolution not yet wired to bounty action"
+                "review-path council resolution not yet auto-dispatched to bounty action"
             );
         }
         _ => {

@@ -235,7 +235,12 @@ async fn dispatch_intake_decision(
         }
         IntakeVerdict::Escalate => {
             relay
-                .create_escalation(decision.decision_id, "intake", &escalation_reason(decision))
+                .create_escalation(
+                    decision.decision_id,
+                    "intake",
+                    &escalation_reason(decision),
+                    None, // intake escalations have no bounty yet
+                )
                 .await?;
             info!(submission_id = %submission_id, "intake: escalated to council");
         }
@@ -283,7 +288,12 @@ async fn dispatch_review_decision(
         }
         ReviewVerdict::Escalate => {
             relay
-                .create_escalation(decision.decision_id, "review", &escalation_reason(decision))
+                .create_escalation(
+                    decision.decision_id,
+                    "review",
+                    &escalation_reason(decision),
+                    Some(bounty_id), // links bounty so /pending-review excludes
+                )
                 .await?;
             info!(bounty_id = %bounty_id, "review: escalated to council");
         }
@@ -509,12 +519,14 @@ impl RelayClient {
         decision_id: Uuid,
         path: &str,
         reason: &str,
+        bounty_id: Option<Uuid>,
     ) -> anyhow::Result<()> {
         let url = format!("{}/api/v1/escalations", self.base);
         let body = serde_json::json!({
             "decision_id": decision_id,
             "path": path,
             "reason": reason,
+            "bounty_id": bounty_id,
         });
         let resp = self
             .http

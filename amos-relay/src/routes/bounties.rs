@@ -154,6 +154,7 @@ async fn list_pending_review(
           AND verified_at IS NOT NULL
           AND approved_at IS NULL
           AND rejected_at IS NULL
+          AND oracle_review_escalation_id IS NULL
         ORDER BY verified_at ASC
         LIMIT 100
         "#,
