@@ -296,7 +296,14 @@ async fn retry_failed_settlements(state: &RelayState) -> Result<(), String> {
         match solana.process_bounty_payout(&params).await {
             Ok(result) => {
                 let _ = sqlx::query(
-                    "UPDATE relay_bounties SET settlement_tx = $1, settlement_status = 'settled' WHERE id = $2",
+                    "UPDATE relay_bounties \
+                     SET settlement_tx = $1, settlement_status = 'settled', \
+                         intake_submitter_payout_status = CASE \
+                             WHEN intake_submitter_wallet IS NOT NULL \
+                                  AND intake_submitter_payout_status IS NULL \
+                             THEN 'pending' ELSE intake_submitter_payout_status \
+                         END \
+                     WHERE id = $2",
                 )
                 .bind(&result.tx_signature)
                 .bind(id)

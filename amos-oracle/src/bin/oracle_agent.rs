@@ -162,11 +162,20 @@ async fn tick(
         vec![]
     });
     for raw in intakes {
+        let submitter_wallet = raw.submitter_wallet.clone();
         let sub = raw.into_agent_submission();
         let sub_id = sub.submission_id;
         match agent.intake(sub).await {
             Ok(decision) => {
-                if let Err(e) = dispatch_intake_decision(&relay, cfg, sub_id, &decision).await {
+                if let Err(e) = dispatch_intake_decision(
+                    &relay,
+                    cfg,
+                    sub_id,
+                    &decision,
+                    submitter_wallet.as_deref(),
+                )
+                .await
+                {
                     warn!(submission_id = %sub_id, error = %e, "intake dispatch failed");
                 }
             }
@@ -204,6 +213,7 @@ async fn dispatch_intake_decision(
     cfg: &Config,
     submission_id: Uuid,
     decision: &Decision,
+    submitter_wallet: Option<&str>,
 ) -> anyhow::Result<()> {
     let verdict: IntakeVerdict = serde_json::from_value(decision.verdict.clone())
         .map_err(|e| anyhow::anyhow!("intake verdict decode: {e}"))?;
@@ -215,7 +225,9 @@ async fn dispatch_intake_decision(
             let spec = decision.proposed_bounty_spec.as_ref().ok_or_else(|| {
                 anyhow::anyhow!("commission decision without proposed_bounty_spec")
             })?;
-            let bounty_id = relay.create_bounty_from_spec(cfg, spec).await?;
+            let bounty_id = relay
+                .create_bounty_from_spec(cfg, spec, submitter_wallet)
+                .await?;
             commissioned_bounty_id = Some(bounty_id);
             info!(
                 submission_id = %submission_id,
@@ -370,6 +382,11 @@ struct IntakeRow {
     suggested_category: Option<String>,
     #[serde(default)]
     suggested_capabilities: Vec<String>,
+    /// Optional finder's-fee recipient. Plumbing only — Oracle's reasoning
+    /// path does not see this; the daemon copies it onto the bounty row at
+    /// commission time so the settlement worker can route the fee.
+    #[serde(default)]
+    submitter_wallet: Option<String>,
 }
 
 impl IntakeRow {
@@ -442,6 +459,10 @@ struct CreateBountyBody<'a> {
     acceptance_criteria: Option<&'a JsonValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     test_command: Option<&'a str>,
+    /// Bug-report finder's fee: when the originating intake had a
+    /// submitter_wallet, copy it through so settlement queues the payout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intake_submitter_wallet: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -484,6 +505,7 @@ impl RelayClient {
         &self,
         cfg: &Config,
         spec: &ProposedBountySpec,
+        intake_submitter_wallet: Option<&str>,
     ) -> anyhow::Result<Uuid> {
         let deadline =
             chrono::Utc::now() + chrono::Duration::days(spec.deadline_days.max(1) as i64);
@@ -499,6 +521,7 @@ impl RelayClient {
             policy,
             acceptance_criteria: spec.acceptance_criteria.as_ref(),
             test_command: spec.test_command.as_deref(),
+            intake_submitter_wallet,
         };
 
         let url = format!("{}/api/v1/bounties", self.base);
