@@ -133,6 +133,29 @@ print(json.dumps(e))
 ")
     fi
 
+    # ── PR-head checkout for test_command ─────────────────────────────────
+    # The test_command must run against the *PR's* code, not main's — the
+    # whole point of QA verification is judging the worker's diff, not the
+    # current main. If we don't check out the PR head first, brand-new
+    # files added by the bounty (verifier scripts, new tests, new modules)
+    # won't exist when test_command runs and will exit 127.
+    #
+    # Skipped when GIT_SHA is empty (older bounties without proof_receipt)
+    # — those fall back to cargo against main, same as before.
+    ORIGINAL_REF=""
+    PR_CHECKOUT_OK=true
+    if [ -n "$GIT_SHA" ] && [ "$GIT_SHA" != "null" ]; then
+        ORIGINAL_REF=$(cd "$PROJECT_ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+        log "  Checking out PR head $GIT_SHA (was on $ORIGINAL_REF)"
+        if ! (cd "$PROJECT_ROOT" && git fetch --quiet origin "$GIT_SHA" 2>&1) ; then
+            log "  WARN: git fetch of $GIT_SHA failed — possibly a private fork or unpushed sha"
+        fi
+        if ! (cd "$PROJECT_ROOT" && git checkout --quiet --detach "$GIT_SHA" 2>&1) ; then
+            log "  FAIL: cannot checkout PR head $GIT_SHA — falling back to current ref"
+            PR_CHECKOUT_OK=false
+        fi
+    fi
+
     # ── Check 2/3: Bounty-specific test_command, or fall back to cargo ───
     #
     # OPS-QA-SEMANTIC-001: when the bounty has a test_command set (Oracle
@@ -255,6 +278,12 @@ print(json.dumps(e))
           -H "Content-Type: application/json" \
           -d "{\"reviewer_wallet\":\"${QA_WALLET}\",\"reason\":\"QA bot: ${REJECT_REASON}\"}" \
           2>/dev/null || log "  WARNING: reject call failed"
+    fi
+
+    # Restore the original ref so subsequent bounties in this cycle don't
+    # see leftover state from this PR's checkout.
+    if [ -n "$ORIGINAL_REF" ] && [ "$PR_CHECKOUT_OK" = "true" ]; then
+        (cd "$PROJECT_ROOT" && git checkout --quiet "$ORIGINAL_REF" 2>/dev/null) || true
     fi
 
     log "  Done with bounty $BOUNTY_ID"
