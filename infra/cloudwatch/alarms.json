@@ -9,7 +9,8 @@
     "EvaluationPeriods": 1,
     "Threshold": 1,
     "ComparisonOperator": "LessThanThreshold",
-    "TreatMissingData": "breaching"
+    "TreatMissingData": "breaching",
+    "AlarmActions": ["__AMOS_ALERT_TOPIC_ARN__"]
   },
   {
     "AlarmName": "amos-relay-error-burst",
@@ -21,7 +22,8 @@
     "EvaluationPeriods": 1,
     "Threshold": 10,
     "ComparisonOperator": "GreaterThanThreshold",
-    "TreatMissingData": "notBreaching"
+    "TreatMissingData": "notBreaching",
+    "AlarmActions": ["__AMOS_ALERT_TOPIC_ARN__"]
   },
   {
     "AlarmName": "amos-oracle-error-burst",
@@ -33,7 +35,8 @@
     "EvaluationPeriods": 1,
     "Threshold": 5,
     "ComparisonOperator": "GreaterThanThreshold",
-    "TreatMissingData": "notBreaching"
+    "TreatMissingData": "notBreaching",
+    "AlarmActions": ["__AMOS_ALERT_TOPIC_ARN__"]
   },
   {
     "AlarmName": "amos-settlement-failures",
@@ -45,7 +48,8 @@
     "EvaluationPeriods": 1,
     "Threshold": 0,
     "ComparisonOperator": "GreaterThanThreshold",
-    "TreatMissingData": "notBreaching"
+    "TreatMissingData": "notBreaching",
+    "AlarmActions": ["__AMOS_ALERT_TOPIC_ARN__"]
   },
   {
     "AlarmName": "amos-oracle-escalation-flood",
@@ -57,6 +61,7 @@
     "EvaluationPeriods": 1,
     "Threshold": 20,
     "ComparisonOperator": "GreaterThanThreshold",
-    "TreatMissingData": "notBreaching"
+    "TreatMissingData": "notBreaching",
+    "AlarmActions": ["__AMOS_ALERT_TOPIC_ARN__"]
   }
 ]

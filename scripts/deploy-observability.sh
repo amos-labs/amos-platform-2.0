@@ -22,6 +22,13 @@ REGION="${AWS_REGION:-us-east-1}"
 DASHBOARD_NAME="amos-protocol-health"
 INFRA_DIR="$(cd "$(dirname "$0")/.." && pwd)/infra/cloudwatch"
 
+# Optional: SNS topic ARN to wire as AlarmActions on every alarm. When set,
+# AlarmActions placeholder `__AMOS_ALERT_TOPIC_ARN__` in alarms.json gets
+# substituted at deploy time. When unset, the placeholder is stripped and
+# alarms deploy without notification actions (silent — useful for the
+# initial bring-up before the topic exists).
+ALERT_TOPIC_ARN="${AMOS_ALERT_TOPIC_ARN:-}"
+
 DRY_RUN=false
 TEARDOWN=false
 for arg in "$@"; do
@@ -115,10 +122,25 @@ run aws cloudwatch put-dashboard \
 # 3. Alarms
 echo
 echo "── Alarms ───────────────────────────────────────────────────"
-python3 -c "
-import json
+if [ -n "$ALERT_TOPIC_ARN" ]; then
+    echo "  AlarmActions → $ALERT_TOPIC_ARN"
+else
+    echo "  AlarmActions → (none, AMOS_ALERT_TOPIC_ARN unset)"
+fi
+
+ALERT_TOPIC_ARN="$ALERT_TOPIC_ARN" python3 -c "
+import json, os
+arn = os.environ.get('ALERT_TOPIC_ARN','')
 with open('$INFRA_DIR/alarms.json') as f:
     for a in json.load(f):
+        # Substitute the placeholder in AlarmActions. When the env is empty,
+        # drop the field entirely so put-metric-alarm doesn't get a junk arn.
+        actions = a.get('AlarmActions') or []
+        substituted = [arn if x == '__AMOS_ALERT_TOPIC_ARN__' else x for x in actions]
+        if arn:
+            a['AlarmActions'] = substituted
+        else:
+            a.pop('AlarmActions', None)
         print(json.dumps(a))
 " | while IFS= read -r ALARM_JSON; do
     NAME=$(echo "$ALARM_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['AlarmName'])")
@@ -138,6 +160,8 @@ parts.extend(['--evaluation-periods', str(a['EvaluationPeriods'])])
 parts.extend(['--threshold', str(a['Threshold'])])
 parts.extend(['--comparison-operator', a['ComparisonOperator']])
 parts.extend(['--treat-missing-data', a['TreatMissingData']])
+if a.get('AlarmActions'):
+    parts.extend(['--alarm-actions'] + a['AlarmActions'])
 print(' '.join(shlex.quote(p) for p in parts))
 ")
         eval aws cloudwatch put-metric-alarm --region "$REGION" $ARGS
@@ -151,5 +175,8 @@ DASHBOARD_URL="https://${REGION}.console.aws.amazon.com/cloudwatch/home?region=$
 echo "Dashboard: $DASHBOARD_URL"
 echo "Alarms:    https://${REGION}.console.aws.amazon.com/cloudwatch/home?region=${REGION}#alarmsV2:?search=amos-"
 echo
-echo "Note: alarms have no notification action wired yet (no SNS topic). Add"
-echo "      --alarm-actions <SNS topic ARN> to put-metric-alarm calls when ready."
+if [ -n "$ALERT_TOPIC_ARN" ]; then
+    echo "Notifications: $ALERT_TOPIC_ARN — verify with scripts/verify-sns-wiring.sh"
+else
+    echo "Notifications: NOT WIRED. Set AMOS_ALERT_TOPIC_ARN env and re-run to attach."
+fi
