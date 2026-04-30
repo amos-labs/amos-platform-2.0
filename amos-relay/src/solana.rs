@@ -1052,10 +1052,49 @@ fn max_micro_lamports_per_cu(max_priority_fee_lamports: u64, cu_limit: u32) -> u
     (lamports_micro / cu_limit as u128).min(u64::MAX as u128) as u64
 }
 
+/// Maximum number of writable accounts we will pass to
+/// `getRecentPrioritizationFees`. The RPC accepts up to 128 per its public
+/// contract; settlement txs use far fewer, but the cap is enforced
+/// defensively to keep us inside the documented limit.
+const MAX_FEE_QUERY_ACCOUNTS: usize = 128;
+
+/// Collect the writable account pubkeys touched by `instructions`, in
+/// first-seen order, deduplicated, capped at `MAX_FEE_QUERY_ACCOUNTS`. The
+/// resulting slice is what `getRecentPrioritizationFees` needs to return
+/// per-account fee samples that reflect contention on the *specific*
+/// accounts this transaction will lock — not a network-wide median that
+/// could underbid for a hot account (e.g. the daily pool PDA).
+fn writable_accounts_for(instructions: &[Instruction]) -> Vec<Pubkey> {
+    let mut out: Vec<Pubkey> = Vec::new();
+    for ix in instructions {
+        for meta in &ix.accounts {
+            if !meta.is_writable {
+                continue;
+            }
+            if out.contains(&meta.pubkey) {
+                continue;
+            }
+            out.push(meta.pubkey);
+            if out.len() == MAX_FEE_QUERY_ACCOUNTS {
+                return out;
+            }
+        }
+    }
+    out
+}
+
 /// Estimate a priority-fee bid (micro-lamports per compute unit) for the
 /// next transaction. Queries recent per-slot prioritization fees from the
-/// RPC, takes the median of the non-zero samples as a baseline, and clamps
-/// the result so `price × cu_limit ≤ max_priority_fee_lamports`.
+/// RPC scoped to the writable accounts in `accounts`, takes the median of
+/// the non-zero samples as a baseline, and clamps the result so
+/// `price × cu_limit ≤ max_priority_fee_lamports`.
+///
+/// Passing the actual writable accounts (rather than an empty list) lets the
+/// validator return fees that reflect contention on the specific accounts
+/// this transaction will lock; an empty list returns a global network-wide
+/// distribution, which can systematically underbid for hot accounts. Callers
+/// that genuinely have no writable accounts (e.g. read-only health probes)
+/// may pass an empty slice.
 ///
 /// Falls back to `FALLBACK_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS` on RPC errors
 /// or when every sample is zero. The fallback is still clamped against the
@@ -1065,13 +1104,16 @@ fn estimate_compute_unit_price_micro_lamports(
     rpc: &RpcClient,
     max_priority_fee_lamports: u64,
     cu_limit: u32,
+    accounts: &[Pubkey],
 ) -> u64 {
     let cap_micro_per_cu = max_micro_lamports_per_cu(max_priority_fee_lamports, cu_limit);
     if cap_micro_per_cu == 0 {
         return 0;
     }
 
-    let sampled = rpc.get_recent_prioritization_fees(&[]).unwrap_or_default();
+    let sampled = rpc
+        .get_recent_prioritization_fees(accounts)
+        .unwrap_or_default();
     let mut non_zero: Vec<u64> = sampled
         .iter()
         .map(|f| f.prioritization_fee)
@@ -1092,10 +1134,12 @@ fn estimate_compute_unit_price_micro_lamports(
 /// Every attempt prepends two `ComputeBudgetProgram` instructions:
 /// `set_compute_unit_limit(budget.compute_unit_limit)` and
 /// `set_compute_unit_price(estimate)`, where the price is a freshly-sampled
-/// median of `getRecentPrioritizationFees`, clamped by
-/// `budget.max_priority_fee_lamports`. Re-sampling on every attempt lets a
-/// retry react to worsening congestion instead of repeatedly bidding the
-/// same (now-insufficient) price.
+/// median of `getRecentPrioritizationFees` *scoped to the writable accounts*
+/// in `instructions`, clamped by `budget.max_priority_fee_lamports`. The
+/// account scoping makes the estimate reflect contention on the specific
+/// accounts the tx will lock rather than the network-wide median. Re-sampling
+/// on every attempt lets a retry react to worsening congestion instead of
+/// repeatedly bidding the same (now-insufficient) price.
 fn send_with_retry(
     rpc: &RpcClient,
     instructions: &[Instruction],
@@ -1105,6 +1149,10 @@ fn send_with_retry(
     budget: ComputeBudget,
 ) -> Result<String> {
     let mut last_error = None;
+    // Writable accounts are derived from the user instructions only — the
+    // ComputeBudget instructions we prepend take no accounts and do not
+    // influence the priority-fee market.
+    let fee_query_accounts = writable_accounts_for(instructions);
 
     for attempt in 0..=max_retries {
         if attempt > 0 {
@@ -1119,6 +1167,7 @@ fn send_with_retry(
             rpc,
             budget.max_priority_fee_lamports,
             budget.compute_unit_limit,
+            &fee_query_accounts,
         );
         debug!(
             attempt,
@@ -2617,6 +2666,55 @@ mod tests {
         let prior = priority_fee_lamports_ceiling(100, CU_LIMIT_SETTLEMENT);
         let next = priority_fee_lamports_ceiling(200, CU_LIMIT_SETTLEMENT);
         assert!(next >= prior);
+    }
+
+    fn ix_with_metas(metas: Vec<AccountMeta>) -> Instruction {
+        Instruction {
+            program_id: SYSTEM_PROGRAM_ID,
+            accounts: metas,
+            data: vec![],
+        }
+    }
+
+    #[test]
+    fn writable_accounts_for_collects_only_writable() {
+        let writable = Pubkey::new_unique();
+        let readonly = Pubkey::new_unique();
+        let ix = ix_with_metas(vec![
+            AccountMeta::new(writable, false),
+            AccountMeta::new_readonly(readonly, false),
+        ]);
+        let out = writable_accounts_for(&[ix]);
+        assert_eq!(out, vec![writable]);
+    }
+
+    #[test]
+    fn writable_accounts_for_dedups_across_instructions() {
+        let shared = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let ix_a = ix_with_metas(vec![AccountMeta::new(shared, true)]);
+        let ix_b = ix_with_metas(vec![
+            AccountMeta::new(shared, false),
+            AccountMeta::new(other, false),
+        ]);
+        let out = writable_accounts_for(&[ix_a, ix_b]);
+        assert_eq!(out, vec![shared, other]);
+    }
+
+    #[test]
+    fn writable_accounts_for_caps_at_rpc_limit() {
+        let metas: Vec<AccountMeta> = (0..(MAX_FEE_QUERY_ACCOUNTS + 5))
+            .map(|_| AccountMeta::new(Pubkey::new_unique(), false))
+            .collect();
+        let ix = ix_with_metas(metas);
+        let out = writable_accounts_for(&[ix]);
+        assert_eq!(out.len(), MAX_FEE_QUERY_ACCOUNTS);
+    }
+
+    #[test]
+    fn writable_accounts_for_handles_empty_instructions() {
+        let out = writable_accounts_for(&[]);
+        assert!(out.is_empty());
     }
 
     // CU-limit invariants are enforced at compile time: these values are
