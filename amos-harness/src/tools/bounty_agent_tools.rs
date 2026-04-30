@@ -11,9 +11,58 @@ use amos_core::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value as JsonValue};
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::RwLock;
 use tracing::debug;
+
+/// Cached result of probing whether this harness can execute shell commands.
+///
+/// `verify_bounty` runs the bounty's `test_command` via `sh -c …`; if that
+/// path is broken (seccomp, missing CAP_SETUID, no sh binary, etc.), the
+/// agent will not be able to self-verify and will end up submitting work
+/// it can't prove. `assess_bounty_fit` reads this signal and caps the
+/// fit-score for bounties whose `test_command` is set when the harness
+/// can't actually run one.
+///
+/// Probed once on first call, then memoized — the answer doesn't change
+/// over the lifetime of the harness process.
+fn shell_available() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        // The bash tool's setuid path is now euid-conditional (PR #26), so
+        // "can we run sh -c true?" is the right question to ask. Anything
+        // beyond that — missing language toolchains, network sandboxes,
+        // etc. — is per-bounty and out of scope for this probe.
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg("true")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+}
+
+/// Compute the fit-score penalty for a bounty whose `test_command` can't
+/// actually be run in this harness. Pure function so the gating logic is
+/// independently testable; the execute path applies it via this helper.
+///
+/// Returns `(multiplier, optional risk message)`. Multiplier is in [0, 1].
+fn test_command_runnability_penalty(
+    test_command: Option<&str>,
+    shell_available: bool,
+) -> (f64, Option<String>) {
+    match (test_command, shell_available) {
+        (Some(_), false) => (
+            0.4,
+            Some(
+                "Harness has no shell — cannot run the bounty's test_command. \
+                 verify_bounty will return skipped; submission would be unverified."
+                    .to_string(),
+            ),
+        ),
+        _ => (1.0, None),
+    }
+}
 
 // ── DiscoverBountiesTool ────────────────────────────────────────────────
 
@@ -335,7 +384,11 @@ impl Tool for AssessBountyFitTool {
 
     fn description(&self) -> &str {
         "Assess an agent's fitness to complete a specific bounty. Returns a fit score (0-1), \
-         missing tools, risk assessment, and estimated completion time."
+         missing tools, risk assessment, estimated completion time, and \
+         harness_capabilities (whether this harness can actually run the bounty's \
+         test_command). When the bounty declares a test_command and the harness \
+         has no shell, fit_score is capped because verify_bounty would skip — \
+         the agent should claim a different bounty or delegate."
     }
 
     fn parameters_schema(&self) -> JsonValue {
@@ -412,8 +465,12 @@ impl Tool for AssessBountyFitTool {
         let cached = self.bounty_cache.read().await;
         let bounty = cached.iter().find(|b| b.id.to_string() == bounty_id);
 
-        let (required_capabilities, reward_tokens) = match bounty {
-            Some(b) => (b.required_capabilities.clone(), b.reward_tokens),
+        let (required_capabilities, reward_tokens, test_command) = match bounty {
+            Some(b) => (
+                b.required_capabilities.clone(),
+                b.reward_tokens,
+                b.test_command.clone(),
+            ),
             None => {
                 return Ok(ToolResult::success(json!({
                     "fit_score": 0.0,
@@ -468,6 +525,19 @@ impl Tool for AssessBountyFitTool {
             ));
         }
 
+        // 4. Harness can actually run the bounty's verifier.
+        //
+        // If the bounty declares a test_command but this harness has no
+        // shell, `verify_bounty` will return status=skipped and the agent
+        // would be submitting unverified work. Cap the fit score and flag
+        // the gap so the agent picks something else (or delegates).
+        let (runnability_mult, runnability_risk) =
+            test_command_runnability_penalty(test_command.as_deref(), shell_available());
+        fit_score *= runnability_mult;
+        if let Some(msg) = runnability_risk {
+            risk_factors.push(msg);
+        }
+
         // Estimate completion time based on reward (proxy for complexity)
         let estimated_hours = match reward_tokens {
             0..=100 => 1,
@@ -497,6 +567,10 @@ impl Tool for AssessBountyFitTool {
             "agent_trust_level": agent_trust_level,
             "current_workload": format!("{}/{}", current_task_count, max_concurrent),
             "completion_rate": (completion_rate * 100.0).round() / 100.0,
+            "harness_capabilities": {
+                "shell": shell_available(),
+                "test_command_runnable": test_command.is_some() && shell_available(),
+            },
         })))
     }
 
@@ -1905,5 +1979,38 @@ mod tests {
             .as_u64()
             .expect("maximum on timeout_secs");
         assert_eq!(max, 300, "verify_bounty timeout must cap at 300s");
+    }
+
+    // ── Harness-capability gating in assess_bounty_fit ─────────────────
+
+    #[test]
+    fn no_test_command_means_no_penalty_regardless_of_shell() {
+        let (mult, risk) = test_command_runnability_penalty(None, false);
+        assert_eq!(mult, 1.0);
+        assert!(risk.is_none());
+        let (mult, risk) = test_command_runnability_penalty(None, true);
+        assert_eq!(mult, 1.0);
+        assert!(risk.is_none());
+    }
+
+    #[test]
+    fn test_command_with_shell_means_no_penalty() {
+        let (mult, risk) = test_command_runnability_penalty(Some("cargo test"), true);
+        assert_eq!(mult, 1.0);
+        assert!(risk.is_none());
+    }
+
+    #[test]
+    fn test_command_without_shell_caps_fit_and_explains() {
+        let (mult, risk) = test_command_runnability_penalty(Some("cargo test"), false);
+        assert!(
+            mult < 1.0,
+            "shell-less harness must penalize a bounty with test_command"
+        );
+        let msg = risk.expect("risk message must be set");
+        assert!(
+            msg.contains("no shell") || msg.contains("verify_bounty"),
+            "risk message should explain why ({msg})"
+        );
     }
 }
