@@ -604,15 +604,17 @@ impl AssessBountyFitTool {
 /// Claim a bounty from the relay marketplace.
 ///
 /// Sends a claim request to the relay, records the claim locally, and updates
-/// agent status to Working.
+/// agent status to Working. On first claim per agent, ensures the agent is
+/// registered with the relay (closes Finding #2 from bounty ea3466b2: harness
+/// agents weren't synced to the relay so claims always returned 401).
 pub struct ClaimBountyTool {
-    relay_url: String,
+    config: Arc<amos_core::AppConfig>,
     db_pool: PgPool,
 }
 
 impl ClaimBountyTool {
-    pub fn new(relay_url: String, db_pool: PgPool) -> Self {
-        Self { relay_url, db_pool }
+    pub fn new(config: Arc<amos_core::AppConfig>, db_pool: PgPool) -> Self {
+        Self { config, db_pool }
     }
 }
 
@@ -687,7 +689,27 @@ impl Tool for ClaimBountyTool {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.5);
 
-        // Look up agent's wallet address for relay identity
+        // Resolve the relay-side UUID for this local agent. First call
+        // registers with the relay; subsequent calls hit the local cache.
+        // Closes Finding #2 (claim 401) from bounty ea3466b2.
+        let relay_agent_uuid = match crate::relay_registration::ensure_registered_with_relay(
+            &self.db_pool,
+            &self.config,
+            agent_id,
+        )
+        .await
+        {
+            Ok(uuid) => uuid,
+            Err(e) => {
+                return Ok(ToolResult::error(format!(
+                    "Could not register agent {agent_id} with relay: {e}. \
+                     Make sure openclaw_agents.wallet_address is set."
+                )));
+            }
+        };
+
+        // Look up agent's wallet address (kept for the relay payload — the
+        // claim handler validates wallet format and records it on the bounty).
         let wallet_address: Option<String> =
             sqlx::query_scalar("SELECT wallet_address FROM openclaw_agents WHERE id = $1")
                 .bind(agent_id)
@@ -697,10 +719,14 @@ impl Tool for ClaimBountyTool {
                 .flatten();
 
         // Send claim to relay
-        let url = format!("{}/api/v1/bounties/{}/claim", self.relay_url, bounty_id);
+        let url = format!(
+            "{}/api/v1/bounties/{}/claim",
+            self.config.relay.url.trim_end_matches('/'),
+            bounty_id
+        );
         let client = reqwest::Client::new();
         let mut payload = json!({
-            "agent_id": agent_id,
+            "agent_id": relay_agent_uuid,
             "capabilities": capabilities,
             "estimated_completion_hours": estimated_hours,
         });
@@ -708,7 +734,13 @@ impl Tool for ClaimBountyTool {
             payload["wallet_address"] = json!(addr);
         }
 
-        match client.post(&url).json(&payload).send().await {
+        let mut req = client.post(&url).json(&payload);
+        if let Some(key) = self.config.relay.api_key.as_ref() {
+            use secrecy::ExposeSecret;
+            req = req.bearer_auth(key.expose_secret());
+        }
+
+        match req.send().await {
             Ok(resp) if resp.status().is_success() => {
                 // Record claim locally
                 let estimated_interval = format!("{} hours", estimated_hours);
@@ -769,14 +801,16 @@ impl Tool for ClaimBountyTool {
 /// Submit proof of completed bounty work to the relay.
 ///
 /// Packages output, test results, and execution logs for verification.
+/// Uses the same auto-register-with-relay flow as ClaimBountyTool so the
+/// agent_id sent to the relay is the relay's UUID, not the local serial.
 pub struct SubmitBountyProofTool {
-    relay_url: String,
+    config: Arc<amos_core::AppConfig>,
     db_pool: PgPool,
 }
 
 impl SubmitBountyProofTool {
-    pub fn new(relay_url: String, db_pool: PgPool) -> Self {
-        Self { relay_url, db_pool }
+    pub fn new(config: Arc<amos_core::AppConfig>, db_pool: PgPool) -> Self {
+        Self { config, db_pool }
     }
 }
 
@@ -847,7 +881,21 @@ impl Tool for SubmitBountyProofTool {
             .unwrap_or("");
         let metrics = params.get("metrics").cloned();
 
-        // Look up agent's wallet address for relay identity
+        // Resolve relay UUID + look up wallet (same pattern as claim).
+        let relay_agent_uuid = match crate::relay_registration::ensure_registered_with_relay(
+            &self.db_pool,
+            &self.config,
+            agent_id,
+        )
+        .await
+        {
+            Ok(uuid) => uuid,
+            Err(e) => {
+                return Ok(ToolResult::error(format!(
+                    "Could not register agent {agent_id} with relay: {e}"
+                )));
+            }
+        };
         let wallet_address: Option<String> =
             sqlx::query_scalar("SELECT wallet_address FROM openclaw_agents WHERE id = $1")
                 .bind(agent_id)
@@ -857,10 +905,14 @@ impl Tool for SubmitBountyProofTool {
                 .flatten();
 
         // Submit to relay
-        let url = format!("{}/api/v1/bounties/{}/submit", self.relay_url, bounty_id);
+        let url = format!(
+            "{}/api/v1/bounties/{}/submit",
+            self.config.relay.url.trim_end_matches('/'),
+            bounty_id
+        );
         let client = reqwest::Client::new();
         let mut payload = json!({
-            "agent_id": agent_id,
+            "agent_id": relay_agent_uuid,
             "proof": {
                 "output": output,
                 "test_results": test_results,
@@ -872,7 +924,13 @@ impl Tool for SubmitBountyProofTool {
             payload["wallet_address"] = json!(addr);
         }
 
-        match client.post(&url).json(&payload).send().await {
+        let mut req = client.post(&url).json(&payload);
+        if let Some(key) = self.config.relay.api_key.as_ref() {
+            use secrecy::ExposeSecret;
+            req = req.bearer_auth(key.expose_secret());
+        }
+
+        match req.send().await {
             Ok(resp) if resp.status().is_success() => {
                 let body: JsonValue = resp.json().await.unwrap_or(json!({}));
 

@@ -477,6 +477,12 @@ pub struct BountyResponse {
     pub merged_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub merged_by: Option<String>,
+    /// Set when Oracle escalated this bounty's review to council. Lets API
+    /// consumers see escalation state instead of having to scrape the
+    /// `/escalations` queue. NULL = no escalation (either Oracle
+    /// self-authorized, or never reviewed yet).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oracle_review_escalation_id: Option<Uuid>,
     /// Minimum trust level required to claim. NULL = open to all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_trust_level: Option<i16>,
@@ -523,6 +529,7 @@ const BOUNTY_SELECT: &str = r#"
     policy, proof_receipt, failure_capsule,
     gate_override_reason, gate_override_by, gate_override_at,
     merge_commit_sha, merged_at, merged_by,
+    oracle_review_escalation_id,
     min_trust_level, tier, acceptance_criteria, repo_url, test_command,
     intake_submitter_wallet, intake_submitter_payout_bps,
     intake_submitter_payout_status, intake_submitter_payout_tx,
@@ -576,6 +583,7 @@ fn bounty_from_row(row: sqlx::postgres::PgRow) -> Result<BountyResponse, sqlx::E
         gate_override_by: row.try_get("gate_override_by").ok().flatten(),
         gate_override_at: row.try_get("gate_override_at").ok().flatten(),
         merge_commit_sha: row.try_get("merge_commit_sha").ok().flatten(),
+        oracle_review_escalation_id: row.try_get("oracle_review_escalation_id").ok().flatten(),
         merged_at: row.try_get("merged_at").ok().flatten(),
         merged_by: row.try_get("merged_by").ok().flatten(),
         min_trust_level: row.try_get("min_trust_level").ok().flatten(),
