@@ -356,6 +356,164 @@ impl DiscoverBountiesTool {
     }
 }
 
+// ── Capability synonym matching ─────────────────────────────────────────
+
+/// Return true if any of `agent_caps` is the canonical equivalent of
+/// `required`. Match is case-insensitive and dash/underscore-insensitive.
+/// Synonym groups are defined inline: each tuple groups capabilities that
+/// agents and bounty posters use interchangeably.
+///
+/// Closes Finding #1 from bounty ea3466b2 (assess_bounty_fit's literal
+/// string matching returned 0.0 fit even when the agent could clearly do
+/// the work — e.g. `documentation` vs `content_generation`).
+pub(crate) fn capabilities_match(required: &str, agent_caps: &[String]) -> bool {
+    let req_canon = canonicalize_capability(required);
+    agent_caps
+        .iter()
+        .any(|c| canonicalize_capability(c) == req_canon)
+}
+
+/// Lowercase, normalize separators, and map to a canonical synonym key.
+fn canonicalize_capability(s: &str) -> String {
+    let normalized: String = s
+        .to_lowercase()
+        .chars()
+        .map(|c| if c == '-' || c == ' ' { '_' } else { c })
+        .collect();
+    // Synonym groups: each tuple is (canonical_form, [equivalents...]).
+    // Order: the canonical form is the first element.
+    static SYNONYM_GROUPS: &[&[&str]] = &[
+        &[
+            "content_generation",
+            "writing",
+            "documentation",
+            "docs",
+            "technical_writing",
+            "copywriting",
+        ],
+        &[
+            "code_generation",
+            "coding",
+            "code",
+            "programming",
+            "rust",
+            "code_writing",
+        ],
+        &["data_analysis", "analytics", "data_science", "statistics"],
+        &["web_search", "search", "research"],
+        &["image_generation", "image_gen", "images", "art_generation"],
+        &["bash", "shell", "shell_execution", "subprocess"],
+        &[
+            "verification",
+            "verify",
+            "testing",
+            "qa",
+            "quality_assurance",
+            "review",
+        ],
+        &["aws", "cloud", "cloudwatch", "infra"],
+        &["solana", "onchain", "anchor"],
+    ];
+    for group in SYNONYM_GROUPS {
+        if group.contains(&normalized.as_str()) {
+            return group[0].to_string();
+        }
+    }
+    normalized
+}
+
+// ── GetBountyTool ───────────────────────────────────────────────────────
+
+/// Fetch a single bounty's complete record from the relay by id.
+///
+/// `discover_bounties` truncates long descriptions and omits some fields to
+/// keep the listing payload small. When an agent picks a bounty to act on,
+/// it should call `get_bounty` to read the full record — full description,
+/// `acceptance_criteria` array, `test_command`, `policy`, `repo_url`,
+/// settlement state, etc. Surfaced by Finding #6 of bounty ea3466b2.
+pub struct GetBountyTool {
+    config: Arc<amos_core::AppConfig>,
+}
+
+impl GetBountyTool {
+    pub fn new(config: Arc<amos_core::AppConfig>) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait]
+impl Tool for GetBountyTool {
+    fn name(&self) -> &str {
+        "get_bounty"
+    }
+
+    fn description(&self) -> &str {
+        "Fetch the complete record of a single bounty from the relay by id. \
+         Use this whenever you need the full description, acceptance \
+         criteria, test_command, policy, repo_url, or current settlement / \
+         merge state — discover_bounties truncates long fields to keep the \
+         listing payload small. Required input: bounty_id (UUID)."
+    }
+
+    fn parameters_schema(&self) -> JsonValue {
+        json!({
+            "type": "object",
+            "properties": {
+                "bounty_id": {
+                    "type": "string",
+                    "description": "UUID of the bounty to fetch"
+                }
+            },
+            "required": ["bounty_id"]
+        })
+    }
+
+    async fn execute(&self, params: JsonValue) -> Result<ToolResult> {
+        let bounty_id = params
+            .get("bounty_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| amos_core::AmosError::Validation("bounty_id is required".into()))?;
+
+        let url = format!(
+            "{}/api/v1/bounties/{}",
+            self.config.relay.url.trim_end_matches('/'),
+            bounty_id
+        );
+        let mut req = reqwest::Client::new().get(&url);
+        if let Some(key) = self.config.relay.api_key.as_ref() {
+            use secrecy::ExposeSecret;
+            req = req.bearer_auth(key.expose_secret());
+        }
+
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let body: JsonValue = resp.json().await.unwrap_or(JsonValue::Null);
+                Ok(ToolResult::success(body))
+            }
+            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => Ok(ToolResult::error(
+                format!("Bounty {bounty_id} not found. Check the id (must be a UUID)."),
+            )),
+            Ok(resp) => {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                Ok(ToolResult::error(format!(
+                    "Relay returned {status} for /bounties/{bounty_id}: {}",
+                    text.chars().take(200).collect::<String>()
+                )))
+            }
+            Err(e) => Ok(ToolResult::error(format!(
+                "Failed to reach relay at {url}: {e}"
+            ))),
+        }
+    }
+
+    fn category(&self) -> ToolCategory {
+        ToolCategory::BountyAgent
+    }
+}
+
 // ── AssessBountyFitTool ─────────────────────────────────────────────────
 
 /// Assess an agent's fitness to complete a specific bounty.
@@ -487,17 +645,21 @@ impl Tool for AssessBountyFitTool {
         let mut risk_factors: Vec<String> = Vec::new();
 
         // 1. Capability match (0.4 weight)
+        // Synonym-aware match — `documentation` should satisfy a bounty
+        // asking for `content_generation`. Closes Finding #1 from bounty
+        // ea3466b2 (literal string matching tanked fit_score to 0.0 even
+        // though the agent could clearly do the work).
         if !required_capabilities.is_empty() {
             let matched = required_capabilities
                 .iter()
-                .filter(|req| agent_capabilities.contains(req))
+                .filter(|req| capabilities_match(req, &agent_capabilities))
                 .count();
             let cap_score = matched as f64 / required_capabilities.len() as f64;
             fit_score *= cap_score;
 
             missing_tools = required_capabilities
                 .iter()
-                .filter(|req| !agent_capabilities.contains(req))
+                .filter(|req| !capabilities_match(req, &agent_capabilities))
                 .cloned()
                 .collect();
 
@@ -1647,6 +1809,39 @@ impl Tool for VerifyBountyTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Capability synonym matching (Finding #1) ──────────────────────
+
+    #[test]
+    fn capability_match_exact_string() {
+        assert!(capabilities_match("rust", &["rust".into()]));
+    }
+
+    #[test]
+    fn capability_match_synonym_documentation_to_content_generation() {
+        // The exact case Finding #1 hit live: bounty asked for
+        // content_generation, agent declared documentation.
+        assert!(capabilities_match(
+            "content_generation",
+            &["documentation".into()]
+        ));
+        assert!(capabilities_match(
+            "documentation",
+            &["content_generation".into()]
+        ));
+    }
+
+    #[test]
+    fn capability_match_case_and_separator_insensitive() {
+        assert!(capabilities_match("Code-Generation", &["coding".into()]));
+        assert!(capabilities_match("data analysis", &["analytics".into()]));
+    }
+
+    #[test]
+    fn capability_match_unrelated_returns_false() {
+        assert!(!capabilities_match("rust", &["documentation".into()]));
+        assert!(!capabilities_match("image_generation", &["bash".into()]));
+    }
 
     // ── Helper ─────────────────────────────────────────────────────────
 
