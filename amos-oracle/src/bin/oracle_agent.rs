@@ -419,6 +419,10 @@ struct PendingReviewRow {
     proof_receipt: Option<JsonValue>,
     #[serde(default)]
     failure_capsule: Option<JsonValue>,
+    #[serde(default)]
+    acceptance_criteria: Option<JsonValue>,
+    #[serde(default)]
+    test_command: Option<String>,
 }
 
 impl PendingReviewRow {
@@ -435,6 +439,8 @@ impl PendingReviewRow {
             policy: self.policy,
             proof_receipt: self.proof_receipt,
             failure_capsule: self.failure_capsule,
+            acceptance_criteria: self.acceptance_criteria,
+            test_command: self.test_command,
         }
     }
 }
