@@ -63,6 +63,19 @@ pub async fn create_server(
         }
     };
 
+    // Shared Bedrock availability for the BYOK↔Bedrock toggle in settings.
+    // Source of truth is whether the BedrockClient initialized; an explicit
+    // opt-out env var lets self-hosted deployments hide the option.
+    let shared_bedrock_disabled = std::env::var("AMOS__SHARED_BEDROCK__DISABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    let shared_bedrock_available = bedrock.is_some() && !shared_bedrock_disabled;
+    tracing::info!(
+        shared_bedrock_available,
+        bedrock_client = bedrock.is_some(),
+        "Computed shared Bedrock availability"
+    );
+
     // Initialize credential vault (AES-256-GCM encryption)
     let vault = Arc::new(amos_core::CredentialVault::from_env()?);
     tracing::info!("Credential vault initialized");
@@ -303,6 +316,7 @@ pub async fn create_server(
         db_pool,
         redis: redis_client,
         config: config.clone(),
+        shared_bedrock_available,
         canvas_engine,
         tool_registry: Arc::new(tool_registry),
         agent_manager,

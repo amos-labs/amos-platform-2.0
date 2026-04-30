@@ -98,6 +98,14 @@ pub struct AppState {
     /// Application configuration
     pub config: Arc<AppConfig>,
 
+    /// Whether the AMOS-shared Bedrock pool is reachable from this harness.
+    /// Computed at startup from `BedrockClient::new()` success (the actual
+    /// capability), with `AMOS__SHARED_BEDROCK__DISABLED=true` as an explicit
+    /// opt-out for self-hosted deploys. Replaces the prior reliance on
+    /// `SHARED_BEDROCK_ENABLED` env var which was set on the wrong container
+    /// in production and silently hid the BYOK↔Bedrock toggle.
+    pub shared_bedrock_available: bool,
+
     /// Canvas rendering and generation engine
     pub canvas_engine: Arc<CanvasEngine>,
 

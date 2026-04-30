@@ -5,14 +5,15 @@
 //!   - `PUT  /api/v1/settings` — Update one or more settings
 //!
 //! Billing model:
-//!   - Hosted harnesses get `SHARED_BEDROCK_ENABLED=true` at provisioning time.
+//!   - Hosted harnesses have a working Bedrock client (via ECS task role).
 //!     This means shared Bedrock is ON by default — the customer went through
 //!     Stripe checkout to get a harness, so billing is already established.
 //!   - Every token used via shared Bedrock is tracked per-model and reported to
 //!     the platform via activity sync, where cost is calculated at Bedrock
 //!     pricing + 3% markup and billed via Stripe metered billing.
 //!   - Users can switch to BYOK mode in settings (bring their own API key).
-//!   - Self-hosted harnesses don't have `SHARED_BEDROCK_ENABLED` — BYOK only.
+//!   - Self-hosted harnesses without Bedrock creds — BYOK only. Can also
+//!     explicitly opt out via `AMOS__SHARED_BEDROCK__DISABLED=true`.
 
 use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
@@ -154,9 +155,11 @@ pub fn catalog_model_ids() -> impl Iterator<Item = &'static str> {
 async fn get_settings(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SettingsResponse>, StatusCode> {
-    let shared_bedrock_available = std::env::var("SHARED_BEDROCK_ENABLED")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false);
+    // Source of truth: did BedrockClient initialize at server startup?
+    // The prior `SHARED_BEDROCK_ENABLED` env-var check was set on the wrong
+    // container in production and silently hid the toggle from customers
+    // (Rick + Jana: 2026-04-30 incident).
+    let shared_bedrock_available = state.shared_bedrock_available;
 
     let provider_mode = get_setting(&state, "llm_provider_mode")
         .await
@@ -198,9 +201,7 @@ async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let shared_bedrock_available = std::env::var("SHARED_BEDROCK_ENABLED")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false);
+    let shared_bedrock_available = state.shared_bedrock_available;
 
     if let Some(mode) = &req.llm_provider_mode {
         if mode != "shared_bedrock" && mode != "byok" {
