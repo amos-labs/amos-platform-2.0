@@ -518,6 +518,9 @@ impl ToolRegistry {
             config.clone(),
             db_pool.clone(),
         )));
+        registry.register(Arc::new(bounty_agent_tools::GetBountyTool::new(
+            config.clone(),
+        )));
         registry.register(Arc::new(bounty_agent_tools::SubmitBountyProofTool::new(
             config.clone(),
             db_pool.clone(),
