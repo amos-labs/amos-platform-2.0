@@ -606,9 +606,11 @@ impl AutonomousAgentLoop {
             self.bounty_cache.clone(),
         );
         let claim_tool =
-            bounty_agent_tools::ClaimBountyTool::new(relay_url.clone(), self.db_pool.clone());
-        let submit_tool =
-            bounty_agent_tools::SubmitBountyProofTool::new(relay_url.clone(), self.db_pool.clone());
+            bounty_agent_tools::ClaimBountyTool::new(self.app_config.clone(), self.db_pool.clone());
+        let submit_tool = bounty_agent_tools::SubmitBountyProofTool::new(
+            self.app_config.clone(),
+            self.db_pool.clone(),
+        );
         let check_tool =
             bounty_agent_tools::CheckBountyStatusTool::new(relay_url, self.db_pool.clone());
 

@@ -57,6 +57,7 @@ pub mod orchestrator;
 pub mod packages;
 pub mod platform_sync;
 pub mod prompt_guard;
+pub mod relay_registration;
 pub mod relay_sync;
 pub mod revisions;
 pub mod routes;

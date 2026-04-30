@@ -515,11 +515,11 @@ impl ToolRegistry {
             bounty_cache.clone(),
         )));
         registry.register(Arc::new(bounty_agent_tools::ClaimBountyTool::new(
-            config.relay.url.clone(),
+            config.clone(),
             db_pool.clone(),
         )));
         registry.register(Arc::new(bounty_agent_tools::SubmitBountyProofTool::new(
-            config.relay.url.clone(),
+            config.clone(),
             db_pool.clone(),
         )));
         registry.register(Arc::new(bounty_agent_tools::CheckBountyStatusTool::new(
