@@ -440,17 +440,30 @@ jobs:
           echo "Relay rolling deployment kicked off for tag ${{ steps.vars.outputs.IMAGE_TAG }}"
 
       - name: Roll amos-oracle ECS service
-        # No-op if the service hasn't been created yet (--force-new-deployment
-        # against a missing service errors). continue-on-error keeps that from
-        # blocking the build until first-time service creation is done.
+        # Two-step deploy:
+        #   1. Register a fresh task definition revision from the JSON in the
+        #      repo. Without this, env-var changes (e.g. ORACLE_PROMPT_VERSION)
+        #      land on disk but never reach AWS — the running service keeps
+        #      using whatever revision was last registered manually.
+        #   2. Update the service to point at the new revision. Force a new
+        #      deployment so the new image ALSO gets pulled in the same roll.
+        # No-op if the service hasn't been created yet — continue-on-error
+        # keeps first-time setup from blocking the build.
         run: |
+          NEW_REV=$(aws ecs register-task-definition \
+            --cli-input-json file://docker/oracle/task-definition.json \
+            --region us-east-1 \
+            --query 'taskDefinition.revision' \
+            --output text)
+          echo "Registered amos-oracle task definition revision $NEW_REV"
           aws ecs update-service \
             --cluster swarm-infrastructure-cluster \
             --service amos-oracle \
+            --task-definition "amos-oracle:$NEW_REV" \
             --force-new-deployment \
             --region us-east-1 \
             --no-cli-pager > /dev/null
-          echo "Oracle rolling deployment kicked off for tag ${{ steps.vars.outputs.IMAGE_TAG }}"
+          echo "Oracle rolling deployment kicked off for tag ${{ steps.vars.outputs.IMAGE_TAG }} (rev $NEW_REV)"
         continue-on-error: true
 
       - name: Register release with platform
