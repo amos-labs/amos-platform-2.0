@@ -7,10 +7,11 @@ This directory is organized so contributors and agents can find the current trut
 ### Strategy And System Shape
 
 1. [Core Thesis](core/thesis.md)
-2. [Architecture](core/architecture.md)
-3. [Proof-Carrying Autonomous Loop](protocol/proof-carrying-loop.md)
-4. [Bounty Lifecycle](protocol/bounty-lifecycle.md)
-5. [Oracle Review](protocol/oracle.md)
+2. [Business Plan And Execution Playbook](core/business-plan.md)
+3. [Architecture](core/architecture.md)
+4. [Proof-Carrying Autonomous Loop](protocol/proof-carrying-loop.md)
+5. [Bounty Lifecycle](protocol/bounty-lifecycle.md)
+6. [Oracle Review](protocol/oracle.md)
 
 ### Build And Contribute
 
