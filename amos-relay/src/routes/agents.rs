@@ -151,6 +151,33 @@ async fn register_agent(
         }
     }
 
+    // If an agent already exists for this wallet, return 200 with the
+    // existing record instead of 500/409. Lets the harness's
+    // ensure_registered_with_relay() self-heal when its local UUID cache
+    // got cleared but the relay-side row still exists. Idempotent
+    // registration is the right shape — wallet uniqueness is the contract.
+    if let Some(existing) = sqlx::query(&format!(
+        "SELECT {AGENT_SELECT} FROM relay_agents WHERE wallet_address = $1 LIMIT 1"
+    ))
+    .bind(&req.wallet_address)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        warn!("Failed to look up existing agent: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })? {
+        let agent = agent_from_row(existing).map_err(|e| {
+            warn!("Failed to map existing agent row: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        info!(
+            agent_id = %agent.id,
+            wallet = %req.wallet_address,
+            "Agent registration: wallet already registered, returning existing record"
+        );
+        return Ok((StatusCode::OK, Json(agent)));
+    }
+
     let agent_id = Uuid::new_v4();
     let now = Utc::now();
     let caps_json = serde_json::to_value(&req.capabilities).unwrap_or_default();
