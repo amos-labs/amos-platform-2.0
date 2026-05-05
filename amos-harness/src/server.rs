@@ -293,9 +293,10 @@ pub async fn create_server(
     // the update banner in the UI knows when to appear. Skipped when
     // platform URL is empty (self-hosted deploys with no central platform).
     let platform_sync = if !config.platform.url.is_empty() {
-        let client = Arc::new(crate::platform_sync::PlatformSyncClient::new(
+        let client = Arc::new(crate::platform_sync::PlatformSyncClient::new_with_db(
             &config.platform,
             &config.deployment,
+            Some(db_pool.clone()),
         ));
         // start() spawns its loops and returns a JoinHandle we intentionally
         // drop — the background tasks live for the process lifetime.

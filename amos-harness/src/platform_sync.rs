@@ -9,6 +9,7 @@ use amos_core::config::{DeploymentConfig, DeploymentMode, PlatformConfig};
 use reqwest::Client;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
@@ -23,6 +24,11 @@ pub struct PlatformSyncClient {
     config: PlatformConfig,
     /// Cached remote config (updated by sync loop).
     remote_config: Arc<RwLock<Option<RemoteConfig>>>,
+    /// Optional DB pool — used to read `llm_provider_mode` from
+    /// `harness_settings` before each activity report so the platform
+    /// can skip credit deduction for BYOK customers. Optional so unit
+    /// tests can construct a client without a real database.
+    db_pool: Option<PgPool>,
 }
 
 /// Configuration pulled from the platform.
@@ -84,6 +90,12 @@ struct ActivityReport {
     /// Harness ID for per-harness billing (from AMOS_HARNESS_ID env var).
     #[serde(skip_serializing_if = "Option::is_none")]
     harness_id: Option<String>,
+    /// True when this harness is in BYOK mode for the period — the
+    /// platform uses this to skip deducting from
+    /// `tenants.credit_balance_microcents`. Only emitted when true
+    /// (the platform defaults to false on the receiving side).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    is_byok: bool,
 }
 
 /// Accumulated activity counters (reset after each report).
@@ -125,8 +137,22 @@ impl ActivityCounters {
 }
 
 impl PlatformSyncClient {
-    /// Create a new platform sync client.
+    /// Create a new platform sync client without a DB pool.
+    /// The activity reporter will report every period as
+    /// non-BYOK (credit deduction always applies). Used in tests.
     pub fn new(platform_config: &PlatformConfig, deployment_config: &DeploymentConfig) -> Self {
+        Self::new_with_db(platform_config, deployment_config, None)
+    }
+
+    /// Create a new platform sync client with a DB pool. The activity
+    /// reporter will read `llm_provider_mode` from `harness_settings`
+    /// before each report and emit `is_byok = true` when the customer
+    /// is on their own provider key.
+    pub fn new_with_db(
+        platform_config: &PlatformConfig,
+        deployment_config: &DeploymentConfig,
+        db_pool: Option<PgPool>,
+    ) -> Self {
         let api_key = platform_config
             .api_key
             .as_ref()
@@ -143,7 +169,29 @@ impl PlatformSyncClient {
             harness_version: deployment_config.harness_version.clone(),
             config: platform_config.clone(),
             remote_config: Arc::new(RwLock::new(None)),
+            db_pool,
         }
+    }
+
+    /// Read `llm_provider_mode` from `harness_settings`. Returns true
+    /// only when the value is exactly `"byok"`. Any failure (no DB
+    /// pool, query error, missing row, unexpected JSON shape) returns
+    /// false — the safer default for billing accuracy: if we can't
+    /// confirm BYOK, we let the platform deduct credits.
+    async fn is_byok_active(&self) -> bool {
+        let Some(pool) = &self.db_pool else {
+            return false;
+        };
+        let row: Option<serde_json::Value> = sqlx::query_scalar(
+            "SELECT value FROM harness_settings WHERE key = 'llm_provider_mode'",
+        )
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        row.and_then(|v| v.as_str().map(str::to_string))
+            .map(|s| s == "byok")
+            .unwrap_or(false)
     }
 
     /// Get the cached remote config (may be None if never synced).
@@ -307,6 +355,7 @@ impl PlatformSyncClient {
             use std::sync::atomic::Ordering::Relaxed;
             let model_usage = counters.drain_model_usage().await;
             let models_used: Vec<String> = model_usage.iter().map(|e| e.model_id.clone()).collect();
+            let is_byok = self.is_byok_active().await;
             let report = ActivityReport {
                 period_start: last_report.to_rfc3339(),
                 period_end: now.to_rfc3339(),
@@ -319,6 +368,7 @@ impl PlatformSyncClient {
                 model_usage,
                 timestamp: now.to_rfc3339(),
                 harness_id: std::env::var("AMOS_HARNESS_ID").ok(),
+                is_byok,
             };
 
             // Skip empty reports
