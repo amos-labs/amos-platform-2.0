@@ -239,6 +239,13 @@ async fn proxy_chat(
         }
     };
 
+    // Credit gate: shared-Bedrock customers must have remaining monthly
+    // credits and must be on Haiku (Sonnet/Opus require BYOK). BYOK users
+    // skip this entirely. See docs/SUBSCRIPTION_AND_ONBOARDING.md.
+    if let Err(blocked) = check_credit_gate(&state).await {
+        return Ok(blocked);
+    }
+
     let enriched_body = match inject_llm_provider(&state, &body).await {
         Ok(b) => b,
         Err(e) => {
@@ -412,6 +419,110 @@ async fn inject_llm_provider(state: &AppState, body: &str) -> Result<String, Str
     }
 
     serde_json::to_string(&json).map_err(|e| format!("JSON serialize: {e}"))
+}
+
+/// Check whether the tenant is allowed to make a shared-Bedrock chat
+/// call. BYOK users always pass — they pay their own provider directly.
+/// Shared-Bedrock users must:
+///   1. Be using a Haiku model (Sonnet/Opus require BYOK on the
+///      shared backend per docs/SUBSCRIPTION_AND_ONBOARDING.md), and
+///   2. Have a non-zero credit balance on the platform.
+///
+/// On failure, returns a 402 Payment Required response with a JSON body
+/// the frontend can render into a "set up your key" banner.
+///
+/// On success, returns Ok(()) and the request continues to the agent.
+async fn check_credit_gate(state: &AppState) -> Result<(), Response> {
+    let provider_mode = super::settings::get_setting(state, "llm_provider_mode")
+        .await
+        .unwrap_or_else(|| "shared_bedrock".to_string());
+
+    if provider_mode == "byok" {
+        return Ok(());
+    }
+
+    // Shared Bedrock path: only Haiku is allowed.
+    let model = super::settings::get_setting(state, "llm_model")
+        .await
+        .unwrap_or_else(|| "us.anthropic.claude-sonnet-4-6".to_string());
+
+    if !model.to_lowercase().contains("haiku") {
+        return Err(payment_required(
+            "shared_backend_haiku_only",
+            "Sonnet and Opus require your own Bedrock or Anthropic key. \
+             Set up BYOK in Settings, or switch to Haiku 4.5.",
+        ));
+    }
+
+    // Balance check: ask the platform whether this tenant still has
+    // monthly Bedrock credits left. CUSTOMER_ID is set by the platform
+    // provisioner and equals the tenant's UUID. Network failures fall
+    // through to "allow" — better to drop a single call to a temporary
+    // platform outage than to lock every harness out when the lookup
+    // hiccups. The activity-report path on the platform side clamps
+    // overruns at zero, so the worst-case is bounded.
+    let Ok(tenant_id) = std::env::var("CUSTOMER_ID") else {
+        // No tenant id means this is a self-hosted/dev harness with no
+        // platform billing — let it through.
+        return Ok(());
+    };
+    let platform_url = std::env::var("AMOS__PLATFORM__URL").unwrap_or_default();
+    if platform_url.is_empty() {
+        return Ok(());
+    }
+
+    let url = format!("{}/api/v1/sync/balance/{}", platform_url, tenant_id);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok();
+    let Some(client) = client else { return Ok(()) };
+
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            #[derive(serde::Deserialize)]
+            struct BalanceBody {
+                credit_balance_microcents: i64,
+            }
+            match resp.json::<BalanceBody>().await {
+                Ok(b) if b.credit_balance_microcents > 0 => Ok(()),
+                Ok(_) => Err(payment_required(
+                    "credits_exhausted",
+                    "Monthly Bedrock credits exhausted. Set up your own \
+                     Bedrock or Anthropic key in Settings to keep using \
+                     AMOS this cycle.",
+                )),
+                Err(e) => {
+                    warn!("Balance response parse failed: {} — allowing call", e);
+                    Ok(())
+                }
+            }
+        }
+        Ok(resp) => {
+            warn!("Balance lookup returned {} — allowing call", resp.status());
+            Ok(())
+        }
+        Err(e) => {
+            warn!("Balance lookup failed: {} — allowing call", e);
+            Ok(())
+        }
+    }
+}
+
+/// Build a 402 Payment Required JSON response. The shape matches what
+/// the harness frontend chat handler expects to render the banner.
+fn payment_required(code: &str, message: &str) -> Response {
+    (
+        StatusCode::PAYMENT_REQUIRED,
+        [(header::CONTENT_TYPE, "application/json")],
+        Json(serde_json::json!({
+            "error": "payment_required",
+            "code": code,
+            "message": message,
+            "action": "setup_byok",
+        })),
+    )
+        .into_response()
 }
 
 /// Process attachments from the chat request body.

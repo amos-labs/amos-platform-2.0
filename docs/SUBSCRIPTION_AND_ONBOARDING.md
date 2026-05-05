@@ -110,7 +110,7 @@ ALTER TABLE customer_subscriptions
     ADD COLUMN credits_granted_at TIMESTAMPTZ;
 ```
 
-Microcents (0.01 cents) matches the existing `cost_microcents` convention in `amos-platform/src/billing/metered_billing.rs`. $5 = 50,000,000 microcents.
+Microcents (1/100 of a cent) matches the existing `cost_microcents` convention in `amos-platform/src/billing/metered_billing.rs`. $1 = 10,000 microcents, so **$5 = 50,000 microcents**.
 
 ### Stripe webhooks
 

@@ -549,6 +549,19 @@ async function sendMessage() {
             signal: state.abortController.signal,
         });
 
+        // 402 Payment Required: shared-Bedrock credits are exhausted, or the
+        // user picked a model that requires BYOK on the shared backend.
+        // The harness gate emits a structured JSON body the user can act on.
+        if (response.status === 402) {
+            try {
+                const errBody = await response.json();
+                showCreditsExhaustedBanner(errBody);
+            } catch (e) {
+                showCreditsExhaustedBanner({ message: 'Set up a Bedrock or Anthropic key in Settings to continue.' });
+            }
+            return;
+        }
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -988,6 +1001,35 @@ function appendMessage(role, content) {
     container.scrollTop = container.scrollHeight;
     lucide.createIcons({attrs: {}, nameAttr: 'data-lucide'});
     return div;
+}
+
+/// Render a 402 response from the chat endpoint. Two cases the harness
+/// emits today:
+///   - `code: "credits_exhausted"` — monthly $5 Haiku allowance is gone
+///   - `code: "shared_backend_haiku_only"` — selected Sonnet/Opus on shared
+/// In both cases the answer is the same: set up BYOK in Settings.
+function showCreditsExhaustedBanner(errBody) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'message-row p-4';
+    const message = (errBody && errBody.message)
+        ? errBody.message
+        : 'Set up a Bedrock or Anthropic key in Settings to continue.';
+    div.innerHTML = `
+        <div class="message-icon"><i data-lucide="alert-circle" class="w-4 h-4 text-amber-600"></i></div>
+        <div class="message-body">
+            <div class="message-content border border-amber-200 bg-amber-50 rounded-md p-3">
+                <div class="font-medium text-amber-900 mb-1">Action needed</div>
+                <div class="text-sm text-amber-800 mb-3">${message}</div>
+                <button class="px-3 py-1.5 text-sm bg-amber-600 text-white rounded-md hover:bg-amber-700"
+                        onclick="window.location.hash = '#settings'">
+                    Open Settings
+                </button>
+            </div>
+        </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    lucide.createIcons({attrs: {}, nameAttr: 'data-lucide'});
 }
 
 function showToolIndicator(messageEl, toolName, toolInput, inputSummary) {
