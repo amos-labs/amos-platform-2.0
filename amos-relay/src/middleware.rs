@@ -31,6 +31,25 @@ impl IntoResponse for ErrorResponse {
     }
 }
 
+/// Build a 401 response with a structured JSON body. `code` is a stable
+/// machine-readable identifier; `hint` is a human-readable explanation.
+/// Surfaces what's actually wrong so callers (especially the harness's
+/// auto-register flow) can react instead of guessing.
+///
+/// Closes Finding #3 of the harness↔relay bug report (bounty ea3466b2):
+/// the previous middleware returned bare `StatusCode::UNAUTHORIZED` with
+/// an empty body, and the harness had no way to tell `missing_bearer`
+/// from `bearer_not_recognized`.
+fn unauthorized_response(code: &'static str, hint: &str) -> Response {
+    let body = Json(json!({
+        "error": "unauthorized",
+        "code": code,
+        "hint": hint,
+        "status": 401,
+    }));
+    (StatusCode::UNAUTHORIZED, body).into_response()
+}
+
 /// API key authentication middleware for relay endpoints.
 ///
 /// Extracts Bearer token from Authorization header, hashes it with SHA-256,
@@ -41,7 +60,7 @@ pub async fn api_key_auth(
     State(db): State<PgPool>,
     req: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, Response> {
     let path = req.uri().path().to_string();
     let method = req.method().clone();
 
@@ -70,8 +89,19 @@ pub async fn api_key_auth(
 
     let token = match auth_header {
         Some(h) if h.starts_with("Bearer ") => &h[7..],
-        _ => {
-            return Err(StatusCode::UNAUTHORIZED);
+        Some(_) => {
+            return Err(unauthorized_response(
+                "malformed_authorization",
+                "Authorization header is present but doesn't start with `Bearer `. \
+                 Use the form: `Authorization: Bearer <token>`.",
+            ));
+        }
+        None => {
+            return Err(unauthorized_response(
+                "missing_bearer",
+                "No Authorization header. Send `Authorization: Bearer <token>` \
+                 where token is either a harness api_key or a relay_agents.id (UUID).",
+            ));
         }
     };
 
@@ -104,7 +134,14 @@ pub async fn api_key_auth(
             path = %path,
             "API key authentication failed — rejecting request"
         );
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(unauthorized_response(
+            "bearer_not_recognized",
+            "Bearer token did not match any active relay_harnesses.api_key_hash \
+             nor any relay_agents.id. If this is a harness-resident agent, the \
+             harness should call POST /api/v1/agents/register first and use the \
+             returned UUID as the bearer token. See ensure_registered_with_relay() \
+             in amos-harness/src/relay_registration.rs.",
+        ));
     }
 
     Ok(next.run(req).await)
@@ -210,6 +247,21 @@ mod tests {
         let err = AmosError::Internal("something broke".to_string());
         let response = ErrorResponse(err).into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // ── Diagnostic 401 body (Finding #3) ────────────────────────────────
+
+    #[tokio::test]
+    async fn unauthorized_response_carries_code_and_hint() {
+        use axum::body::to_bytes;
+        let resp = unauthorized_response("missing_bearer", "test hint that explains what to do");
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let bytes = to_bytes(resp.into_body(), 1024).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["status"], 401);
+        assert_eq!(body["code"], "missing_bearer");
+        assert_eq!(body["hint"], "test hint that explains what to do");
+        assert_eq!(body["error"], "unauthorized");
     }
 
     // ── API key generation ─────────────────────────────────────────────
