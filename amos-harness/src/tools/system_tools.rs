@@ -489,7 +489,16 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command in the user's isolated container environment. This is your universal escape hatch — if no dedicated tool exists for something, use bash. You have full access to: apt/pip/npm for installing packages, curl/wget for API calls, python/node/ruby for scripting, psql for database queries, git for version control, and any other CLI tool. You can set up integrations (e.g., configure API clients, create config files, write scripts), manage databases, build and deploy code, and interact with external services. The environment is fully isolated per customer with its own filesystem and database, so operate freely. Network access to external APIs is available. Destructive commands (rm -rf, kill, DROP TABLE, etc.) require user confirmation before execution."
+        "Execute a shell command in the user's isolated container environment. This is your universal escape hatch — if no dedicated tool exists for something, use bash. You have full access to: apt/pip/npm for installing packages, curl/wget for API calls (including localhost / internal hosts that view_web_page intentionally blocks), python/node/ruby for scripting, psql for database queries, git for version control, and any other CLI tool. You can set up integrations, manage databases, build and deploy code, and interact with external services. The environment is fully isolated per customer with its own filesystem and database, so operate freely.\n\
+         \n\
+         Network policy:\n\
+         - External + internal egress is open in dev. The container's iptables rules are the real boundary.\n\
+         - Hard-blocked (cannot be overridden, regardless of intent): the AWS metadata endpoint 169.254.169.254 and the ECS credential endpoint 169.254.170.2. These are credential-exfil targets, not legitimate dev surfaces.\n\
+         - Hard-blocked patterns: shell-bypass tricks (`| bash`, `eval`, backticks), iptables modification, secrets paths (/etc/shadow, /proc/*/environ).\n\
+         \n\
+         Use bash (not view_web_page) for: psql -h localhost, cargo test against a local service, hitting your own dev http server, anything where the target is a legitimate part of your dev environment. Use view_web_page (not bash curl) for *public* HTTP — it has a stricter SSRF guard appropriate for fetching arbitrary external URLs.\n\
+         \n\
+         Destructive commands (rm -rf, kill, DROP TABLE, etc.) require user confirmation before execution."
     }
 
     fn parameters_schema(&self) -> JsonValue {
