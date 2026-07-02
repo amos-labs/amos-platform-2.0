@@ -139,7 +139,9 @@ impl TemplateEngine {
             components: Vec::with_capacity(tmpl.components.len()),
         };
         for component in &tmpl.components {
-            report.components.push(self.apply_component(component).await?);
+            report
+                .components
+                .push(self.apply_component(component).await?);
         }
         Ok(report)
     }
@@ -225,11 +227,12 @@ impl TemplateEngine {
     }
 
     async fn canvas_exists(&self, name: &str) -> Result<bool> {
-        let id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM canvases WHERE name = $1 LIMIT 1")
-            .bind(name)
-            .fetch_optional(&self.db_pool)
-            .await
-            .map_err(|e| AmosError::Internal(format!("canvas existence check: {e}")))?;
+        let id: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM canvases WHERE name = $1 LIMIT 1")
+                .bind(name)
+                .fetch_optional(&self.db_pool)
+                .await
+                .map_err(|e| AmosError::Internal(format!("canvas existence check: {e}")))?;
         Ok(id.is_some())
     }
 

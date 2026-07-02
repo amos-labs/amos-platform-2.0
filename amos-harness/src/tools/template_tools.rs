@@ -66,9 +66,21 @@ impl Tool for ApplyTemplateTool {
         let engine = TemplateEngine::new(self.db_pool.clone(), self.config.clone());
         let report = engine.apply(&tmpl).await?;
 
-        let collections: usize = report.components.iter().map(|c| c.collections_applied.len()).sum();
-        let canvases: usize = report.components.iter().map(|c| c.canvases_applied.len()).sum();
-        let automations: usize = report.components.iter().map(|c| c.automations_applied.len()).sum();
+        let collections: usize = report
+            .components
+            .iter()
+            .map(|c| c.collections_applied.len())
+            .sum();
+        let canvases: usize = report
+            .components
+            .iter()
+            .map(|c| c.canvases_applied.len())
+            .sum();
+        let automations: usize = report
+            .components
+            .iter()
+            .map(|c| c.automations_applied.len())
+            .sum();
 
         Ok(ToolResult::success(json!({
             "template": report.template,
