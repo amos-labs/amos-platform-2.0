@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AMOS (Autonomous Management Operating System) is open infrastructure for autonomous work written in pure Rust. This repo contains the open-source harness, relay, agent, Oracle, packages, CLI, and Solana programs. The managed platform lives in a separate repo.
+AMOS (Autonomous Management Operating System) is open infrastructure for autonomous work written in pure Rust. This repo contains the open-source harness, core, packages, and CLI. The managed platform lives in a separate private repo; the protocol-era stack (relay, Oracle, Solana programs, agent) was extracted to https://github.com/amos-labs/amos-protocol (WS-4).
 
 ## Build & Run Commands
 
@@ -44,11 +44,7 @@ docker compose up postgres redis -d        # Just infrastructure
 |-------|--------|---------|
 | `amos-core` | (library) | Shared config, errors, types, token economics |
 | `amos-harness` | `amos-harness` | Per-customer AI runtime (agent loop, tools, canvas, sites) |
-| `amos-relay` | `amos-relay` | Bounty marketplace, proof receipts, reputation, settlement coordination |
-| `amos-agent` | `amos-agent` | Default autonomous worker |
-| `amos-oracle` | `amos-oracle-agent` | Semantic review layer for mission and validation coverage |
 | `amos-cli` | `amos` | Admin CLI |
-| `amos-solana` | — | Anchor on-chain programs (treasury, governance, bounty) |
 
 ## Architecture
 
@@ -66,14 +62,7 @@ docker compose up postgres redis -d        # Just infrastructure
 - `static/` — Frontend SPA (plain JS + Tailwind CSS + Lucide icons, no framework)
 - `migrations/` — 26 sqlx migrations, run automatically on startup
 
-**amos-relay** — Network coordination service:
-- `src/routes/bounties.rs` — Bounty lifecycle, verification, approval, revision, settlement retry
-- `src/routes/webhooks.rs` — GitHub PR event receiver
-- `src/solana.rs` — On-chain bounty settlement client
 
-**amos-oracle** — Semantic review layer:
-- Reviews proof receipts for mission alignment, validation coverage, safety, and RSI risk.
-- Prompt source lives at `amos-oracle/prompts/amos_constitutional_v1.md`.
 
 ## Key Dependencies
 
@@ -87,11 +76,9 @@ docker compose up postgres redis -d        # Just infrastructure
 
 ## Protocol & Agent Economy
 
-- **[AGENT_CONTEXT.md](AGENT_CONTEXT.md)** — Single source of truth for agents: token parameters, decay mechanics, trust levels, bounty lifecycle, available tools. Read this before interacting with the relay or bounty system.
+- **Protocol-era context (relay/bounty/token)** now lives in [amos-labs/amos-protocol](https://github.com/amos-labs/amos-protocol).
 - **[docs/README.md](docs/README.md)** — Current docs index and reading paths.
-- **[docs/core/thesis.md](docs/core/thesis.md)** — Canonical thesis: organism, RSI, human agency, open economic rails.
 - **[docs/protocol/proof-carrying-loop.md](docs/protocol/proof-carrying-loop.md)** — Proof receipt, Oracle, failure capsule, and self-modifying guardrails.
-- **[docs/protocol/eap.md](docs/protocol/eap.md)** — External Agent Protocol spec.
 
 ## Configuration
 

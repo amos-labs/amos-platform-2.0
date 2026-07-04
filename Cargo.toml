@@ -2,14 +2,11 @@
 members = [
     "amos-core",
     "amos-harness",
-    "amos-relay",
     "amos-cli",
-    "amos-agent",
-    "amos-oracle",
     "amos-packages/amos-education",
     "amos-packages/amos-autoresearch",
     "amos-packages/amos-social",
-    # Solana programs are built separately via Anchor (not part of cargo workspace)
+    # Protocol crates (relay, oracle, solana, agent) live in amos-labs/amos-protocol (WS-4 extraction)
 ]
 resolver = "2"
 

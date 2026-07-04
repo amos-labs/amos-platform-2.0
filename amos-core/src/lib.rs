@@ -13,6 +13,7 @@ pub mod hooks;
 pub mod packages;
 pub mod permissions;
 pub mod settings;
+#[cfg(feature = "token-economics")]
 pub mod token;
 pub mod tools;
 pub mod types;
@@ -23,6 +24,7 @@ pub use error::{AmosError, Result};
 pub use hooks::HookConfig;
 pub use permissions::PermissionLevel;
 pub use settings::AmosSettings;
+#[cfg(feature = "token-economics")]
 pub use token::economics;
 pub use tools::{Tool, ToolCategory, ToolResult};
 pub use vault::CredentialVault;

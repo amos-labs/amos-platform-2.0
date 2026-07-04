@@ -101,12 +101,6 @@ jobs:
       - name: Tool schema invariants
         run: cargo test --lib -p amos-harness schema_tests
 
-      - name: Bedrock envelope contract
-        # Snapshot-tests the JSON body our Bedrock request builder produces.
-        # Guards against the tool-spec wrapping regressions that have hit
-        # prod twice and against inferenceConfig drift. Pure Rust, no infra.
-        run: cargo test --test bedrock_envelope -p amos-agent
-
   # ============================================================================
   # GATE 1.55: Integration Smoke — core app flows against a real Postgres
   #
@@ -390,88 +384,12 @@ jobs:
           cache-from: type=gha,scope=workspace-builder
           cache-to: type=gha,mode=max,scope=workspace-builder
 
-      - name: Build and push amos-agent
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/agent/Dockerfile
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/amos-agent:${{ steps.vars.outputs.IMAGE_TAG }}
-            ${{ env.ECR_REGISTRY }}/amos-agent:latest
-          cache-from: type=gha,scope=workspace-builder
-          cache-to: type=gha,mode=max,scope=workspace-builder
-
-      - name: Build and push amos-relay
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/relay/Dockerfile
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/amos-relay:${{ steps.vars.outputs.IMAGE_TAG }}
-            ${{ env.ECR_REGISTRY }}/amos-relay:latest
-          cache-from: type=gha,scope=workspace-builder
-          cache-to: type=gha,mode=max,scope=workspace-builder
-
-      - name: Build and push amos-oracle
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/oracle/Dockerfile
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/amos-oracle:${{ steps.vars.outputs.IMAGE_TAG }}
-            ${{ env.ECR_REGISTRY }}/amos-oracle:latest
-          cache-from: type=gha,scope=workspace-builder
-          cache-to: type=gha,mode=max,scope=workspace-builder
-
-      - name: Roll relay ECS service to pick up new :latest image
-        # The amos-relay-v2 service runs the :latest tag, so a forced
-        # new deployment pulls the image we just pushed and replaces the
-        # running task with zero downtime (rolling deployment).
-        run: |
-          aws ecs update-service \
-            --cluster swarm-infrastructure-cluster \
-            --service amos-relay-v2 \
-            --force-new-deployment \
-            --region us-east-1 \
-            --no-cli-pager > /dev/null
-          echo "Relay rolling deployment kicked off for tag ${{ steps.vars.outputs.IMAGE_TAG }}"
-
-      - name: Roll amos-oracle ECS service
-        # Two-step deploy:
-        #   1. Register a fresh task definition revision from the JSON in the
-        #      repo. Without this, env-var changes (e.g. ORACLE_PROMPT_VERSION)
-        #      land on disk but never reach AWS — the running service keeps
-        #      using whatever revision was last registered manually.
-        #   2. Update the service to point at the new revision. Force a new
-        #      deployment so the new image ALSO gets pulled in the same roll.
-        # No-op if the service hasn't been created yet — continue-on-error
-        # keeps first-time setup from blocking the build.
-        run: |
-          NEW_REV=$(aws ecs register-task-definition \
-            --cli-input-json file://docker/oracle/task-definition.json \
-            --region us-east-1 \
-            --query 'taskDefinition.revision' \
-            --output text)
-          echo "Registered amos-oracle task definition revision $NEW_REV"
-          aws ecs update-service \
-            --cluster swarm-infrastructure-cluster \
-            --service amos-oracle \
-            --task-definition "amos-oracle:$NEW_REV" \
-            --force-new-deployment \
-            --region us-east-1 \
-            --no-cli-pager > /dev/null
-          echo "Oracle rolling deployment kicked off for tag ${{ steps.vars.outputs.IMAGE_TAG }} (rev $NEW_REV)"
-        continue-on-error: true
-
       - name: Register release with platform
         run: |
           curl -sf -X POST "https://app.amoslabs.com/api/v1/releases" \
             -H "Authorization: Bearer ${{ secrets.RELEASE_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{\"version\":\"${{ steps.vars.outputs.IMAGE_TAG }}\",\"commit_sha\":\"${GITHUB_SHA}\",\"harness_image\":\"${{ env.ECR_REGISTRY }}/amos-harness:${{ steps.vars.outputs.IMAGE_TAG }}\",\"agent_image\":\"${{ env.ECR_REGISTRY }}/amos-agent:${{ steps.vars.outputs.IMAGE_TAG }}\"}"
+            -d "{\"version\":\"${{ steps.vars.outputs.IMAGE_TAG }}\",\"commit_sha\":\"${GITHUB_SHA}\",\"harness_image\":\"${{ env.ECR_REGISTRY }}/amos-harness:${{ steps.vars.outputs.IMAGE_TAG }}\"}"
         continue-on-error: true  # Don't fail the build if platform is temporarily down
 
       - name: Build summary
@@ -481,8 +399,5 @@ jobs:
           echo "| Image | Tag |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|-----|" >> "$GITHUB_STEP_SUMMARY"
           echo "| amos-harness | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| amos-agent | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| amos-relay | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| amos-oracle | \`${{ steps.vars.outputs.IMAGE_TAG }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "New harnesses will use this image. Existing harnesses can pull updates via the dashboard." >> "$GITHUB_STEP_SUMMARY"

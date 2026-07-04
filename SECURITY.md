@@ -21,7 +21,7 @@ local filesystem in the Solana CLI's standard format (a JSON array of
 64 bytes: the 32-byte secret key followed by the 32-byte public key).
 
 The path is configurable via `config.solana.oracle_keypair_path` and is
-loaded by `amos-relay/src/solana.rs::SolanaClient::load_oracle_keypair`.
+loaded by the relay (now in [amos-labs/amos-protocol](https://github.com/amos-labs/amos-protocol)): `amos-relay/src/solana.rs::SolanaClient::load_oracle_keypair`.
 
 ### Enforced controls
 

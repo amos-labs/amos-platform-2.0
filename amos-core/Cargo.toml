@@ -10,6 +10,11 @@ default = []
 db = ["sqlx"]
 http = ["reqwest"]
 packages = ["db"]
+# Protocol-era token economics (supply, decay, emission, trust). The protocol
+# services live in amos-labs/amos-protocol; commercial consumers that still
+# read these constants (harness AGENT_CONTEXT loader, CLI economics commands)
+# opt in explicitly. Off by default so the commercial surface is clean (WS-4).
+token-economics = []
 
 [dependencies]
 serde = { workspace = true }
