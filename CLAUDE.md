@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AMOS (Autonomous Management Operating System) is open infrastructure for autonomous work written in pure Rust. This repo contains the open-source harness, core, packages, and CLI. The managed platform lives in a separate private repo; the protocol-era stack (relay, Oracle, Solana programs, agent) was extracted to https://github.com/amos-labs/amos-protocol (WS-4).
+AMOS (Autonomous Management Operating System) is open infrastructure for autonomous work written in pure Rust. This repo contains the open-source harness, core, packages, and CLI. The managed platform lives in a separate private repo; the AMOS protocol (relay, Oracle, Solana programs, agent) — the long-game economic layer, actively developed as a side track — lives at https://github.com/amos-labs/amos-protocol (WS-4 extraction).
 
 ## Build & Run Commands
 
