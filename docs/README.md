@@ -1,8 +1,9 @@
 # AMOS Docs Index
 
-Current truth first. The protocol-era corpus (thesis, bounty lifecycle, Oracle,
-token economy, Solana settlement, EAP, legacy archive) moved with the protocol
-extraction to [amos-labs/amos-protocol](https://github.com/amos-labs/amos-protocol).
+Current truth first. The AMOS protocol corpus (thesis, bounty lifecycle, Oracle, token economy,
+Solana settlement, EAP, ecosystem playbooks, legacy archive) lives with the
+protocol — an actively developed side track — at
+[amos-labs/amos-protocol](https://github.com/amos-labs/amos-protocol).
 
 ## Read first
 
@@ -15,7 +16,7 @@ extraction to [amos-labs/amos-protocol](https://github.com/amos-labs/amos-protoc
 
 - [Example proof receipt](EXAMPLE_PROOF_RECEIPT.json)
 - [Subscription & onboarding](SUBSCRIPTION_AND_ONBOARDING.md)
-- [core/](core/) — architecture, developer guide, business playbook, backup/recovery
+- [core/](core/) — backup & recovery (harness ops)
 - [features/](features/) — feature-level docs (test harness, security, …)
 - [packages/](packages/) — legacy package docs (packages are being retired for runtime starters)
 

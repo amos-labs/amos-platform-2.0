@@ -7,4 +7,4 @@ Social bounties generally use lighter proof receipts than code bounties. Evidenc
 The package docs for creating and monetizing domain packages are:
 
 - [Creation Guide](creation-guide.md)
-- [Economy Integration](economy-integration.md)
+- [Economy Integration](https://github.com/amos-labs/amos-protocol/blob/main/docs/packages/economy-integration.md) (protocol repo)

@@ -6,10 +6,11 @@ runtime, and the admin CLI. The managed control plane (provisioning, billing,
 the shared multi-tenant brain) lives in the private platform repo; the product
 is at **[amoslabs.com](https://www.amoslabs.com)**.
 
-> **Where did the protocol go?** The protocol-era stack — the bounty **relay**,
-> **Oracle**, **Solana** programs, and the default autonomous **agent** — was
-> extracted to [`amos-labs/amos-protocol`](https://github.com/amos-labs/amos-protocol)
-> (dormant, not dead; reopen triggers in [`docs/NORTH-STAR.md`](docs/NORTH-STAR.md)).
+> **Where did the protocol go?** The AMOS protocol — the bounty **relay**,
+> **Oracle**, **Solana** programs, and the autonomous **agent** — was
+> extracted to [`amos-labs/amos-protocol`](https://github.com/amos-labs/amos-protocol):
+> the long-game economic layer, actively developed as a research/side track
+> alongside the commercial platform (scale triggers in [`docs/NORTH-STAR.md`](docs/NORTH-STAR.md)).
 > Its proof-receipt core lives on as
 > [**Plumbline**](https://github.com/amos-labs/plumbline) and the platform's
 > operation receipts.
