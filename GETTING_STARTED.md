@@ -94,8 +94,7 @@ curl http://localhost:3000/health
 
 ```bash
 cargo run --bin amos-harness     # Port 3000
-cargo run --bin amos-agent       # Port 3100 (needs harness running)
-cargo run --bin amos-relay       # Port 4100
+# Protocol services (agent/relay/oracle) moved to amos-labs/amos-protocol
 cargo run --bin amos-cli         # CLI tool
 ```
 
@@ -141,8 +140,6 @@ cargo test --lib
 # Per-crate
 cargo test --lib -p amos-harness
 cargo test --lib -p amos-core
-cargo test --lib -p amos-agent
-cargo test --lib -p amos-relay
 
 # Lint
 cargo clippy

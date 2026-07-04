@@ -10,7 +10,7 @@ name = "amos"
 path = "src/main.rs"
 
 [dependencies]
-amos-core = { path = "../amos-core" }
+amos-core = { path = "../amos-core", features = ["token-economics"] }
 
 tokio = { workspace = true }
 clap = { workspace = true }

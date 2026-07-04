@@ -28,7 +28,7 @@ amos-education = { path = "../amos-packages/amos-education", optional = true }
 amos-autoresearch = { path = "../amos-packages/amos-autoresearch", optional = true }
 amos-social = { path = "../amos-packages/amos-social", optional = true }
 
-amos-core = { path = "../amos-core", features = ["db", "http", "packages"] }
+amos-core = { path = "../amos-core", features = ["db", "http", "packages", "token-economics"] }
 
 # Async runtime
 tokio = { workspace = true }
