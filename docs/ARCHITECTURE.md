@@ -33,11 +33,11 @@ AMOS stopped being the AI. The AI is the customer's — **Claude Code, Codex, or
 
 ## Decisions recorded
 - **BYO-AI is primary; managed AI is an option** — both are MCP clients hitting the same verbs.
-- **P1 (the module/template system) is a Layer-2 concern → it lives in the harness** (the runtime-data successor to packages), driven by an MCP verb the actor calls. The **platform hosts the shared registry** (distribution + pull-upgrades) as a follow-on. See `amos-platform/docs/PLATFORM-BUILD-PLAN.md` (P1).
+- **P1 (the module/template system)** was first built harness-native here, then **re-homed to the shared multi-tenant brain in the managed platform** (starters + `apply_starter` on the platform's tenant-scoped data layer). *Superseding decision:* `amos-managed-platform/docs/COMPANY-BRAIN.md` — the harness narrows to the **dedicated-runtime tier** (complex apps with real background jobs/custom code); standard apps run on the shared brain.
 
 ## What this unblocks
-P1 builds on the substrate (Layer 2) and is **independent of** the "trim vs. keep the embedded cockpit" cleanup — so we build P1 now, and re-scoping the old cockpit is a separate, parallel track.
+The layer map stands; the substrate question (shared brain vs. per-tenant harness) was resolved by complexity-based routing — see COMPANY-BRAIN §3.
 
 ---
 
-*Pairs with: `NORTH-STAR.md` (the goal) · `amos-platform/docs/PLATFORM-BUILD-PLAN.md` (the build) · `docs/protocol/receipt-schema.md` (the open standard).*
+*Pairs with: `NORTH-STAR.md` (the goal — canonical copy in `amos-managed-platform`) · `amos-managed-platform/docs/COMPANY-BRAIN.md` (the resolved model) · `docs/protocol/receipt-schema.md` (the open standard).*
