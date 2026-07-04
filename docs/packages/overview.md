@@ -7,7 +7,7 @@ Tools are free infrastructure. Packages become economically meaningful when thei
 ## Current Package Docs
 
 - [Creation Guide](creation-guide.md)
-- [Economy Integration](economy-integration.md)
+- [Economy Integration](https://github.com/amos-labs/amos-protocol/blob/main/docs/packages/economy-integration.md) (protocol repo)
 - [Tools Inventory](tools-inventory.md)
 - [Autoresearch](autoresearch.md)
 - [Social](social.md)
