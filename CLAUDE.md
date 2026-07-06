@@ -88,3 +88,12 @@ Environment variables use `AMOS__` prefix with `__` separator. See `.env.example
 - `AMOS__SERVER__HOST` / `AMOS__SERVER__PORT` — Bind address (default: `0.0.0.0:3000`)
 - `AMOS__AGENT__MAX_ITERATIONS` — Max agent loop iterations (default: 25)
 - `AWS_PROFILE` — AWS profile for Bedrock access
+
+## Migrations
+
+Migrations live in `amos-harness/migrations/` and run automatically on startup.
+
+- **Create migrations with `sqlx migrate add <name>`** — it stamps a full UTC timestamp. Never hand-number a daily `YYYYMMDD000001` sequence: parallel branches pick the same version and collide on merge.
+- **Make migrations idempotent**: `ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION`, `DROP ... IF EXISTS`.
+- **Never modify an already-applied migration** — sqlx records a checksum, and a mismatch crashes the service on boot.
+- **CI enforces ordering**: the `Migration Version Guard` job rejects any PR whose new migration version is `<=` the latest on `main`. Renumber above it (or just use `sqlx migrate add`).

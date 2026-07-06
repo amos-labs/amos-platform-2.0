@@ -1,0 +1,79 @@
+{
+  "_help": {
+    "_note": "Allowed values + requirements per field (this _help block is ignored by the gate — keep or delete). Run `plumb schema` for the full reference.",
+    "receipt_version": "one of: 1.0 — required — schema version",
+    "task_id": "required — ticket/issue/branch id (also the receipt filename)",
+    "agent_id": "required — which agent or human did the work",
+    "intent": "required — what + why, plain language — the semantic review reads this",
+    "self_modifying": "one of: true | false — required — MUST be true if changed_files touch policy.protected_paths; touching one with false is a hard fail; true escalates to human review",
+    "policy_refs": "required — policy/mission docs you read",
+    "validation_plan": "required — each: { command, reason, required }",
+    "validation_plan[].required": "one of: true | false — required — is this check mandatory",
+    "execution_evidence": "required — each: { command, status, output_ref?, skip_reason? }",
+    "execution_evidence[].status": "one of: passed | failed | skipped — required — required steps must be 'passed'; use skip_reason when 'skipped'",
+    "changed_files": "required — set by `plumb receipt --write` — don't hand-edit",
+    "diff_sha256": "required — set by `plumb receipt --write` — never hand-edit",
+    "result_summary": "required — what changed + how it was verified"
+  },
+  "receipt_version": "1.0",
+  "task_id": "ci-plumbline-race-and-migration-guard",
+  "agent_id": "claude-opus-4-8",
+  "intent": "Two PR-time safety hardenings for CI. (1) Fix the Plumbline ci-evidence race: the Plumbline Gate finishes in ~15s while the Rust CI takes minutes, so its ci-evidence check races ahead and reports FAIL (required checks status=in_progress) on every first run. A 'Wait for required CI checks' step in plumbline.yml now polls both required checks ('Lint & Unit Tests', 'Release Gate — Catalog + Schema Invariants') to a terminal state before the gate runs, mirroring amos-protocol PR #2 (adapted from one check to two, matching this repo's ci_evidence_checks). (2) Add a Rails-style migration version-collision guard: parallel branches that hand-number migrations (YYYYMMDD000001) pick the same version and collide on merge, causing an sqlx checksum mismatch that crashes the harness on boot. A new 'Migration Version Guard' job in ci.yml (backed by .github/scripts/check-migration-order.sh, MIGRATIONS_DIR=amos-harness/migrations) fails any PR adding a migration whose version prefix is <= the latest on main. CLAUDE.md documents the sqlx migrate add convention. Workflow/CI/docs only; no src/ changes.",
+  "self_modifying": true,
+  "policy_refs": [
+    ".plumbline/MISSION.md",
+    ".plumbline/policy.json"
+  ],
+  "validation_plan": [
+    {
+      "command": "python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/plumbline.yml')); yaml.safe_load(open('.github/workflows/ci.yml'))\"",
+      "reason": "the workflow changes are YAML; confirm both files still parse",
+      "required": true
+    },
+    {
+      "command": "bash -n .github/scripts/check-migration-order.sh",
+      "reason": "the guard is a shell script; confirm it has no syntax errors",
+      "required": true
+    },
+    {
+      "command": "MIGRATIONS_DIR=amos-harness/migrations BASE_REF=origin/main bash .github/scripts/check-migration-order.sh  (simulate a colliding version -> exit 1; a proper-higher version -> exit 0)",
+      "reason": "prove the guard fails a version <= the latest on main and passes a strictly-higher one",
+      "required": true
+    },
+    {
+      "command": "Plumbline Gate on this PR reaches ci-evidence PASS without a manual re-run",
+      "reason": "the whole point of the wait step is that the gate no longer races the Rust CI on first run",
+      "required": false
+    }
+  ],
+  "execution_evidence": [
+    {
+      "command": "python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/plumbline.yml')); yaml.safe_load(open('.github/workflows/ci.yml'))\"",
+      "status": "passed",
+      "output_ref": "both workflow YAML files parse OK"
+    },
+    {
+      "command": "bash -n .github/scripts/check-migration-order.sh",
+      "status": "passed",
+      "output_ref": "no syntax errors"
+    },
+    {
+      "command": "MIGRATIONS_DIR=amos-harness/migrations BASE_REF=origin/main bash .github/scripts/check-migration-order.sh  (simulate a colliding version -> exit 1; a proper-higher version -> exit 0)",
+      "status": "passed",
+      "output_ref": "Ran against this repo's real migrations (latest on main = 20260610000057). colliding 20260304000099_collide.sql -> exit 1 (FAILED, <= max); equal-to-max 20260610000057_dup.sql -> exit 1 (FAILED); strictly-higher 20260611000001_good.sql -> exit 0 (passed); no-new-migrations -> exit 0; missing MIGRATIONS_DIR -> exit 0 (skips cleanly). Also validated in a synthetic repo across lower/equal/reused-version/no-new/mixed cases."
+    },
+    {
+      "command": "Plumbline Gate on this PR reaches ci-evidence PASS without a manual re-run",
+      "status": "skipped",
+      "skip_reason": "verified on the PR's own gate run after push; the wait step waits for 'Lint & Unit Tests' + 'Release Gate — Catalog + Schema Invariants' to settle, then ci-evidence evaluates once. Semantic review escalates by design (self_modifying)."
+    }
+  ],
+  "changed_files": [
+    ".github/scripts/check-migration-order.sh",
+    ".github/workflows/ci.yml",
+    ".github/workflows/plumbline.yml",
+    "CLAUDE.md"
+  ],
+  "diff_sha256": "4116f0a603f93cb3c9168df5e2c2bdd346ae6b9b904fbfc7b324f3dea40a6784",
+  "result_summary": "Fixed the Plumbline ci-evidence race by adding a 'Wait for required CI checks' step to .github/workflows/plumbline.yml that polls 'Lint & Unit Tests' and 'Release Gate — Catalog + Schema Invariants' to a terminal state before the gate runs (mirror of amos-protocol PR #2, two checks instead of one). Added a Rails-style migration version-collision guard: new 'Migration Version Guard' job in .github/workflows/ci.yml backed by .github/scripts/check-migration-order.sh (MIGRATIONS_DIR=amos-harness/migrations), which fails any PR adding a migration whose version prefix is <= the latest on main. Documented the convention in CLAUDE.md. Verified: both workflows parse; the guard script passes bash -n; guard logic tested locally against real repo migrations (collide fails, higher passes) and a synthetic repo across all edge cases. Touches .github/workflows/** (protected) so self_modifying:true; the gate escalates to human review by design. Do not auto-merge."
+}
