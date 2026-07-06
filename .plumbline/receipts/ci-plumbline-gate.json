@@ -1,0 +1,67 @@
+{
+  "_help": {
+    "_note": "Allowed values + requirements per field (this _help block is ignored by the gate — keep or delete). Run `plumb schema` for the full reference.",
+    "receipt_version": "one of: 1.0 — required — schema version",
+    "task_id": "required — ticket/issue/branch id (also the receipt filename)",
+    "agent_id": "required — which agent or human did the work",
+    "intent": "required — what + why, plain language — the semantic review reads this",
+    "self_modifying": "one of: true | false — required — MUST be true if changed_files touch policy.protected_paths; touching one with false is a hard fail; true escalates to human review",
+    "policy_refs": "required — policy/mission docs you read",
+    "validation_plan": "required — each: { command, reason, required }",
+    "validation_plan[].required": "one of: true | false — required — is this check mandatory",
+    "execution_evidence": "required — each: { command, status, output_ref?, skip_reason? }",
+    "execution_evidence[].status": "one of: passed | failed | skipped — required — required steps must be 'passed'; use skip_reason when 'skipped'",
+    "changed_files": "required — set by `plumb receipt --write` — don't hand-edit",
+    "diff_sha256": "required — set by `plumb receipt --write` — never hand-edit",
+    "result_summary": "required — what changed + how it was verified"
+  },
+  "receipt_version": "1.0",
+  "task_id": "ci-plumbline-gate",
+  "agent_id": "claude-opus-4-8",
+  "intent": "Introduce the Plumbline proof-carrying gate to this repo, mirroring the working gate in amos-managed-platform. Adds a PR-only GitHub Actions workflow (status check 'Plumbline Gate') that graceful-degrades: full semantic review + PR comment when ANTHROPIC_API_KEY is set (it is on this repo), else `plumb check` for shape + diff-hash integrity. Adds .plumbline/MISSION.md grounded in THIS repo (open-source AMOS infra: pure-Rust harness/core/cli/packages; agent loop + prompt guard as the trust boundary, tools as capabilities, append-only migrations) and a policy.json whose protected_paths and ci_evidence_checks match this workspace's real layout and CI job names. Every future PR now carries a receipt the gate verifies.",
+  "self_modifying": true,
+  "policy_refs": [
+    ".plumbline/MISSION.md"
+  ],
+  "validation_plan": [
+    {
+      "command": "python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/plumbline.yml'))\"",
+      "reason": "the workflow is new YAML; confirm it parses so Actions can load the job",
+      "required": true
+    },
+    {
+      "command": "python3 -c \"import json; json.load(open('.plumbline/policy.json'))\"",
+      "reason": "policy.json must be valid JSON or the gate cannot load the policy",
+      "required": true
+    },
+    {
+      "command": "npx -y github:amos-labs/plumbline#master check",
+      "reason": "run the gate's own shape + diff-hash integrity check on this PR's receipt before pushing",
+      "required": true
+    }
+  ],
+  "execution_evidence": [
+    {
+      "command": "python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/plumbline.yml'))\"",
+      "status": "passed",
+      "output_ref": "plumbline.yml OK"
+    },
+    {
+      "command": "python3 -c \"import json; json.load(open('.plumbline/policy.json'))\"",
+      "status": "passed",
+      "output_ref": "policy.json OK"
+    },
+    {
+      "command": "npx -y github:amos-labs/plumbline#master check",
+      "status": "passed",
+      "output_ref": "see plumb check output in PR body / final report"
+    }
+  ],
+  "changed_files": [
+    ".github/workflows/plumbline.yml",
+    ".plumbline/MISSION.md",
+    ".plumbline/policy.json"
+  ],
+  "diff_sha256": "c068ab73fdd8958876f629a5c6afa40a996a807917adefefc4d1047f198b8946",
+  "result_summary": "Added .github/workflows/plumbline.yml (status check 'Plumbline Gate', PR-only, graceful-degrade to `plumb check` without the key), .plumbline/MISSION.md written for this open-source AMOS-infra repo, and .plumbline/policy.json with protected_paths (agent loop, prompt_guard, tools, middleware, credentials/oauth/connections routes, migrations, tests, core, workflows, .plumbline, harness Dockerfile) and ci_evidence_checks matching ci.yml's real job names. Verified: plumbline.yml parses as YAML, policy.json parses as JSON, and `plumb check` passes on this receipt. self_modifying:true — the change touches .github/workflows/** and .plumbline/**, both protected paths, so the gate escalates to human review by design (a human/admin signs off in the PR)."
+}

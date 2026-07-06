@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "mission_file": ".plumbline/MISSION.md",
+  "strictness": "standard",
+  "required_checks": [],
+  "ci_evidence_checks": [
+    "Lint & Unit Tests",
+    "Release Gate — Catalog + Schema Invariants",
+    "Integration Smoke — Core App Flows",
+    "HTTP Integration — Router + Postgres + Redis"
+  ],
+  "protected_paths": [
+    "amos-harness/src/agent/**",
+    "amos-harness/src/prompt_guard.rs",
+    "amos-harness/src/tools/**",
+    "amos-harness/src/middleware/**",
+    "amos-harness/src/routes/credentials.rs",
+    "amos-harness/src/routes/oauth.rs",
+    "amos-harness/src/routes/connections.rs",
+    "amos-harness/migrations/**",
+    "amos-harness/tests/**",
+    "amos-core/src/**",
+    ".github/workflows/**",
+    ".plumbline/**",
+    "docker/harness/Dockerfile"
+  ],
+  "min_review_confidence": 0.8,
+  "human_review_level": "balanced",
+  "max_receipt_bytes": 262144
+}
