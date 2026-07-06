@@ -198,7 +198,13 @@ impl Tool for ViewWebPageTool {
     }
 
     fn description(&self) -> &str {
-        "Fetch web pages or call external APIs. Supports GET/POST/PUT/PATCH/DELETE with custom headers and body. Use extract_format 'raw' for API JSON responses. Never use bash curl — use this tool instead."
+        "Fetch web pages or call external APIs. Supports GET/POST/PUT/PATCH/DELETE with custom headers and body. Use extract_format 'raw' for API JSON responses. Never use bash curl for the *public* internet — use this tool instead.\n\
+         \n\
+         Network policy (deliberate, hard rules — no override flag):\n\
+         - Allowed: any public http(s) URL.\n\
+         - Blocked: localhost, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, ::1, fc00::/7, fe80::/10, *.local, *.internal. Returns 'Host ... is not allowed' or 'URL resolves to blocked IP'.\n\
+         \n\
+         For legitimate localhost / internal-network access (running test suites against localhost:5432, hitting an internal CI host you set up via bash, etc.) use the bash tool — it has a different threat model (your own dev environment) and intentionally permits it. Do not treat the bash + view_web_page network rules as identical."
     }
 
     fn parameters_schema(&self) -> JsonValue {
