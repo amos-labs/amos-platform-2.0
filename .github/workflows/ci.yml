@@ -29,6 +29,31 @@ env:
 
 jobs:
   # ============================================================================
+  # GATE 0: Migration Version-Collision Guard (Rails-style safety)
+  #
+  # Parallel branches that hand-number migrations (YYYYMMDD000001) pick the same
+  # version and collide on merge: two files claim the same slot, sqlx sees a
+  # checksum mismatch, and the harness crashes on boot. This job fails a PR that
+  # adds any migration whose version prefix is <= the latest on main. Fast,
+  # no toolchain, runs on every PR/push. Prefer `sqlx migrate add <name>`.
+  # ============================================================================
+  migration-guard:
+    name: Migration Version Guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history so origin/main is reachable)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check migration ordering vs main
+        env:
+          MIGRATIONS_DIR: amos-harness/migrations
+          BASE_REF: origin/${{ github.base_ref || 'main' }}
+        run: bash .github/scripts/check-migration-order.sh
+
+  # ============================================================================
   # GATE 1: Format, Lint, Unit Tests, Security Audit
   # ============================================================================
   check:

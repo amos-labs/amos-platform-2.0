@@ -27,6 +27,35 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The gate's ci-evidence check reads the required CI checks' conclusions.
+      # Plumbline finishes in seconds but the Rust CI takes minutes, so without
+      # this wait the gate races ahead and reports ci-evidence FAIL
+      # (status=in_progress) on every first run. Poll the required checks to a
+      # terminal state first so the gate evaluates real evidence exactly once.
+      - name: Wait for required CI checks (Lint & Unit Tests, Release Gate)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          checks=("Lint & Unit Tests" "Release Gate — Catalog + Schema Invariants")
+          for name in "${checks[@]}"; do
+            echo "::group::Wait for '$name'"
+            done_wait=0
+            for i in $(seq 1 60); do
+              line=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+                --jq ".check_runs[] | select(.name==\"$name\") | \"\(.status)/\(.conclusion)\"" 2>/dev/null | head -1 || true)
+              echo "attempt $i: $name = ${line:-<not-reported-yet>}"
+              case "$line" in
+                completed/*) echo "'$name' reached terminal state"; done_wait=1; break;;
+              esac
+              sleep 20
+            done
+            if [ "$done_wait" -ne 1 ]; then
+              echo "::warning::'$name' did not reach a terminal state in time; the gate will evaluate current evidence."
+            fi
+            echo "::endgroup::"
+          done
+
       - name: Detect semantic-review key
         id: key
         run: echo "present=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
