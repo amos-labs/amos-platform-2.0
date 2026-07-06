@@ -58,9 +58,9 @@
       "output_ref": "no syntax errors"
     },
     {
-      "command": "MIGRATIONS_DIR=amos-harness/migrations BASE_REF=origin/main bash .github/scripts/check-migration-order.sh (simulated collide + good migration)",
+      "command": "MIGRATIONS_DIR=amos-harness/migrations BASE_REF=origin/main bash .github/scripts/check-migration-order.sh  (simulate a colliding version -> exit 1; a proper-higher version -> exit 0)",
       "status": "passed",
-      "output_ref": "colliding 20260304000099 -> FAILED (exit 1, latest on main=20260610000057); good 20260611000001 -> passed (exit 0). Also validated in a synthetic repo across lower/equal/reused-version/no-new/mixed cases."
+      "output_ref": "Ran against this repo's real migrations (latest on main = 20260610000057). colliding 20260304000099_collide.sql -> exit 1 (FAILED, <= max); equal-to-max 20260610000057_dup.sql -> exit 1 (FAILED); strictly-higher 20260611000001_good.sql -> exit 0 (passed); no-new-migrations -> exit 0; missing MIGRATIONS_DIR -> exit 0 (skips cleanly). Also validated in a synthetic repo across lower/equal/reused-version/no-new/mixed cases."
     },
     {
       "command": "Plumbline Gate on this PR reaches ci-evidence PASS without a manual re-run",
