@@ -85,7 +85,7 @@ impl Tool for IssueCertificateTool {
         let cert_number = format!(
             "CE-{}-{}",
             chrono::Utc::now().format("%Y"),
-            &certificate_id.to_string()[..8].to_uppercase()
+            certificate_id.to_string()[..8].to_uppercase()
         );
 
         let collection_id = sqlx::query_scalar::<_, uuid::Uuid>(

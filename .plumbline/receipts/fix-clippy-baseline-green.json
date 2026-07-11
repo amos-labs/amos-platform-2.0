@@ -1,0 +1,51 @@
+{
+  "receipt_version": "1.0",
+  "task_id": "fix-clippy-baseline-green",
+  "agent_id": "claude-opus-4-8",
+  "intent": "Green the pre-existing red main clippy baseline (redundant-reference-in-format). Rust 1.97's clippy lint clippy::useless_borrows_in_formatting fires on two redundant references passed to format! that the older toolchain did not flag, so `cargo clippy --all-targets -- -D warnings` (the Lint & Unit Tests CI job) fails on main and blocks unrelated PRs. This change removes exactly those two redundant `&` sigils: `&certificate_id.to_string()[..8].to_uppercase()` -> `certificate_id.to_string()[..8].to_uppercase()` in amos-education, and `&body.response` -> `body.response` in amos-autoresearch. Minimal, no refactor, no behavior change, no lint-config change — the two edits clippy itself prescribed via its `help: remove the redundant &` suggestion.",
+  "self_modifying": false,
+  "policy_refs": [
+    "CI job: Lint & Unit Tests (cargo clippy --all-targets -- -D warnings)",
+    "rust-clippy useless_borrows_in_formatting (rust-1.97.0)"
+  ],
+  "validation_plan": [
+    {
+      "command": "cargo clippy --all-targets -- -D warnings",
+      "reason": "The exact CI command that was failing on main; must exit 0 after the fix. Reproduced locally under the CI toolchain (Rust 1.97.0) to confirm both errors are cleared.",
+      "required": true
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "reason": "Confirm the two edits leave formatting clean; fmt is a CI gate step.",
+      "required": true
+    },
+    {
+      "command": "cargo test --lib -p amos-education -p amos-autoresearch",
+      "reason": "Confirm the two edited crates still build and their unit tests pass — the changes drop a redundant borrow only, no semantics change.",
+      "required": true
+    }
+  ],
+  "execution_evidence": [
+    {
+      "command": "cargo clippy --all-targets -- -D warnings",
+      "status": "passed",
+      "output_ref": "Under Rust 1.97.0 toolchain (matching CI @stable): before = 2 errors (useless_borrows_in_formatting in certification.rs:88 and mutator.rs:372); after fix = Finished, exit 0."
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "status": "passed",
+      "output_ref": "exit 0, no formatting diff."
+    },
+    {
+      "command": "cargo test --lib -p amos-education -p amos-autoresearch",
+      "status": "passed",
+      "output_ref": "amos-education: 2 passed; amos-autoresearch built and tested; 0 failed."
+    }
+  ],
+  "changed_files": [
+    "amos-packages/amos-autoresearch/src/darwinian/mutator.rs",
+    "amos-packages/amos-education/src/tools/certification.rs"
+  ],
+  "diff_sha256": "10412f1036d7cffafea2e017fa7709985a1bfc5d94a3c1029863421eafd0eff2",
+  "result_summary": "Removed exactly two redundant `&` sigils flagged by clippy::useless_borrows_in_formatting on Rust 1.97 — amos-education/src/tools/certification.rs:88 and amos-autoresearch/src/darwinian/mutator.rs:372 — greening `cargo clippy --all-targets -- -D warnings` on main. Verified under the CI toolchain (1.97.0): clippy exits 0, cargo fmt --check is clean, and cargo test --lib for both edited crates passes. No refactor, no behavior change, no lint-config change."
+}
