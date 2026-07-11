@@ -369,7 +369,7 @@ Respond with JSON only:
         let proposal: MutationProposal = serde_json::from_str(&json_str).map_err(|e| {
             AmosError::Internal(format!(
                 "Failed to parse mutation proposal JSON: {e}\nRaw response: {}",
-                &body.response
+                body.response
             ))
         })?;
 
