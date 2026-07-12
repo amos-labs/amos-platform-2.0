@@ -1,0 +1,507 @@
+{
+  "model": "anthropic.claude-opus-4-8",
+  "runs_per_cell": 3,
+  "rates": {
+    "input_per_mtok": 5.0,
+    "output_per_mtok": 25.0
+  },
+  "summary": {
+    "per_task": {
+      "cashflow": {
+        "amos": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 3617.7,
+          "stdev_tokens": 57.6,
+          "min_tokens": 3581,
+          "max_tokens": 3684,
+          "mean_usd": 0.027688
+        },
+        "raw": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 19613.3,
+          "stdev_tokens": 2617.2,
+          "min_tokens": 16612,
+          "max_tokens": 21420,
+          "mean_usd": 0.187447
+        },
+        "raw_over_amos_ratio": 5.42
+      },
+      "leaks": {
+        "amos": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 3042,
+          "stdev_tokens": 13.7,
+          "min_tokens": 3030,
+          "max_tokens": 3057,
+          "mean_usd": 0.024583
+        },
+        "raw": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 16276.7,
+          "stdev_tokens": 820.1,
+          "min_tokens": 15394,
+          "max_tokens": 17015,
+          "mean_usd": 0.167237
+        },
+        "raw_over_amos_ratio": 5.35
+      },
+      "stale_deals": {
+        "amos": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 4921.3,
+          "stdev_tokens": 84.0,
+          "min_tokens": 4838,
+          "max_tokens": 5006,
+          "mean_usd": 0.045767
+        },
+        "raw": {
+          "n_total": 3,
+          "n_passed": 1,
+          "mean_tokens": 8856,
+          "stdev_tokens": 0.0,
+          "min_tokens": 8856,
+          "max_tokens": 8856,
+          "mean_usd": 0.07352
+        },
+        "raw_over_amos_ratio": 1.8
+      },
+      "retrieval": {
+        "amos": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 3831.3,
+          "stdev_tokens": 23.0,
+          "min_tokens": 3806,
+          "max_tokens": 3851,
+          "mean_usd": 0.029157
+        },
+        "raw": {
+          "n_total": 3,
+          "n_passed": 3,
+          "mean_tokens": 7727,
+          "stdev_tokens": 50.4,
+          "min_tokens": 7683,
+          "max_tokens": 7782,
+          "mean_usd": 0.052095
+        },
+        "raw_over_amos_ratio": 2.02
+      }
+    },
+    "overall_raw_over_amos_ratio": 3.4
+  },
+  "trials": [
+    {
+      "arm": "amos",
+      "task_id": "cashflow",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 3138,
+        "output_tokens": 546,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3684,
+      "answer": "Here are the headline numbers for the last 90 days:\n\n**Revenue & invoicing**\n- **Charge revenue collected:** $14,400 (5 charges via Stripe). Note: one $18,000 Stripe charge was excluded because it matched a paid invoice \u2014 this avoids double-counting.\n- **Invoiced:** $99,000\n- **Collected:** $54,000 \u2014 a **54.5% conversion rate**, meaning roughly $45,000 is still outstanding.\n\n**Speed of payment \u2014 the concerning part**\n- **Collection cycle is now 30 days (median), up from 7 days** in the prior period. The trend is **worsening** \u2014 you're getting paid over 4x slower than before.\n\n**What's dragging it down**\n- **$21,000 is 90+ days past due**, across two invoices: Initech ($12,000, 110 days late) and Hooli ($9,000, 100 days late).\n- Another $15,000 sits in the 31\u201360 day bucket (Stark Industries $9,000, Umbrella Retail $6,000).\n\n**Concentration risk**\n- **Globex Corporation is 54.5% of invoiced revenue** ($54,000 of $99,000) \u2014 over half your billings ride on a single account.\n\nBottom line: sales/billing volume is healthy, but collections have slowed dramatically and a big chunk of cash is stuck in aged receivables. Want me to break down the specific leaks and suggested actions to recover that cash?",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "cashflow",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 3135,
+        "output_tokens": 453,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3588,
+      "answer": "## Cash Flow \u2014 Last 90 Days (as of 2026-07-12)\n\n**Headline numbers:**\n- **Charge revenue in:** $14,400 across 5 Stripe charges (a $18,000 charge was excluded as it reconciled against a paid invoice, so revenue isn't double-counted)\n- **Invoiced:** $99,000\n- **Collected:** $54,000 \u2014 a **54.5% conversion** rate\n- **Speed of payment:** median collection cycle is now **30 days**, up from **7 days** in the prior period \u2014 **worsening** \u26a0\ufe0f\n\n**Worth flagging:**\n- **$21,000 is 90+ days past due** across 2 invoices \u2014 Initech ($12,000, 110 days) and Hooli ($9,000, 100 days).\n- **Customer concentration risk:** Globex Corporation is 54.5% of invoiced revenue ($54,000). With only 4 customers, you're heavily reliant on one account.\n\nBottom line: you're invoicing plenty ($99K), but only collecting about half of it, and payments are coming in ~4x slower than before. The collection slowdown plus the aging receivables are the things to chase.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "cashflow",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 3140,
+        "output_tokens": 441,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3581,
+      "answer": "Here are the headline cash flow numbers for the last 90 days (as of 2026-07-12):\n\n- **Charge revenue:** $14,400 across 5 Stripe charges. (Note: one $18,000 Stripe charge was reconciled to a paid invoice and excluded to avoid double-counting.)\n- **Invoiced:** $99,000\n- **Collected:** $54,000 \u2014 a **54.5% collection rate**\n- **Speed of payment:** Median collection cycle is now **30 days, up from 7 days** in the prior period \u2014 **and worsening.**\n\n\u26a0\ufe0f **Two things worth flagging:**\n- **$21,000 is 90+ days past due** \u2014 Initech ($12,000, 110 days) and Hooli ($9,000, 100 days).\n- **Customer concentration risk:** Globex Corporation alone is 54.5% of invoiced revenue ($54,000 of $99,000).\n\nBottom line: revenue is coming in, but you're collecting only about half of what you invoice, and it's taking roughly 4x longer to get paid than before. Want me to break down the specific leaks and suggested actions?",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "cashflow",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 11736,
+        "output_tokens": 4876,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 16612,
+      "answer": "## Cash Flow \u2014 Last 90 Days (window: 2026-04-03 \u2192 2026-07-02)\n\n**\u26a0\ufe0f One reconciliation catch up front:** cash comes in through two systems \u2014 `payments` (invoice-linked) and `stripe_charges` (mostly unlinked). The $18,000 Stark payment (`inv_recon`, 7/2) is recorded in **both** tables, so a naive \"sum both\" overstates cash by $18k. The other 5 Stripe charges have no `reconcile_ref` and aren't tied to any invoice. Numbers below are de-duplicated.\n\n### Headline numbers\n\n| Metric | Amount |\n|---|---|\n| **Actual cash collected (all sources)** | **$68,400** |\n| \u2014 via invoice payments | $54,000 |\n| \u2014 via Stripe, not tied to any invoice | $14,400 |\n| **Invoiced (7 new invoices)** | **$99,000** |\n| \u2014 collected on those invoices | $54,000 (55%) |\n| \u2014 still open | $45,000 |\n| **Total open A/R (all invoices)** | **$66,000** (5 invoices) |\n\n### How fast we're getting paid \u2014 now vs. before\n\nDays from invoice issued \u2192 paid, by cohort:\n\n| Cohort | Invoices | Avg days to pay |\n|---|---|---|\n| **Before** (Jan\u2013Feb, prior window) | 3 (Initech, Hooli, Stark @ $6k each) | **~7 days** |\n| **Now** (paid in last 90 days) | 4 ($6k, $6k, $24k, $18k) | **~29 days** |\n\n**Payment speed has slowed ~4x** \u2014 from a week to about a month. Every recent invoice took 25\u201330 days (right up to the due date), versus 7 days historically.\n\n### What to watch\n- **$66,000 sitting in open A/R**, and $27,000 of it is badly aged: `inv_ini_old` ($12k, ~100 days past due) and `inv_hoo_old` ($9k, ~90 days past due). Umbrella and Stark mid-period invoices ($6k + $9k) are also 30\u201340 days overdue.\n- The largest open item, Globex `inv_glx_1` ($30k), came due 7/2 \u2014 worth chasing before it ages.\n- **$14,400 of Stripe cash is unreconciled** (5 charges, $900\u2013$9,000). It's real money in the bank but isn't matched to any invoice \u2014 someone should tie these out so revenue/A/R isn't misstated.\n\n**Bottom line:** $68.4k came in and $99k went out the door as invoices, so you invoiced ~45% more than you collected this quarter, collections are dragging (7 \u2192 29 days), and $66k is stuck in receivables with a third of it seriously overdue. Cash is positive but the trend on collection speed and aging is the thing to act on.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "cashflow",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 6,
+      "usage": {
+        "input_tokens": 16627,
+        "output_tokens": 4793,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 21420,
+      "answer": "## Cash Flow \u2014 Last 90 Days (2026\u201104\u201103 \u2192 2026\u201107\u201102)\n\nAll figures USD. \"Today\" = latest activity date, 2026\u201107\u201102. Prior period = the 90 days before that (Jan 3 \u2013 Apr 2).\n\n### Headline numbers\n\n| Metric | Last 90 days | Prior 90 days |\n|---|---|---|\n| **Cash collected (revenue in)** | **$68,400** | $18,000 |\n| **Invoiced (billed out)** | **$99,000** | $39,000 |\n| **Avg. days to get paid** | **~29 days** | ~7 days |\n\n### Cash that came in \u2014 $68,400\n- **$54,000** from invoice payments (4 invoices settled: inv_cur_1, inv_cur_2, inv_glx_2, inv_recon)\n- **$14,400** from direct Stripe charges (5 unreconciled charges \u2014 self\u2011serve/card revenue not tied to an invoice)\n- \u26a0\ufe0f Note: the $18,000 Stripe charge `ch_recon` is the *same money* as payment `pay_recon` (both reconcile to inv_recon), so I counted it once. Only that one Stripe charge is reconciled \u2014 the other 5 ($14,400) are floating unmatched.\n\nCollections are up sharply vs. the prior period ($68,400 vs $18,000), driven by larger deals (the $24,000 Globex invoice) and the new Stripe charge stream.\n\n### Invoicing \u2014 $99,000 billed\nWe issued 7 invoices totaling $99,000 (vs. $39,000 / 5 invoices in the prior period) \u2014 billing more than 2.5x. But we only collected $68,400 of cash, so we're invoicing faster than we're getting paid.\n\n### We're getting paid MUCH slower now\n- **Prior period:** every paid invoice cleared in **7 days** flat.\n- **Now:** paid invoices are taking **25\u201330 days** (avg ~29). Payment speed has roughly **4x'd** \u2014 an extra ~22 days.\n\n### The risk: mounting receivables\nOpen (unpaid) invoices total **$66,000**, of which **$36,000 is already past due**:\n- inv_ini_old \u2014 $12,000 (due 3/24, ~100 days late)\n- inv_hoo_old \u2014 $9,000 (due 4/3)\n- inv_stk_mid \u2014 $9,000 (due 6/2)\n- inv_umb_mid \u2014 $6,000 (due 5/23)\n- inv_glx_1 \u2014 $30,000 (due today, 7/2)\n\n**Bottom line:** Cash inflow is healthy and growing ($68k collected, up from $18k), and billing is strong ($99k). But payment speed has deteriorated from ~7 to ~29 days, and $66k is sitting in open AR ($36k overdue). We're billing faster than we're collecting \u2014 worth pushing on the overdue Initech/Hooli/Stark/Umbrella accounts before AR balloons further.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "cashflow",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 6,
+      "usage": {
+        "input_tokens": 17070,
+        "output_tokens": 3738,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 20808,
+      "answer": "## Cash Flow \u2014 Last 90 Days (window: 2026-04-03 \u2192 2026-07-02)\n\n**Headline numbers**\n\n| Metric | Last 90 days | Prior 90 days | Change |\n|---|---|---|---|\n| Invoiced (new billings) | **$99,000** | $39,000 | +154% |\n| Cash collected | **$68,400** | $18,000 | +280% |\n| Avg. days to get paid | **~29 days** | 7 days | 4\u00d7 slower |\n\n*(Amounts are in dollars; the DB stores cents. All activity is USD.)*\n\n**Revenue / cash that came in**\n- **Collected $68,400** in the last 90 days \u2014 $54,000 via the payments ledger plus $14,400 of standalone Stripe charges. (I excluded a $18,000 Stripe charge, `ch_recon`, because it's reconciled to invoice `inv_recon` and is already counted in the payments ledger \u2014 otherwise you'd double-count it.)\n- That's up sharply from **$18,000** collected in the prior 90 days.\n\n**What we invoiced**\n- **$99,000 invoiced** in the last 90 days vs. $39,000 in the prior period.\n- Company-wide, of 12 invoices, **7 are paid ($72,000)** and **5 are still open ($66,000)** \u2014 so a large receivable balance is outstanding relative to what's been collected. The biggest open item is `inv_glx_1` (Globex), $30,000, issued 2026-06-02.\n\n**How fast we're getting paid \u2014 this is the warning sign**\n- Invoices paid earlier in the year (Jan\u2013Feb) were settled in **7 days**, essentially on receipt.\n- The four invoices paid in the current window took **25\u201330 days** (average ~29). \n- So even though revenue and collections are growing strongly, **collection speed has slowed roughly 4\u00d7** \u2014 customers went from paying in a week to paying at ~net-30. Combined with $66,000 sitting in open invoices, that's the thing to watch on cash flow.\n\n**Bottom line:** Business is growing fast \u2014 billings up ~2.5\u00d7 and cash collected up ~3.8\u00d7 \u2014 but you're now getting paid four times slower than you were at the start of the year, and two-thirds of a period's worth of billings ($66K) is still uncollected.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "leaks",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 2566,
+        "output_tokens": 464,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3030,
+      "answer": "Here are your top money leaks right now (as of 2026-07-12, 90-day window):\n\n**1. Customer concentration \u2014 $54,000 exposure**\nGlobex Corporation is **54.5% of your invoiced revenue**. Losing this one account would gut over half your revenue. \u2192 Diversify the customer base to reduce single-account dependence.\n\n**2. Severely overdue receivables (90+ days) \u2014 $21,000**\nTwo invoices are dangerously aged:\n- **Initech** \u2014 $12,000, **110 days** past due (`inv_ini_old`)\n- **Hooli** \u2014 $9,000, **100 days** past due (`inv_hoo_old`)\n\n\u2192 Send reminders on the oldest, largest balances first. These are your highest-risk collections.\n\n**3. Aging receivables (31\u201390 days) \u2014 $15,000**\nTwo more invoices are 31\u201390 days past due and about to roll into the 90+ bucket. \u2192 Chase these now before they age further.\n\n**Bottom line:** $36,000 in cash is tied up in past-due invoices (with Initech and Hooli being the worst offenders), and you're structurally over-reliant on Globex for more than half your revenue. Prioritize collecting the Initech and Hooli balances immediately, then work on diversifying away from Globex.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "leaks",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 2570,
+        "output_tokens": 487,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3057,
+      "answer": "Here are your top money leaks right now (as of 2026-07-12, 90-day window):\n\n**1. Customer concentration \u2014 $54,000 (54.5% of invoiced revenue)**\nGlobex Corporation alone accounts for more than half your invoiced revenue. If they slip or leave, it's a major hit.\n\u2192 *Action: diversify the customer base to reduce single-account dependence.*\n\n**2. Severely overdue receivables (90+ days) \u2014 $21,000**\nTwo invoices you should chase first:\n- **Initech** \u2014 $12,000, 110 days past due (`inv_ini_old`)\n- **Hooli** \u2014 $9,000, 100 days past due (`inv_hoo_old`)\n\n\u2192 *Action: send reminders on the oldest, largest balances first.*\n\n**3. Aging receivables (31\u201390 days) \u2014 $15,000**\nTwo invoices at risk of rolling into the 90+ bucket.\n\u2192 *Action: send reminders now before they become harder to collect.*\n\n**Bottom line:** You have **$36,000 in past-due cash** ($21K critical + $15K aging) that you can act on immediately, plus a structural **$54,000 concentration risk** with Globex. Start collections with Initech and Hooli today.\n\nWant me to break down the two 31\u201390 day invoices by customer, or look at overall cash flow next?",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "leaks",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 2584,
+        "output_tokens": 455,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3039,
+      "answer": "Here are your top money leaks right now (as of 2026-07-12, last 90 days):\n\n**1. Customer concentration \u2014 $54,000 exposure**\nGlobex Corporation makes up **54.5% of invoiced revenue**. Losing or delaying this one account would blow a hole in your cash flow. \u2192 Diversify the customer base to reduce single-account dependence.\n\n**2. Severely overdue receivables (90+ days) \u2014 $21,000**\n- **Initech** \u2014 $12,000, **110 days** past due\n- **Hooli** \u2014 $9,000, **100 days** past due\n\n\u2192 Chase these first \u2014 they're the oldest and largest, and closest to being written off.\n\n**3. Aging receivables (31\u201390 days) \u2014 $15,000**\nTwo invoices totaling $15,000 are 31\u201390 days past due. \u2192 Send reminders now before they roll into the 90+ bucket and get harder to collect.\n\n**Bottom line:** You have **$36,000 in overdue cash** to go collect, and a structural risk in leaning ~55% on Globex. Start collections with Initech and Hooli today. Want me to pull the specific invoices behind the $15,000 mid-aging bucket, or the full money-flow picture?",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "leaks",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 4,
+      "usage": {
+        "input_tokens": 11978,
+        "output_tokens": 4443,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 16421,
+      "answer": "## Where you're losing / at-risk money right now\n(reference date \u2248 **July 7, 2026**, the latest activity in the data)\n\n### 1. Overdue receivables \u2014 **$36,000 past due, $21,000 of it severely delinquent**\nFive invoices are open with zero payment recorded. The two oldest are the real problem (and match the board note flagging Initech + Hooli >90 days):\n\n| Invoice | Customer | Amount | Due | Days late |\n|---|---|---|---|---|\n| inv_ini_old | **Initech** | **$12,000** | 2026-03-24 | ~105 |\n| inv_hoo_old | **Hooli** | **$9,000** | 2026-04-03 | ~95 |\n| inv_umb_mid | Umbrella Retail | $6,000 | 2026-05-23 | ~45 |\n| inv_stk_mid | Stark Industries | $9,000 | 2026-06-02 | ~35 |\n\n**$21,000 (Initech + Hooli) is 90+ days past due** \u2014 the highest collection risk. Total open unpaid AR is **$66,000** once you include Globex's just-due $30,000 (inv_glx_1, due 7/2, only ~5 days out \u2014 still \"current\").\n\n### 2. Unreconciled cash \u2014 **$14,400 of Stripe money not matched to any invoice**\nFive Stripe charges have a null `reconcile_ref`, i.e. cash hit the account but was never booked against an invoice/payment:\n\n- ch_1 $9,000 (6/30), ch_3 $1,800 (6/14), ch_2 $1,800 (6/22), ch_4 $900 (6/7), ch_5 $900 (5/23) = **$14,400**\n\nThis is a bookkeeping leak, and it may be inflating issue #1: **ch_1 is exactly $9,000, received 6/30 \u2014 a strong candidate to clear Hooli's overdue $9,000 invoice.** In other words, you may be chasing (and reserving against) money you've already collected but haven't reconciled. Someone should match these five charges before writing off AR.\n\n### 3. Revenue concentration risk \u2014 **Globex = $9,000 MRR (\u224845% of ~$18.9K MRR)**\nGlobex is your largest account and also carries the largest open invoice (**$30,000**). A single Globex slip = ~45% of monthly revenue plus a $30K AR hit. This is the biggest single point of failure on the book.\n\n### 4. Stalled pipeline (soft losses)\n- **Globex seat expansion \u2014 $36,000**, stuck in \"proposal,\" last activity 5/31.\n- **Hooli platform tier \u2014 $24,000**, \"qualified.\"\n- **NewCo Robotics \u2014 $12,000**, no activity since 5/12.\n- **Vandelay pilot \u2014 $10,800**, \"proposal,\" no activity since 5/22 (also a trial that hasn't converted).\n- **Acme Freight \u2014 $9,000 already marked lost.**\n\n### 5. Churn (small but real)\n- **Dunder Mifflin** churned \u2014 **$300/mo (~$3,600/yr)** gone. Minor vs. the above.\n\n---\n**Bottom line / priority order:**\n1. Reconcile the **$14,400** Stripe charges first \u2014 likely clears part of Hooli's overdue balance before you spend effort chasing it.\n2. Collect the **$21,000** genuinely 90+ days late (Initech $12K, Hooli $9K).\n3. Protect the **Globex** relationship \u2014 45% concentration + a $30K invoice + a $36K stalled expansion all ride on one logo.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "leaks",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 4,
+      "usage": {
+        "input_tokens": 11498,
+        "output_tokens": 3896,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 15394,
+      "answer": "As of the latest activity (~July 2, 2026), here's where money is leaking, ranked by dollar exposure:\n\n## 1. Overdue receivables \u2014 $36,000 past due (of $66,000 total open A/R)\nCash you've earned but haven't collected. Five open invoices:\n\n| Invoice | Customer | Amount | Due | Days late |\n|---|---|---|---|---|\n| inv_ini_old | **Initech** | $12,000 | 2026-03-24 | ~100 |\n| inv_hoo_old | **Hooli** | $9,000 | 2026-04-03 | ~90 |\n| inv_umb_mid | **Umbrella Retail** | $6,000 | 2026-05-23 | ~40 |\n| inv_stk_mid | **Stark Industries** | $9,000 | 2026-06-02 | ~30 |\n| inv_glx_1 | **Globex** | $30,000 | 2026-07-02 | due today |\n\n- **$21,000 is at serious risk (90+ days late): Initech ($12k) and Hooli ($9k)** \u2014 the board update already flags these two as \"at risk.\" Prioritize these first.\n- Note both Initech and Hooli are still \"active\" and paying MRR while sitting on 90+ day balances \u2014 collections, not churn, is the problem.\n\n## 2. Unreconciled Stripe cash \u2014 $14,400\nFive Stripe charges have `reconcile_ref = null`, meaning cash hit the bank but isn't matched to any invoice: ch_1 ($9,000), ch_2/ch_3 ($1,800 each), ch_4/ch_5 ($900 each). Only ch_recon ($18,000 \u2192 inv_recon) is properly matched. This is $14,400 of received money not tied to revenue \u2014 either unrecorded payments (you may be dunning customers who already paid) or uninvoiced subscription revenue. Reconcile before chasing collections.\n\n## 3. Revenue concentration \u2014 Globex = ~54% of MRR\nGlobex is $9,000 of ~$16,700 active MRR, **and** its $30,000 invoice comes due today. A single slip or churn here dwarfs every other line item. This is your biggest structural exposure.\n\n## 4. Churn \u2014 Dunder Mifflin, \u2013$300/mo (\u2013$3,600/yr)\nOne churned account (starter tier). Small, but the only outright lost recurring revenue on the books.\n\n**Bottom line:** The immediate cash problem is ~$36K in overdue invoices \u2014 go after Initech ($12K) and Hooli ($9K) today. But before you dun anyone, clear the $14.4K of unreconciled Stripe charges, since some of those \"overdue\" balances may already be paid. Longer-term, the Globex concentration (~54% of MRR + a $30K invoice due now) is the risk that can actually sink you.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "leaks",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 4,
+      "usage": {
+        "input_tokens": 12476,
+        "output_tokens": 4539,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 17015,
+      "answer": "Here's where the money is actually leaking, ranked by dollars. (Treating \"now\" as early July 2026 \u2014 the latest invoice due date and Stripe charge are 2026\u201107\u201102.)\n\n## 1. Overdue receivables you may never collect \u2014 $36,000 past due ($66,000 total open)\nFive invoices are unpaid, and four are already past their due date:\n\n| Invoice | Customer | Amount | Due | Days past due |\n|---|---|---|---|---|\n| inv_ini_old | **Initech** | $12,000 | 2026\u201103\u201124 | ~105 |\n| inv_hoo_old | **Hooli** | $9,000 | 2026\u201104\u201103 | ~95 |\n| inv_stk_mid | **Stark Industries** | $9,000 | 2026\u201106\u201102 | ~35 |\n| inv_umb_mid | **Umbrella Retail** | $6,000 | 2026\u201105\u201123 | ~45 |\n| inv_glx_1 | Globex | $30,000 | 2026\u201107\u201102 | ~5 (just due) |\n\n**Highest write\u2011off risk: Initech ($12K) and Hooli ($9K) = $21,000 over 90 days past due** \u2014 exactly the two accounts flagged in the Q3 board update. Chase these two first. Globex's $30K just came due and isn't a problem yet, but it's your single biggest exposure.\n\n## 2. $14,400 in Stripe cash sitting unreconciled\nFive Stripe charges have no `reconcile_ref`, meaning cash hit the bank but was never matched to an invoice:\n\n- ch_1: **$9,000** (2026\u201106\u201130)\n- ch_3: $1,800, ch_2: $1,800 (June)\n- ch_5: $900, ch_4: $900 (May/June)\n\nThis is a two\u2011sided problem: either revenue isn't being recognized, or **some \"overdue\" invoices above are actually already paid**. Notably, ch_1's $9,000 exactly matches Hooli's or Stark's $9,000 open invoice \u2014 so part of the \"past due\" figure in issue #1 may be a reconciliation error, not a real delinquency. This needs to be matched before you spend collections effort. (For reference, invoice inv_recon shows the correct pattern: charge ch_recon is properly tagged to it.)\n\n## 3. Churn \u2014 Dunder Mifflin, ~$3,600/yr\nDunder Mifflin is marked `churned`, dropping from a $300/mo starter plan to $0 \u2014 about **$3,600 in annualized recurring revenue gone**. Small in absolute terms but it's the only fully lost recurring account.\n\n## 4. Lost/stalling pipeline\n- **Acme Freight \u2014 $9,000** deal marked `lost`.\n- **Pied Piper trial conversion ($3,600)**: close date 2026\u201106\u201130 has passed with the deal still only \"qualified\" and a still-active trial \u2014 likely slipping.\n- **Vandelay pilot ($10,800)** and **NewCo Robotics ($12,000)** have had no activity since late May \u2014 going cold.\n\n---\n\n### Bottom line\n- **Act now on $21,000** of >90\u2011day AR (Initech $12K, Hooli $9K) \u2014 real collection risk.\n- **Reconcile the $14,400** of loose Stripe cash first; it may reduce the overdue number and recovers unrecognized revenue.\n- Watch **Globex $30K** (biggest single exposure, ~54% of MRR \u2014 concentration risk) and the **$3,600 Dunder Mifflin churn**.\n\nOne caveat: without a definitive stated \"today,\" days\u2011past\u2011due are calculated against ~2026\u201107\u201107, and the unreconciled charges make the exact overdue total uncertain until matched.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "stale_deals",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 3,
+      "usage": {
+        "input_tokens": 3866,
+        "output_tokens": 1140,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 5006,
+      "answer": "Here are your open (not won/lost) deals with no activity in 30+ days. Using the latest activity date in the system (2026\u201107\u201103) as \"today,\" these are the stale ones:\n\n**Globex \u2014 seat expansion** ($36,000, proposal stage, last activity May 31)\n> \"Hi [name] \u2014 following up on the seat\u2011expansion proposal we sent. Happy to walk through the numbers or adjust scope to fit your budget. Are you free for 15 minutes this week?\"\n\n**Vandelay \u2014 pilot to paid** ($10,800, proposal stage, last activity May 22)\n> \"Hi [name] \u2014 checking in on moving your pilot to a paid plan. The team's been active in the trial, so I'd love to lock in terms before the pilot window closes. Any blockers I can help with?\"\n\n**NewCo Robotics \u2014 inbound** ($12,000, lead stage, last activity May 12)\n> \"Hi [name] \u2014 reaching back out after your inbound inquiry. Is now still a good time to explore how we could help? I can send a quick overview or set up a short call, whichever's easier.\"\n\nNote: **Pied Piper \u2014 trial conversion** (last activity June 4) is right at ~29 days, so it's on the edge but not yet past 30. **Hooli \u2014 platform tier** (July 3) is still active. Let me know if you'd like a nudge drafted for Pied Piper too, or if your \"today\" is a later date that would pull more deals into scope.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "stale_deals",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 3,
+      "usage": {
+        "input_tokens": 3858,
+        "output_tokens": 1062,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 4920,
+      "answer": "Using the most recent activity in your data (2026\u201107\u201103) as \"today,\" here are the **open** deals (excluding won/lost) with no activity in over 30 days:\n\n**Stale open deals:**\n\n**1. Globex \u2014 seat expansion** ($36,000, proposal stage; last activity 2026\u201105\u201131)\n> Hi \u2014 wanted to circle back on the seat\u2011expansion proposal we sent over. Do you have any open questions, and is there a good time this week to walk through next steps toward the Aug 15 target?\n\n**2. Vandelay \u2014 pilot to paid** ($10,800, proposal stage; last activity 2026\u201105\u201122)\n> Hi \u2014 checking in on moving the pilot to a paid plan. The proposal is ready to go whenever you are; happy to adjust scope if that helps us close before the July 20 date.\n\n**3. NewCo Robotics \u2014 inbound** ($12,000, lead stage; last activity 2026\u201105\u201112)\n> Hi \u2014 following up on your inbound interest. Would a quick 20\u2011minute call make sense to understand your needs and see if we're a fit? Let me know what works.\n\n*(Not included: Hooli \u2014 qualified, last activity 2026\u201107\u201103, and Pied Piper \u2014 qualified, last activity 2026\u201106\u201104, both within the 30\u2011day window. Initech and Stark are won; Acme Freight is lost.)*",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "stale_deals",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 3,
+      "usage": {
+        "input_tokens": 3866,
+        "output_tokens": 972,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 4838,
+      "answer": "Using the most recent activity in your data (2026-07-03) as \"today,\" here are the **open** deals (excluding won/lost) with no activity in over 30 days:\n\n**Stale open deals:**\n- **Globex \u2014 seat expansion** ($36,000, proposal) \u2014 last activity 2026-05-31\n- **Vandelay \u2014 pilot to paid** ($10,800, proposal) \u2014 last activity 2026-05-22\n- **NewCo Robotics \u2014 inbound** ($12,000, lead) \u2014 last activity 2026-05-12\n\n*(Hooli and Pied Piper are still active within 30 days, so they're excluded.)*\n\n---\n\n**Draft follow-ups:**\n\n**Globex \u2014 seat expansion**\n> Hi \u2014 wanted to circle back on the seat expansion proposal I sent over. Are there any open questions I can answer to help you move this forward? Happy to jump on a quick call this week.\n\n**Vandelay \u2014 pilot to paid**\n> Hi \u2014 checking in on moving your pilot to a paid plan. How did the trial go for your team, and is there anything I can do to make the transition an easy yes?\n\n**NewCo Robotics \u2014 inbound**\n> Hi \u2014 following up on your interest in Northwind Labs. Is now still a good time to explore how we could help? I'd love to set up a short intro call to understand your goals.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "stale_deals",
+      "run": 1,
+      "passed": false,
+      "grade_reason": "missing required: ['Pied Piper']",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 7264,
+        "output_tokens": 1239,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 8503,
+      "answer": "You have **3 stale open deals** totaling **$58,800** in pipeline. Here are the details and draft follow-ups:\n\n---\n\n**1. Globex \u2014 seat expansion** \u00b7 $36,000 \u00b7 proposal \u00b7 33 days stale (last activity May 31)\n> Hi [name] \u2014 wanted to circle back on the seat expansion proposal I sent over. Do you have any open questions, and is the August 15 timeline still realistic on your end? Happy to hop on a quick call to keep things moving.\n\n---\n\n**2. Vandelay \u2014 pilot to paid** \u00b7 $10,800 \u00b7 proposal \u00b7 42 days stale (last activity May 22)\n> Hi [name] \u2014 following up on converting your pilot to a paid plan. With the July 20 close date coming up fast, I'd love to lock in next steps \u2014 would a 15-minute call this week work to finalize the details?\n\n---\n\n**3. NewCo Robotics \u2014 inbound** \u00b7 $12,000 \u00b7 lead \u00b7 52 days stale (last activity May 12)\n> Hi [name] \u2014 thanks again for your interest in [product]. It's been a few weeks, so I wanted to check in and see if now's a good time to explore how we can help. Would you be open to a brief intro call?\n\n---\n\n**Priority tip:** Globex is by far the largest ($36K) and its close date (Aug 15) still gives you room \u2014 worth the fastest touch. Vandelay is the most time-sensitive since its July 20 close date is only ~2 weeks out yet it's gone quiet for 6 weeks.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "stale_deals",
+      "run": 2,
+      "passed": false,
+      "grade_reason": "missing required: ['Pied Piper']",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 6269,
+        "output_tokens": 1204,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 7473,
+      "answer": "Here are your **3 stale open deals** \u2014 open opportunities (stage = lead/qualified/proposal) with no activity in over 30 days (reference date 2026-07-03):\n\n---\n\n**1. NewCo Robotics \u2014 inbound** *(lead, $12,000 \u2014 52 days stale, last activity May 12)*\n> Hi \u2014 following up on your inbound interest in [product]. I know things get busy, but I'd love to understand your priorities and see if we're still a fit. Do you have 15 minutes this week for a quick call?\n\n**2. Vandelay \u2014 pilot to paid** *(proposal, $10,800 \u2014 42 days stale, last activity May 22)*\n> Hi \u2014 checking in on the proposal to move your pilot into a paid plan. Your close date (July 20) is coming up fast, so I want to make sure we keep things on track. Is there anything you need from me to move forward?\n\n**3. Globex \u2014 seat expansion** *(proposal, $36,000 \u2014 33 days stale, last activity May 31)*\n> Hi \u2014 wanted to circle back on the seat expansion proposal. Happy to walk through pricing or adjust the scope if that helps. What's the best next step to keep this moving toward your August timeline?\n\n---\n\nNote: I treated 2026-07-03 (the most recent activity date in the database) as \"today.\" The other open deals in the system had activity within the last 30 days and were excluded; won and lost deals were also excluded.",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "stale_deals",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 7394,
+        "output_tokens": 1462,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 8856,
+      "answer": "## Your stale open deals (no activity in >30 days)\n\nThree open opportunities qualify. All three are past-due on close date or approaching it, so these are worth a nudge:\n\n| Deal | Stage | Amount | Last activity | Days stale |\n|---|---|---|---|---|\n| NewCo Robotics \u2014 inbound | lead | $12,000 | 2026-05-12 | 52 |\n| Vandelay \u2014 pilot to paid | proposal | $10,800 | 2026-05-22 | 42 |\n| Globex \u2014 seat expansion | proposal | $36,000 | 2026-05-31 | 33 |\n\n*(Pied Piper \u2014 trial conversion is at 29 days, just under the threshold; Hooli had activity today.)*\n\n---\n\n**NewCo Robotics \u2014 inbound** ($12K)\n> Hi \u2014 following up on your inbound inquiry from a few weeks back. I'd love to learn more about what you're trying to solve and see if we're a fit. Do you have 20 minutes this week for a quick intro call?\n\n**Vandelay \u2014 pilot to paid** ($10,800 \u2014 \u26a0\ufe0f close date 2026-07-20, ~2 weeks out)\n> Hi \u2014 checking in on the proposal we sent for moving from your pilot to a paid plan. Since your team's already seen the value in the trial, I'd love to lock in next steps. Any questions I can answer to help you move forward this month?\n\n**Globex \u2014 seat expansion** ($36K)\n> Hi \u2014 wanted to circle back on the seat-expansion proposal. As your team keeps growing, I'd like to make sure the pricing and rollout timeline still work for you. Happy to hop on a quick call to finalize the details \u2014 what does your week look like?\n\nThe Vandelay deal is the most urgent given its 2026-07-20 close date is only two weeks away.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "retrieval",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 3334,
+        "output_tokens": 517,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3851,
+      "answer": "Our onboarding process is documented in **`onboarding-runbook.md`** (the *Customer Onboarding Runbook*). The goal is for a new customer to **reach first value within 7 days**, via four stages:\n\n1. **Kickoff (day 0):** confirm the primary use case and success metric; create the workspace; invite admins.\n2. **Data in (days 1\u20132):** import the customer's existing data or connect their source system; verify counts match.\n3. **First workflow (days 3\u20134):** stand up the one workflow tied to their success metric and watch them run it once live.\n4. **Team rollout (days 5\u20137):** invite the wider team, set roles, and schedule a 30-day check-in.\n\n**The top thing that stalls onboarding** is step 2 (getting data in). The runbook states directly:\n\n> \"Escalate any blocked onboarding older than 3 days to the founder. **Trials that stall in step 2 are the top conversion leak.**\"\n> \u2014 *onboarding-runbook.md*\n\nSo the biggest bottleneck is customers getting stuck at the **data import / source-system connection** stage, and anything blocked more than 3 days should be escalated to the founder.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "retrieval",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 3332,
+        "output_tokens": 505,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3837,
+      "answer": "According to the **Customer Onboarding Runbook** (`onboarding-runbook.md`), the goal is for a new customer to reach first value within **7 days**, via a 4-step process:\n\n1. **Kickoff (day 0):** confirm the primary use case and success metric; create the workspace; invite admins.\n2. **Data in (days 1\u20132):** import the customer's existing data or connect their source system; verify counts match.\n3. **First workflow (days 3\u20134):** stand up the one workflow tied to their success metric and watch them run it once live.\n4. **Team rollout (days 5\u20137):** invite the wider team, set roles, and schedule a 30-day check-in.\n\n**The top thing that stalls onboarding is step 2 (Data in).** The runbook states directly:\n\n> \"Trials that stall in step 2 are the top conversion leak.\"\n\nIt also notes the escalation rule: *\"Escalate any blocked onboarding older than 3 days to the founder.\"*\n\nSo the biggest bottleneck is getting the customer's data imported/connected and verified in the first two days \u2014 trials that get stuck there are the primary reason onboarding doesn't convert.",
+      "error": ""
+    },
+    {
+      "arm": "amos",
+      "task_id": "retrieval",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 2,
+      "usage": {
+        "input_tokens": 3328,
+        "output_tokens": 478,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 3806,
+      "answer": "Our onboarding process is documented in **`onboarding-runbook.md`** (the \"Customer Onboarding Runbook\"). The stated goal is that **a new customer reaches first value within 7 days**, via four stages:\n\n1. **Kickoff (day 0):** confirm the primary use case and success metric; create the workspace; invite admins.\n2. **Data in (days 1\u20132):** import the customer's existing data or connect their source system; verify counts match.\n3. **First workflow (days 3\u20134):** stand up the one workflow tied to their success metric and watch them run it once live.\n4. **Team rollout (days 5\u20137):** invite the wider team, set roles, schedule a 30-day check-in.\n\n**The top thing that stalls onboarding** is step 2 \u2014 getting the customer's data in. The runbook states directly:\n\n> \"Trials that stall in step 2 are the top conversion leak.\"\n\nIt also notes an escalation rule: *\"Escalate any blocked onboarding older than 3 days to the founder.\"*\n\nSource: **`onboarding-runbook.md`**",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "retrieval",
+      "run": 1,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 7026,
+        "output_tokens": 657,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 7683,
+      "answer": "Our onboarding process is documented in **`onboarding-runbook.md` (\"Northwind Labs \u2014 Customer Onboarding Runbook\")**. It defines a 7-day path to first value:\n\n1. **Kickoff (day 0):** confirm the primary use case and success metric; create the workspace; invite admins.\n2. **Data in (days 1\u20132):** import the customer's existing data or connect their source system; verify counts match.\n3. **First workflow (days 3\u20134):** stand up the one workflow tied to their success metric and watch them run it once live.\n4. **Team rollout (days 5\u20137):** invite the wider team, set roles, schedule a 30-day check-in.\n\nAny onboarding blocked for more than 3 days is escalated to the founder.\n\n**The top thing that stalls onboarding** is step 2 \u2014 data import/source-system connection. The runbook states directly:\n\n> \"Trials that stall in step 2 are the top conversion leak.\"\n\nSo the biggest drop-off happens when customers can't get their existing data in and verified (days 1\u20132), which prevents them from ever reaching first value.\n\n*Source: `onboarding-runbook.md` \u2014 \"Northwind Labs \u2014 Customer Onboarding Runbook.\"*",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "retrieval",
+      "run": 2,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 7022,
+        "output_tokens": 694,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 7716,
+      "answer": "Our onboarding process is documented in the **\"Customer Onboarding Runbook\"** (`onboarding-runbook.md`). Here's what it says:\n\n**Goal:** a new customer reaches first value within **7 days**, via four steps:\n\n1. **Kickoff (day 0):** confirm the primary use case and success metric; create the workspace; invite admins.\n2. **Data in (days 1\u20132):** import the customer's existing data or connect their source system; verify counts match.\n3. **First workflow (days 3\u20134):** stand up the one workflow tied to their success metric and watch them run it once live.\n4. **Team rollout (days 5\u20137):** invite the wider team, set roles, and schedule a 30-day check-in.\n\nThere's also an escalation rule: **any onboarding blocked for more than 3 days goes to the founder.**\n\n**Top thing that stalls onboarding:** step 2, getting data in. The runbook states directly:\n\n> \"Trials that stall in step 2 are the top conversion leak.\"\n\nIn other words, the biggest onboarding bottleneck is importing/connecting the customer's data \u2014 likely because it depends on the customer providing access or exports, and stalls there kill trial-to-paid conversion.\n\n*Source: Northwind Labs \u2014 Customer Onboarding Runbook (`onboarding-runbook.md`).*",
+      "error": ""
+    },
+    {
+      "arm": "raw",
+      "task_id": "retrieval",
+      "run": 3,
+      "passed": true,
+      "grade_reason": "ok",
+      "iterations": 5,
+      "usage": {
+        "input_tokens": 7114,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      },
+      "total_tokens": 7782,
+      "answer": "According to the **Customer Onboarding Runbook** (`onboarding-runbook.md`), onboarding is a 7-day process aimed at getting a new customer to \"first value within 7 days\":\n\n1. **Kickoff (day 0):** Confirm the primary use case and success metric; create the workspace; invite admins.\n2. **Data in (days 1\u20132):** Import the customer's existing data or connect their source system; verify counts match.\n3. **First workflow (days 3\u20134):** Stand up the one workflow tied to their success metric and watch them run it once live.\n4. **Team rollout (days 5\u20137):** Invite the wider team, set roles, schedule a 30-day check-in.\n\nAny onboarding blocked for more than 3 days is escalated to the founder.\n\n**Top thing that stalls onboarding:** step 2, getting the customer's data in. The runbook states directly:\n\n> \"Trials that stall in step 2 are the top conversion leak.\"\n\nIn other words, the data import / source-system connection step (days 1\u20132) is the biggest bottleneck.\n\n*Source: `onboarding-runbook.md` \u2014 \"Northwind Labs \u2014 Customer Onboarding Runbook.\"*",
+      "error": ""
+    }
+  ]
+}
