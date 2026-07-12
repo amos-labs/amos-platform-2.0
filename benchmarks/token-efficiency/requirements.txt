@@ -1,0 +1,4 @@
+# Token-efficiency benchmark deps. Standalone Python — not part of the Rust
+# workspace. The official Anthropic SDK with the Bedrock (Mantle) client.
+anthropic[bedrock]>=0.116
+boto3>=1.34
