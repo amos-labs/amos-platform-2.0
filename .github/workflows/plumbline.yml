@@ -5,7 +5,7 @@
 # integrity always; full semantic review + PR comment once ANTHROPIC_API_KEY is
 # configured as a repo secret (until then it falls back to `plumb check`).
 #
-# Follow-up (tracked): pin to a released tag (plumbline@v1) instead of #master.
+# Pinned to the released tag plumbline@v0.4.1 (matches the amos fleet).
 name: Plumbline Gate
 
 on:
@@ -62,7 +62,7 @@ jobs:
 
       - name: Plumbline gate — full (shape + semantic review + PR comment)
         if: steps.key.outputs.present == 'true'
-        uses: amos-labs/plumbline@v0.3.0
+        uses: amos-labs/plumbline@v0.4.1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ github.token }}
