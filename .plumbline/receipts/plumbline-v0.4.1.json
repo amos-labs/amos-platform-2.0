@@ -1,0 +1,46 @@
+{
+  "receipt_version": "1.0",
+  "task_id": "plumbline-v0.4.1",
+  "agent_id": "claude",
+  "intent": "Upgrade the plumbline CI gate pin to the latest release, v0.4.1, in .github/workflows/plumbline.yml. The pin was a floating '@v1' tag that does not resolve (plumbline has no v1 release; latest is v0.4.1), so the gate was effectively not running a real pinned version. Pin it explicitly to @v0.4.1 to match the rest of the fleet and get the current gate behavior (base_sha pinning + accept-rederived-merge-base, which ends the stale-base re-stamp tax). Version-string change only; the gate logic lives in the plumbline package, not here. Touches .github/workflows/** (a protected path) so self_modifying=true and it routes to human review, correct for a change to the enforcement pipeline.",
+  "self_modifying": true,
+  "policy_refs": [
+    ".plumbline/MISSION.md",
+    ".plumbline/policy.json"
+  ],
+  "validation_plan": [
+    {
+      "id": "pin",
+      "command": "grep plumbline@v0.4.1 .github/workflows/plumbline.yml",
+      "reason": "The pin references resolve to the explicit v0.4.1 tag.",
+      "required": true
+    },
+    {
+      "id": "gate",
+      "command": "Plumbline Gate CI job runs on this PR",
+      "reason": "The v0.4.1 gate validates this PR — live proof the pin resolves and runs.",
+      "required": true,
+      "ci_covered": true
+    }
+  ],
+  "execution_evidence": [
+    {
+      "step": "pin",
+      "command": "grep",
+      "status": "passed",
+      "output_ref": "workflow now references amos-labs/plumbline@v0.4.1 (was @v1, which did not resolve)."
+    },
+    {
+      "step": "gate",
+      "command": "Plumbline Gate CI",
+      "status": "passed",
+      "output_ref": "Corroborated by the Plumbline Gate check on this PR head running v0.4.1."
+    }
+  ],
+  "result_summary": "Pinned the plumbline gate to @v0.4.1 in .github/workflows/plumbline.yml (was a non-resolving @v1 float). Version bump only; no repo logic changed. self_modifying=true (workflows protected) → human review.",
+  "diff_sha256": "48738e23fc787cfca95a9157ca5d74d13dc42d06662c47410117c374f8d2af2a",
+  "base_sha": "a4d824704736bc71339b6f66da5d2e150db7fb7d",
+  "changed_files": [
+    ".github/workflows/plumbline.yml"
+  ]
+}
